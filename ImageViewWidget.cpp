@@ -66,6 +66,9 @@ struct ImageViewWidget::Private {
 
 	SelectionOutlineBitmap selection_outline;
 
+	QBrush horz_stripe_brush;
+	QBrush vert_stripe_brush;
+
 	QCursor cursor;
 };
 
@@ -81,6 +84,7 @@ ImageViewWidget::ImageViewWidget(QWidget *parent)
 	m->outline_renderer = new SelectionOutlineRenderer(this);
 	connect(m->outline_renderer, &SelectionOutlineRenderer::done, this, &ImageViewWidget::onSelectionOutlineRenderingCompleted);
 
+	initBrushes();
 
 	setMouseTracking(true);
 
@@ -91,6 +95,30 @@ ImageViewWidget::~ImageViewWidget()
 {
 	stopRendering(true);
 	delete m;
+}
+
+void ImageViewWidget::initBrushes()
+{
+	{
+		QImage image(8, 8, QImage::Format_Grayscale8);
+		for (int y = 0; y < 8; y++) {
+			uint8_t *p = image.scanLine(y);
+			for (int x = 0; x < 8; x++) {
+				p[x] = y < 4 ? 0 : 255;
+			}
+		}
+		m->horz_stripe_brush = QBrush(image);
+	}
+	{
+		QImage image(8, 8, QImage::Format_Grayscale8);
+		for (int y = 0; y < 8; y++) {
+			uint8_t *p = image.scanLine(y);
+			for (int x = 0; x < 8; x++) {
+				p[x] = x < 4 ? 0 : 255;
+			}
+		}
+		m->vert_stripe_brush = QBrush(image);
+	}
 }
 
 MainWindow *ImageViewWidget::mainwindow()
@@ -523,6 +551,33 @@ void ImageViewWidget::paintEvent(QPaintEvent *)
 					}
 				}
 			}
+		}
+
+		if (m->image_scale == MAX_SCALE) {
+			QPoint org = mapFromDocumentToViewport(QPointF(0, 0)).toPoint();
+			QPointF topleft = mapFromViewportToDocument(QPointF(0, 0));
+			int topleft_x = (int)floor(topleft.x());
+			int topleft_y = (int)floor(topleft.y());
+			pr.save();
+			pr.setOpacity(0.25);
+			pr.setBrushOrigin(org);
+			int x = topleft_x;
+			while (1) {
+				QPointF pt = mapFromDocumentToViewport(QPointF(x, topleft_y));
+				int z = (int)floor(pt.x());
+				if (z >= width()) break;
+				pr.fillRect(z, 0, 1, height(), m->horz_stripe_brush);
+				x++;
+			}
+			int y = topleft_y;
+			while (1) {
+				QPointF pt = mapFromDocumentToViewport(QPointF(topleft_x, y));
+				int z = (int)floor(pt.y());
+				if (z >= height()) break;
+				pr.fillRect(0, z, width(), 1, m->vert_stripe_brush);
+				y++;
+			}
+			pr.restore();
 		}
 
 		// 選択領域点線
