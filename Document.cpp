@@ -281,8 +281,11 @@ void Document::renderToEachPanels_(Image *target_panel, QPoint const &target_off
 	if (mask_layer && mask_layer->panels_.empty()) {
 		mask_layer = nullptr;
 	}
-	for (PanelPtr const &input_panel : input_layer.panels_) {
-		if (abort && *abort) return;
+//	for (PanelPtr const &input_panel : input_layer.panels_) {
+#pragma omp parallel for
+	for (size_t i = 0; i < input_layer.panels_.size(); i++) {
+		if (abort && *abort) continue;
+		PanelPtr const &input_panel = input_layer.panels_[i];
 		RenderOption opt;
 		renderToSinglePanel(target_panel, target_offset, input_panel.image(), input_layer.offset(), mask_layer, opt, brush_color, opacity);
 	}
@@ -304,34 +307,35 @@ void Document::renderToLayer(Layer *target_layer, Layer const &input_layer, Laye
 	for (PanelPtr const &input_panel : input_layer.panels_) {
 		if (input_panel.isImage()) {
 			if (target_layer->tile_mode_) {
+				auto FindPanel = [](Layer const *layer, int x, int y){
+					int lo = 0;
+					int hi = layer->panels_.size();
+					while (lo < hi) {
+						int m = (lo + hi) / 2;
+						PanelPtr p = layer->panels_[m];
+						Q_ASSERT(p);
+						auto COMP = [](PanelPtr const &p, int x, int y){
+							if (p->offset().y() < y) return -1;
+							if (p->offset().y() > y) return 1;
+							if (p->offset().x() < x) return -1;
+							if (p->offset().x() > x) return 1;
+							return 0;
+						};
+						int i = COMP(p, x, y);
+						if (i == 0) return p;
+						if (i < 0) {
+							lo = m + 1;
+						} else {
+							hi = m;
+						}
+					}
+					return PanelPtr();
+				};
 				QPoint s0 = input_layer.offset() + input_panel->offset();
 				QPoint s1 = s0 + QPoint(input_panel->width(), input_panel->height());
 				for (int y = (s0.y() & ~63); y < s1.y(); y += 64) {
 					for (int x = (s0.x() & ~63); x < s1.x(); x += 64) {
-						auto FindPanel = [](Layer const *layer, int x, int y){
-							int lo = 0;
-							int hi = layer->panels_.size();
-							while (lo < hi) {
-								int m = (lo + hi) / 2;
-								PanelPtr p = layer->panels_[m];
-								Q_ASSERT(p);
-								auto COMP = [](PanelPtr const &p, int x, int y){
-									if (p->offset().y() < y) return -1;
-									if (p->offset().y() > y) return 1;
-									if (p->offset().x() < x) return -1;
-									if (p->offset().x() > x) return 1;
-									return 0;
-								};
-								int i = COMP(p, x, y);
-								if (i == 0) return p;
-								if (i < 0) {
-									lo = m + 1;
-								} else {
-									hi = m;
-								}
-							}
-							return PanelPtr();
-						};
+						if (abort && *abort) return;
 						if (sync) sync->lock();
 						PanelPtr panel = FindPanel(target_layer, x, y);
 						if (!panel) {
@@ -339,7 +343,6 @@ void Document::renderToLayer(Layer *target_layer, Layer const &input_layer, Laye
 							panel.image()->image_.fill(Qt::transparent);
 						}
 						{
-							if (abort && *abort) return;
 							if (panel.isImage()) {
 								renderToSinglePanel(panel.image(), target_layer->offset(), input_panel.image(), input_layer.offset(), mask_layer, opt, opt.brush_color, 255, abort);
 							}

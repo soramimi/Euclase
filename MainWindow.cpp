@@ -17,6 +17,7 @@
 #include <QScreen>
 #include <QClipboard>
 #include <QElapsedTimer>
+#include <omp.h>
 
 struct MainWindow::Private {
 	Document doc;
@@ -314,7 +315,10 @@ void MainWindow::on_action_resize_triggered()
 		unsigned int h = sz.height();
 		w = std::max(w, 1U);
 		h = std::max(h, 1U);
+		QElapsedTimer t;
+		t.start();
 		QImage newimage = resizeImage(srcimage, w, h, EnlargeMethod::Bicubic);
+		qDebug() << QString::asprintf("%ums", (unsigned int)t.elapsed());
 		setImage(newimage, true);
 	}
 }
@@ -354,36 +358,48 @@ QImage MainWindow::renderFilterTargetImage()
 	return image;
 }
 
+void MainWindow::filter(std::function<QImage (QImage const &)> const &fn)
+{
+	QElapsedTimer t;
+	t.start();
+
+	QImage image = renderFilterTargetImage();
+	image = fn(image);
+	setImage(image, false);
+
+	qDebug() << QString::asprintf("%ums", (unsigned int)t.elapsed());
+}
+
 void MainWindow::on_action_filter_median_triggered()
 {
-	QImage image = renderFilterTargetImage();
-	image = filter_median(image, 10);
-	setImage(image, false);
+	filter([](QImage const &image){
+		return filter_median(image, 10);
+	});
 }
 
 void MainWindow::on_action_filter_maximize_triggered()
 {
-	QImage image = renderFilterTargetImage();
-	image = filter_maximize(image, 10);
-	setImage(image, false);
+	filter([](QImage const &image){
+		return filter_maximize(image, 10);
+	});
 }
 
 void MainWindow::on_action_filter_minimize_triggered()
 {
-	QImage image = renderFilterTargetImage();
-	image = filter_minimize(image, 10);
-	setImage(image, false);
+	filter([](QImage const &image){
+		return filter_minimize(image, 10);
+	});
 }
 
-void MainWindow::on_action_filter_sepia_triggered()
+QImage sepia(QImage const &image)
 {
-	QImage image = renderFilterTargetImage();
-	{
-		int w = image.width();
-		int h = image.height();
-		if (w < 1 || h < 1) return;
+	QImage newimage = image.copy();
+	int w = newimage.width();
+	int h = newimage.height();
+	if (w > 0 || h > 0) {
+#pragma omp parallel for
 		for (int y = 0; y < h; y++) {
-			uint8_t *p = image.scanLine(y);
+			uint8_t *p = newimage.scanLine(y);
 			for (int x = 0; x < w; x++) {
 				double r = p[0];
 				double g = p[1];
@@ -398,27 +414,37 @@ void MainWindow::on_action_filter_sepia_triggered()
 			}
 		}
 	}
-	setImage(image, false);
+	return newimage;
+}
+
+void MainWindow::on_action_filter_sepia_triggered()
+{
+	filter([](QImage const &image){
+		return sepia(image);
+	});
 }
 
 QImage filter_blur(QImage image, int radius);
 
 void MainWindow::on_action_filter_blur_triggered()
 {
-	QImage image = renderFilterTargetImage();
-	int radius = 10;
-	image = filter_blur(image, radius);
-	image = filter_blur(image, radius);
-	image = filter_blur(image, radius);
-	setImage(image, false);
+	filter([](QImage const &image){
+		int radius = 10;
+		QImage newimage = image;
+		newimage = filter_blur(newimage, radius);
+		newimage = filter_blur(newimage, radius);
+		newimage = filter_blur(newimage, radius);
+		return newimage;
+	});
 }
-
 
 void MainWindow::on_action_filter_antialias_triggered()
 {
-	QImage image = renderFilterTargetImage();
-	filter_antialias(&image);
-	setImage(image, false);
+	filter([](QImage const &image){
+		QImage newimage = image;
+		filter_antialias(&newimage);
+		return newimage;
+	});
 }
 
 

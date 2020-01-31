@@ -9,10 +9,8 @@ ColorPreviewWidget::ColorPreviewWidget(QWidget *parent)
 	secondary_color_ = Qt::white;
 }
 
-void ColorPreviewWidget::paintEvent(QPaintEvent *event)
+void ColorPreviewWidget::paintEvent(QPaintEvent *)
 {
-	int w = width();
-	int h = height();
 	QPainter pr(this);
 
 	auto DrawRect = [&](QRect const &r, QColor const &color){

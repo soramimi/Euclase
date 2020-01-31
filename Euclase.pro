@@ -7,6 +7,9 @@ CONFIG += c++11
 
 DESTDIR = $$PWD/_bin
 
+gcc:QMAKE_CXXFLAGS += -fopenmp
+gcc:QMAKE_LFLAGS += -fopenmp
+
 #INCLUDEPATH += "C:/Program Files/NVIDIA GPU Computing Toolkit/CUDA/v7.5/include"
 #LIBS += "C:/Program Files/NVIDIA GPU Computing Toolkit/CUDA/v7.5/lib/Win32/OpenCL.lib"
 

@@ -321,6 +321,7 @@ template <typename PIXEL, typename FILTER> QImage Filter(QImage image, int radiu
 			memcpy(d, s, sizeof(PIXEL) * w);
 		}
 
+#pragma omp parallel for
 		for (int y = 0; y < h; y++) {
 			FILTER filter;
 			for (int i = 0; i < radius * 2 + 1; i++) {

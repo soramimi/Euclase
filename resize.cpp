@@ -3,6 +3,7 @@
 #include <math.h>
 #include <stdint.h>
 #include "euclase.h"
+#include <omp.h>
 
 using PixelRGBA = euclase::PixelRGBA;
 using PixelGrayA = euclase::PixelGrayA;
@@ -29,6 +30,7 @@ QImage resizeNearestNeighbor(QImage const &image, int dst_w, int dst_h)
 	const int src_w = image.width();
 	const int src_h = image.height();
 	QImage newimg(dst_w, dst_h, QImage::Format_RGBA8888);
+#pragma omp parallel for
 	for (int y = 0; y < dst_h; y++) {
 		double fy = (double)y * src_h / dst_h;
 		PixelRGBA *dst = (PixelRGBA *)newimg.scanLine(y);
@@ -48,6 +50,7 @@ QImage resizeAveragingT(QImage const &image, int dst_w, int dst_h)
 	const int src_w = image.width();
 	const int src_h = image.height();
 	QImage newimg(dst_w, dst_h, QImage::Format_RGBA8888);
+#pragma omp parallel for
 	for (int y = 0; y < dst_h; y++) {
 		double lo_y = (double)y * src_h / dst_h;
 		double hi_y = (double)(y + 1) * src_h / dst_h;
@@ -103,6 +106,7 @@ QImage resizeAveragingHT(QImage const &image, int dst_w)
 	const int src_w = image.width();
 	const int src_h = image.height();
 	QImage newimg(dst_w, src_h, QImage::Format_RGBA8888);
+#pragma omp parallel for
 	for (int y = 0; y < src_h; y++) {
 		PixelRGBA *dst = (PixelRGBA *)newimg.scanLine(y);
 		for (int x = 0; x < dst_w; x++) {
@@ -140,6 +144,7 @@ QImage resizeAveragingVT(QImage const &image, int dst_h)
 	const int src_w = image.width();
 	const int src_h = image.height();
 	QImage newimg(src_w, dst_h, QImage::Format_RGBA8888);
+#pragma omp parallel for
 	for (int y = 0; y < dst_h; y++) {
 		double lo_y = (double)y * src_h / dst_h;
 		double hi_y = (double)(y + 1) * src_h / dst_h;
@@ -207,6 +212,7 @@ QImage resizeBilinearT(QImage const &image, int dst_w, int dst_h)
 		lut_p[x].v0 = 1 - tx;
 	}
 
+#pragma omp parallel for
 	for (int y = 0; y < dst_h; y++) {
 		double yt = (double)y * src_h / dst_h - 0.5;
 		int y0, y1;
@@ -249,6 +255,7 @@ QImage resizeBilinearHT(QImage const &image, int dst_w)
 	const int src_w = image.width();
 	const int src_h = image.height();
 	QImage newimg(dst_w, src_h, QImage::Format_RGBA8888);
+#pragma omp parallel for
 	for (int y = 0; y < src_h; y++) {
 		PixelRGBA *dst = (PixelRGBA *)newimg.scanLine(y);
 		PixelRGBA const *src = (PixelRGBA const *)image.scanLine(y);
@@ -287,6 +294,7 @@ QImage resizeBilinearVT(QImage const &image, int dst_h)
 	const int src_w = image.width();
 	const int src_h = image.height();
 	QImage newimg(src_w, dst_h, QImage::Format_RGBA8888);
+#pragma omp parallel for
 	for (int y = 0; y < dst_h; y++) {
 		double yt = (double)y * src_h / dst_h - 0.5;
 		int y0, y1;
@@ -351,6 +359,7 @@ QImage resizeBicubicT(QImage const &image, int dst_w, int dst_h)
 	bicubic_lut_t bicubic_lut_x_p = makeBicubicLookupTable(src_w, dst_w, &bicubic_lut_x);
 	bicubic_lut_t bicubic_lut_y_p = makeBicubicLookupTable(src_h, dst_h, &bicubic_lut_y);
 
+#pragma omp parallel for
 	for (int y = 0; y < dst_h; y++) {
 		PixelRGBA *dst = (PixelRGBA *)newimg.scanLine(y);
 		double sy = (double)y * src_h / dst_h - 0.5;
@@ -393,6 +402,7 @@ QImage resizeBicubicHT(QImage const &image, int dst_w)
 	std::vector<double> bicubic_lut_x;
 	bicubic_lut_t bicubic_lut_x_p = makeBicubicLookupTable(src_w, dst_w, &bicubic_lut_x);
 
+#pragma omp parallel for
 	for (int y = 0; y < src_h; y++) {
 		PixelRGBA *dst = (PixelRGBA *)newimg.scanLine(y);
 		PixelRGBA const *src = (PixelRGBA const *)image.scanLine(y);
@@ -426,6 +436,7 @@ QImage resizeBicubicVT(QImage const &image, int dst_h)
 	std::vector<double> bicubic_lut_y;
 	bicubic_lut_t bicubic_lut_y_p = makeBicubicLookupTable(src_h, dst_h, &bicubic_lut_y);
 
+#pragma omp parallel for
 	for (int x = 0; x < src_w; x++) {
 		for (int y = 0; y < dst_h; y++) {
 			PixelRGBA *dst = (PixelRGBA *)newimg.scanLine(y) + x;
@@ -450,10 +461,11 @@ QImage resizeBicubicVT(QImage const &image, int dst_h)
 
 //
 
-template <typename PIXEL, typename FPIXEL> QImage BlurFilter(QImage image, int radius)
+template <typename PIXEL, typename FPIXEL> QImage BlurFilter(QImage const &image, int radius)
 {
 	int w = image.width();
 	int h = image.height();
+	QImage newimage(w, h, image.format());
 	if (w > 0 && h > 0) {
 		std::vector<int> shape(radius * 2 + 1);
 		{
@@ -466,8 +478,9 @@ template <typename PIXEL, typename FPIXEL> QImage BlurFilter(QImage image, int r
 			shape[radius] = radius;
 		}
 
-		std::vector<PIXEL> dst_(w * h);
+		std::vector<PIXEL> buffer(w * h);
 
+#pragma omp parallel for
 		for (int y = 0; y < h; y++) {
 			FPIXEL pixel;
 			for (int i = 0; i < radius * 2 + 1; i++) {
@@ -499,7 +512,7 @@ template <typename PIXEL, typename FPIXEL> QImage BlurFilter(QImage image, int r
 					PIXEL const *s = (PIXEL const *)image.scanLine(y);
 					PIXEL pix = s[x];
 					pix = pixel.color(1);
-					dst_[y * w + x] = pix;
+					buffer[y * w + x] = pix;
 				}
 
 				for (int i = 0; i < radius * 2 + 1; i++) {
@@ -517,93 +530,94 @@ template <typename PIXEL, typename FPIXEL> QImage BlurFilter(QImage image, int r
 		}
 
 		for (int y = 0; y < h; y++) {
-			PIXEL *s = &dst_[y * w];
-			PIXEL *d = (PIXEL *)image.scanLine(y);
+			PIXEL *s = &buffer[y * w];
+			PIXEL *d = (PIXEL *)newimage.scanLine(y);
 			memcpy(d, s, sizeof(PIXEL) * w);
 		}
 	}
-	return image;
+	return newimage;
 }
 
 }
 
-QImage resizeImage(QImage image, int dst_w, int dst_h, EnlargeMethod method, bool alphachannel)
+QImage resizeImage(QImage const &image, int dst_w, int dst_h, EnlargeMethod method, bool alphachannel)
 {
+	QImage newimage = image;
 	if (dst_w > 0 && dst_h > 0) {
 		int w, h;
-		w = image.width();
-		h = image.height();
+		w = newimage.width();
+		h = newimage.height();
 		if (w != dst_w || h != dst_h) {
 			if (dst_w < w || dst_h < h) {
 				if (dst_w < w && dst_h < h) {
 					if (alphachannel) {
-						image = resizeAveragingT<FPixelRGBA>(image, dst_w, dst_h);
+						newimage = resizeAveragingT<FPixelRGBA>(newimage, dst_w, dst_h);
 					} else {
-						image = resizeAveragingT<FPixelRGB>(image, dst_w, dst_h);
+						newimage = resizeAveragingT<FPixelRGB>(newimage, dst_w, dst_h);
 					}
 				} else if (dst_w < w) {
 					if (alphachannel) {
-						image = resizeAveragingHT<FPixelRGBA>(image, dst_w);
+						newimage = resizeAveragingHT<FPixelRGBA>(newimage, dst_w);
 					} else {
-						image = resizeAveragingHT<FPixelRGB>(image, dst_w);
+						newimage = resizeAveragingHT<FPixelRGB>(newimage, dst_w);
 					}
 				} else if (dst_h < h) {
 					if (alphachannel) {
-						image = resizeAveragingVT<FPixelRGBA>(image, dst_h);
+						newimage = resizeAveragingVT<FPixelRGBA>(newimage, dst_h);
 					} else {
-						image = resizeAveragingVT<FPixelRGB>(image, dst_h);
+						newimage = resizeAveragingVT<FPixelRGB>(newimage, dst_h);
 					}
 				}
 			}
-			w = image.width();
-			h = image.height();
+			w = newimage.width();
+			h = newimage.height();
 			if (dst_w > w || dst_h > h) {
 				if (method == EnlargeMethod::Bilinear) {
 					if (dst_w > w && dst_h > h) {
 						if (alphachannel) {
-							image = resizeBilinearT<FPixelRGBA>(image, dst_w, dst_h);
+							newimage = resizeBilinearT<FPixelRGBA>(newimage, dst_w, dst_h);
 						} else {
-							image = resizeBilinearT<FPixelRGB>(image, dst_w, dst_h);
+							newimage = resizeBilinearT<FPixelRGB>(newimage, dst_w, dst_h);
 						}
 					} else if (dst_w > w) {
 						if (alphachannel) {
-							image = resizeBilinearHT<FPixelRGBA>(image, dst_w);
+							newimage = resizeBilinearHT<FPixelRGBA>(newimage, dst_w);
 						} else {
-							image = resizeBilinearHT<FPixelRGB>(image, dst_w);
+							newimage = resizeBilinearHT<FPixelRGB>(newimage, dst_w);
 						}
 					} else if (dst_h > h) {
 						if (alphachannel) {
-							image = resizeBilinearVT<FPixelRGBA>(image, dst_h);
+							newimage = resizeBilinearVT<FPixelRGBA>(newimage, dst_h);
 						} else {
-							image = resizeBilinearVT<FPixelRGB>(image, dst_h);
+							newimage = resizeBilinearVT<FPixelRGB>(newimage, dst_h);
 						}
 					}
 				} else if (method == EnlargeMethod::Bicubic) {
 					if (dst_w > w && dst_h > h) {
 						if (alphachannel) {
-							image = resizeBicubicT<FPixelRGBA>(image, dst_w, dst_h);
+							newimage = resizeBicubicT<FPixelRGBA>(newimage, dst_w, dst_h);
 						} else {
-							image = resizeBicubicT<FPixelRGB>(image, dst_w, dst_h);
+							newimage = resizeBicubicT<FPixelRGB>(newimage, dst_w, dst_h);
 						}
 					} else if (dst_w > w) {
 						if (alphachannel) {
-							image = resizeBicubicHT<FPixelRGBA>(image, dst_w);
+							newimage = resizeBicubicHT<FPixelRGBA>(newimage, dst_w);
 						} else {
-							image = resizeBicubicHT<FPixelRGB>(image, dst_w);
+							newimage = resizeBicubicHT<FPixelRGB>(newimage, dst_w);
 						}
 					} else if (dst_h > h) {
 						if (alphachannel) {
-							image = resizeBicubicVT<FPixelRGBA>(image, dst_h);
+							newimage = resizeBicubicVT<FPixelRGBA>(newimage, dst_h);
 						} else {
-							image = resizeBicubicVT<FPixelRGB>(image, dst_h);
+							newimage = resizeBicubicVT<FPixelRGB>(newimage, dst_h);
 						}
 					}
 				} else {
-					image = resizeNearestNeighbor(image, dst_w, dst_h);
+					newimage = resizeNearestNeighbor(newimage, dst_w, dst_h);
 				}
 			}
 		}
-		return std::move(image);
+		return std::move(newimage);
 	}
 	return QImage();
 }

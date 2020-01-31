@@ -70,6 +70,7 @@ private:
 	bool isRectValid() const;
 	QRect boundsRect() const;
 	void resetView(bool fitview);
+	void filter(std::function<QImage (QImage const &)> const &fn);
 protected:
 	void keyPressEvent(QKeyEvent *event);
 public:

@@ -6,6 +6,7 @@
 #include <QPainter>
 #include <stdint.h>
 #include <QMouseEvent>
+#include <omp.h>
 
 struct SaturationBrightnessWidget::Private {
 	int hue = 0;
