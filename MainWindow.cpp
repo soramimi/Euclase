@@ -242,7 +242,8 @@ void MainWindow::setImage(const QImage &image, bool fitview)
 	clearSelection();
 
 	Document::Layer layer;
-	layer.setImage(QPoint(0, 0), image);
+	QImage tmpimage = image.convertToFormat(QImage::Format_RGBA8888);
+	layer.setImage(QPoint(0, 0), tmpimage);
 	Document::RenderOption opt;
 	opt.mode = Document::RenderOption::DirectCopy;
 	document()->renderToLayer(document()->current_layer(), layer, nullptr, opt, ui->widget_image_view->synchronizer(), nullptr);
