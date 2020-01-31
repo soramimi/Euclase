@@ -36,6 +36,7 @@ private:
 	void updateCenterAnchorPos();
 	void calcDestinationRect();
 	QBrush stripeBrush(bool blink);
+	void initBrushes();
 protected:
 	void resizeEvent(QResizeEvent *) override;
 	void paintEvent(QPaintEvent *) override;

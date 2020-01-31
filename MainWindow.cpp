@@ -530,11 +530,17 @@ void MainWindow::paintLayer(Operation op, Document::Layer const &layer)
 void MainWindow::drawBrush(bool one)
 {
 	auto Put = [&](QPointF const &pt, Brush const &brush){
+		double x = pt.x();
+		double y = pt.y();
+		if (brush.softness == 0) {
+			x = floor(x) + 0.5;
+			y = floor(y) + 0.5;
+		}
 		RoundBrushGenerator shape(brush.size, brush.softness);
-		int x0 = floor(pt.x() - brush.size / 2.0);
-		int y0 = floor(pt.y() - brush.size / 2.0);
-		int x1 = ceil(pt.x() + brush.size / 2.0);
-		int y1 = ceil(pt.y() + brush.size / 2.0);
+		int x0 = floor(x - brush.size / 2.0);
+		int y0 = floor(y - brush.size / 2.0);
+		int x1 = ceil(x + brush.size / 2.0);
+		int y1 = ceil(y + brush.size / 2.0);
 		int w = x1 - x0;
 		int h = y1 - y0;
 		QImage image(w, h, QImage::Format_Grayscale8);
@@ -542,8 +548,8 @@ void MainWindow::drawBrush(bool one)
 		for (int i = 0; i < h; i++) {
 			uint8_t *dst = reinterpret_cast<uint8_t *>(image.scanLine(i));
 			for (int j = 0; j < w; j++) {
-				double tx = x0 + j - pt.x() + 0.5;
-				double ty = y0 + i - pt.y() + 0.5;
+				double tx = x0 + j - x + 0.5;
+				double ty = y0 + i - y + 0.5;
 				double value = shape.level(tx, ty);
 				int v = (int)(value  * 255);
 				dst[j] = v;

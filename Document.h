@@ -281,7 +281,8 @@ public:
 			clear(nullptr);
 			offset_ = offset;
 			addImagePanel();
-			panels_[0]->image_ = image;
+			panels_[0]->image_ = image.convertToFormat(QImage::Format_RGBA8888);
+
 		}
 
 		QRect rect() const;
