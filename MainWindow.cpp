@@ -999,7 +999,8 @@ bool MainWindow::eventFilter(QObject *watched, QEvent *event)
 	if (event->type() == QEvent::KeyPress) {
 		if (QWidget *w = qobject_cast<QWidget *>(watched)) {
 			if (isAncestorOf(w)) {
-				QKeyEvent *e = dynamic_cast<QKeyEvent *>(event);
+//				QKeyEvent *e = dynamic_cast<QKeyEvent *>(event);
+				QKeyEvent *e = (QKeyEvent *)event;
 				bool ctrl = (e->modifiers() & Qt::ControlModifier);
 				int k = e->key();
 				switch (k) {
