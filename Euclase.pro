@@ -9,6 +9,7 @@ DESTDIR = $$PWD/_bin
 
 unix:QMAKE_CXXFLAGS += -fopenmp
 unix:QMAKE_LFLAGS += -fopenmp
+msvc:QMAKE_LFLAGS += /openmp
 
 
 #INCLUDEPATH += "C:/Program Files/NVIDIA GPU Computing Toolkit/CUDA/v7.5/include"
