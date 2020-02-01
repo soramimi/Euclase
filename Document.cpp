@@ -284,7 +284,11 @@ void Document::renderToEachPanels_(Image *target_panel, QPoint const &target_off
 //	for (PanelPtr const &input_panel : input_layer.panels_) {
 #pragma omp parallel for
 	for (size_t i = 0; i < input_layer.panels_.size(); i++) {
-		if (abort && *abort) continue;
+		if (abort && *abort) {
+//			break;
+			i = input_layer.panels_.size();
+			continue;
+		}
 		PanelPtr const &input_panel = input_layer.panels_[i];
 		RenderOption opt;
 		renderToSinglePanel(target_panel, target_offset, input_panel.image(), input_layer.offset(), mask_layer, opt, brush_color, opacity);

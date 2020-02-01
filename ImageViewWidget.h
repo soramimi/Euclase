@@ -20,7 +20,6 @@ private:
 	Document *document();
 	Document const *document() const;
 
-//	bool isValidImage() const;
 	QSize imageSize() const;
 
 	QSizeF imageScrollRange() const;

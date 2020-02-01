@@ -35,18 +35,21 @@ struct ImageViewWidget::Private {
 	QString mime_type;
 	QMutex sync;
 
-	double image_scroll_x = 0;
-	double image_scroll_y = 0;
-	double image_scale = 1;
-	double scroll_origin_x = 0;
-	double scroll_origin_y = 0;
-	QPoint mouse_pos;
-	QPoint mouse_press_pos;
-	int wheel_delta = 0;
-	QPointF cursor_anchor_pos;
-	QPointF center_anchor_pos;
-	int top_margin = 1;
-	int bottom_margin = 1;
+	struct Data {
+		double image_scroll_x = 0;
+		double image_scroll_y = 0;
+		double image_scale = 1;
+		double scroll_origin_x = 0;
+		double scroll_origin_y = 0;
+		QPoint mouse_pos;
+		QPoint mouse_press_pos;
+		int wheel_delta = 0;
+		QPointF cursor_anchor_pos;
+		QPointF center_anchor_pos;
+		int top_margin = 1;
+		int bottom_margin = 1;
+	};
+	Data d;
 
 	bool left_button = false;
 
@@ -154,8 +157,8 @@ QPointF ImageViewWidget::mapFromViewportToDocument(QPointF const &pos)
 {
 	double cx = width() / 2.0;
 	double cy = height() / 2.0;
-	double x = (pos.x() - cx + m->image_scroll_x) / m->image_scale;
-	double y = (pos.y() - cy + m->image_scroll_y) / m->image_scale;
+	double x = (pos.x() - cx + m->d.image_scroll_x) / m->d.image_scale;
+	double y = (pos.y() - cy + m->d.image_scroll_y) / m->d.image_scale;
 	return QPointF(x, y);
 }
 
@@ -163,8 +166,8 @@ QPointF ImageViewWidget::mapFromDocumentToViewport(QPointF const &pos)
 {
 	double cx = width() / 2.0;
 	double cy = height() / 2.0;
-	double x = pos.x() * m->image_scale + cx - m->image_scroll_x;
-	double y = pos.y() * m->image_scale + cy - m->image_scroll_y;
+	double x = pos.x() * m->d.image_scale + cx - m->d.image_scroll_x;
+	double y = pos.y() * m->d.image_scale + cy - m->d.image_scroll_y;
 	return QPointF(x, y);
 }
 
@@ -220,13 +223,13 @@ QBrush ImageViewWidget::stripeBrush(bool blink)
 
 void ImageViewWidget::internalScrollImage(double x, double y, bool updateview)
 {
-	m->image_scroll_x = x;
-	m->image_scroll_y = y;
+	m->d.image_scroll_x = x;
+	m->d.image_scroll_y = y;
 	QSizeF sz = imageScrollRange();
-	if (m->image_scroll_x < 0) m->image_scroll_x = 0;
-	if (m->image_scroll_y < 0) m->image_scroll_y = 0;
-	if (m->image_scroll_x > sz.width()) m->image_scroll_x = sz.width();
-	if (m->image_scroll_y > sz.height()) m->image_scroll_y = sz.height();
+	if (m->d.image_scroll_x < 0) m->d.image_scroll_x = 0;
+	if (m->d.image_scroll_y < 0) m->d.image_scroll_y = 0;
+	if (m->d.image_scroll_x > sz.width()) m->d.image_scroll_x = sz.width();
+	if (m->d.image_scroll_y > sz.height()) m->d.image_scroll_y = sz.height();
 
 	if (updateview) {
 		paintViewLater(true, true);
@@ -239,12 +242,12 @@ void ImageViewWidget::scrollImage(double x, double y, bool updateview)
 
 	if (m->h_scroll_bar) {
 		auto b = m->h_scroll_bar->blockSignals(true);
-		m->h_scroll_bar->setValue((int)m->image_scroll_x);
+		m->h_scroll_bar->setValue((int)m->d.image_scroll_x);
 		m->h_scroll_bar->blockSignals(b);
 	}
 	if (m->v_scroll_bar) {
 		auto b = m->v_scroll_bar->blockSignals(true);
-		m->v_scroll_bar->setValue((int)m->image_scroll_y);
+		m->v_scroll_bar->setValue((int)m->d.image_scroll_y);
 		m->v_scroll_bar->blockSignals(b);
 	}
 }
@@ -254,16 +257,16 @@ void ImageViewWidget::refrectScrollBar()
 	double e = 0.75;
 	double x = m->h_scroll_bar->value();
 	double y = m->v_scroll_bar->value();
-	if (fabs(x - m->image_scroll_x) < e) x = m->image_scroll_x; // 差が小さいときは値を維持する
-	if (fabs(y - m->image_scroll_y) < e) y = m->image_scroll_y;
+	if (fabs(x - m->d.image_scroll_x) < e) x = m->d.image_scroll_x; // 差が小さいときは値を維持する
+	if (fabs(y - m->d.image_scroll_y) < e) y = m->d.image_scroll_y;
 	internalScrollImage(x, y, true);
 }
 
 QSizeF ImageViewWidget::imageScrollRange() const
 {
 	QSize sz = imageSize();
-	int w = int(sz.width() * m->image_scale);
-	int h = int(sz.height() * m->image_scale);
+	int w = int(sz.width() * m->d.image_scale);
+	int h = int(sz.height() * m->d.image_scale);
 	return QSize(w, h);
 }
 
@@ -325,8 +328,8 @@ void ImageViewWidget::calcDestinationRect()
 {
 	double cx = width() / 2.0;
 	double cy = height() / 2.0;
-	double x = cx - m->image_scroll_x;
-	double y = cy - m->image_scroll_y;
+	double x = cx - m->d.image_scroll_x;
+	double y = cy - m->d.image_scroll_y;
 	QSizeF sz = imageScrollRange();
 	m->destination_rect = QRect((int)x, (int)y, (int)sz.width(), (int)sz.height());
 }
@@ -360,12 +363,12 @@ void ImageViewWidget::paintViewLater(bool image, bool selection_outline)
 
 void ImageViewWidget::updateCursorAnchorPos()
 {
-	m->cursor_anchor_pos = mapFromViewportToDocument(mapFromGlobal(QCursor::pos()));
+	m->d.cursor_anchor_pos = mapFromViewportToDocument(mapFromGlobal(QCursor::pos()));
 }
 
 void ImageViewWidget::updateCenterAnchorPos()
 {
-	m->center_anchor_pos = mapFromViewportToDocument(QPointF(width() / 2.0, height() / 2.0));
+	m->d.center_anchor_pos = mapFromViewportToDocument(QPointF(width() / 2.0, height() / 2.0));
 }
 
 void ImageViewWidget::setImageScale(double scale, bool updateview)
@@ -373,8 +376,8 @@ void ImageViewWidget::setImageScale(double scale, bool updateview)
 	if (scale < 1.0 / MIN_SCALE) scale = 1.0 / MIN_SCALE;
 	if (scale > MAX_SCALE) scale = MAX_SCALE;
 
-	m->image_scale = scale;
-	emit scaleChanged(m->image_scale);
+	m->d.image_scale = scale;
+	emit scaleChanged(m->d.image_scale);
 
 	if (updateview) {
 		paintViewLater(true, true);
@@ -389,13 +392,12 @@ void ImageViewWidget::scaleFit(double ratio)
 	if (w > 0 && h > 0) {
 		double sx = width() / w;
 		double sy = height() / h;
-		m->image_scale = (sx < sy ? sx : sy) * ratio;
+		m->d.image_scale = (sx < sy ? sx : sy) * ratio;
 	}
 	updateScrollBarRange();
 
+	scrollImage(w * m->d.image_scale / 2.0, h * m->d.image_scale / 2.0, true);
 	updateCursorAnchorPos();
-
-	scrollImage(w * m->image_scale / 2.0, h * m->image_scale / 2.0, true);
 }
 
 void ImageViewWidget::zoomToCursor(double scale)
@@ -407,8 +409,8 @@ void ImageViewWidget::zoomToCursor(double scale)
 	setImageScale(scale, false);
 	updateScrollBarRange();
 
-	double x = m->cursor_anchor_pos.x() * m->image_scale + width() / 2.0 - (pos.x() + 0.5);
-	double y = m->cursor_anchor_pos.y() * m->image_scale + height() / 2.0 - (pos.y() + 0.5);
+	double x = m->d.cursor_anchor_pos.x() * m->d.image_scale + width() / 2.0 - (pos.x() + 0.5);
+	double y = m->d.cursor_anchor_pos.y() * m->d.image_scale + height() / 2.0 - (pos.y() + 0.5);
 	scrollImage(x, y, true);
 
 	updateCenterAnchorPos();
@@ -419,13 +421,13 @@ void ImageViewWidget::zoomToCenter(double scale)
 	clearSelectionOutline();
 
 	QPointF pos(width() / 2.0, height() / 2.0);
-	m->cursor_anchor_pos = mapFromViewportToDocument(pos);
+	m->d.cursor_anchor_pos = mapFromViewportToDocument(pos);
 
 	setImageScale(scale, false);
 	updateScrollBarRange();
 
-	double x = m->cursor_anchor_pos.x() * m->image_scale + width() / 2.0 - pos.x();
-	double y = m->cursor_anchor_pos.y() * m->image_scale + height() / 2.0 - pos.y();
+	double x = m->d.cursor_anchor_pos.x() * m->d.image_scale + width() / 2.0 - pos.x();
+	double y = m->d.cursor_anchor_pos.y() * m->d.image_scale + height() / 2.0 - pos.y();
 	scrollImage(x, y, true);
 
 	updateCenterAnchorPos();
@@ -438,12 +440,12 @@ void ImageViewWidget::scale100()
 
 void ImageViewWidget::zoomIn()
 {
-	zoomToCenter(m->image_scale * 2);
+	zoomToCenter(m->d.image_scale * 2);
 }
 
 void ImageViewWidget::zoomOut()
 {
-	zoomToCenter(m->image_scale / 2);
+	zoomToCenter(m->d.image_scale / 2);
 }
 
 SelectionOutlineBitmap ImageViewWidget::renderSelectionOutlineBitmap(bool *abort)
@@ -553,7 +555,7 @@ void ImageViewWidget::paintEvent(QPaintEvent *)
 			}
 		}
 
-		if (m->image_scale == MAX_SCALE) {
+		if (m->d.image_scale == MAX_SCALE) {
 			QPoint org = mapFromDocumentToViewport(QPointF(0, 0)).toPoint();
 			QPointF topleft = mapFromViewportToDocument(QPointF(0, 0));
 			int topleft_x = (int)floor(topleft.x());
@@ -664,9 +666,9 @@ void ImageViewWidget::mousePressEvent(QMouseEvent *e)
 	m->left_button = (e->buttons() & Qt::LeftButton);
 	if (m->left_button) {
 		QPoint pos = mapFromGlobal(QCursor::pos());
-		m->mouse_press_pos = pos;
-		m->scroll_origin_x = m->image_scroll_x;
-		m->scroll_origin_y = m->image_scroll_y;
+		m->d.mouse_press_pos = pos;
+		m->d.scroll_origin_x = m->d.image_scroll_x;
+		m->d.scroll_origin_y = m->d.image_scroll_y;
 		mainwindow()->onMouseLeftButtonPress(pos.x(), pos.y());
 	}
 }
@@ -674,8 +676,8 @@ void ImageViewWidget::mousePressEvent(QMouseEvent *e)
 void ImageViewWidget::mouseMoveEvent(QMouseEvent *)
 {
 	QPoint pos = mapFromGlobal(QCursor::pos());
-	if (m->mouse_pos == pos) return;
-	m->mouse_pos = pos;
+	if (m->d.mouse_pos == pos) return;
+	m->d.mouse_pos = pos;
 
 	setCursor2(Qt::ArrowCursor);
 
@@ -686,15 +688,15 @@ void ImageViewWidget::mouseMoveEvent(QMouseEvent *)
 			setCursor2(Qt::OpenHandCursor);
 			if (m->left_button) {
 				clearSelectionOutline();
-				int delta_x = pos.x() - m->mouse_press_pos.x();
-				int delta_y = pos.y() - m->mouse_press_pos.y();
-				scrollImage(m->scroll_origin_x - delta_x, m->scroll_origin_y - delta_y, m->left_button);
+				int delta_x = pos.x() - m->d.mouse_press_pos.x();
+				int delta_y = pos.y() - m->d.mouse_press_pos.y();
+				scrollImage(m->d.scroll_origin_x - delta_x, m->d.scroll_origin_y - delta_y, m->left_button);
 			}
 		}
 	}
 
-	m->cursor_anchor_pos = mapFromViewportToDocument(pos);
-	m->wheel_delta = 0;
+	m->d.cursor_anchor_pos = mapFromViewportToDocument(pos);
+	m->d.wheel_delta = 0;
 
 	setCursor(m->cursor);
 }
@@ -702,7 +704,6 @@ void ImageViewWidget::mouseMoveEvent(QMouseEvent *)
 void ImageViewWidget::setCursor2(QCursor const &cursor)
 {
 	m->cursor = cursor;
-
 }
 
 void ImageViewWidget::mouseReleaseEvent(QMouseEvent *)
@@ -720,7 +721,7 @@ void ImageViewWidget::wheelEvent(QWheelEvent *e)
 	double d = e->delta();
 	double t = 1.001;
 	scale *= pow(t, d);
-	zoomToCursor(m->image_scale * scale);
+	zoomToCursor(m->d.image_scale * scale);
 }
 
 void ImageViewWidget::timerEvent(QTimerEvent *)
