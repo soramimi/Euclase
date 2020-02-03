@@ -283,10 +283,9 @@ void Document::renderToEachPanels_(Image *target_panel, QPoint const &target_off
 	}
 //	for (PanelPtr const &input_panel : input_layer.panels_) {
 #pragma omp parallel for
-	for (size_t i = 0; i < input_layer.panels_.size(); i++) {
+	for (int i = 0; i < (int)input_layer.panels_.size(); i++) {
 		if (abort && *abort) {
 //			break;
-			i = input_layer.panels_.size();
 			continue;
 		}
 		PanelPtr const &input_panel = input_layer.panels_[i];
@@ -313,7 +312,7 @@ void Document::renderToLayer(Layer *target_layer, Layer const &input_layer, Laye
 			if (target_layer->tile_mode_) {
 				auto FindPanel = [](Layer const *layer, int x, int y){
 					int lo = 0;
-					int hi = layer->panels_.size();
+					int hi = (int)layer->panels_.size();
 					while (lo < hi) {
 						int m = (lo + hi) / 2;
 						PanelPtr p = layer->panels_[m];
