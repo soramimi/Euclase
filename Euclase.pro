@@ -16,7 +16,9 @@ msvc:QMAKE_CXXFLAGS += /openmp
 #LIBS += "C:/Program Files/NVIDIA GPU Computing Toolkit/CUDA/v7.5/lib/Win32/OpenCL.lib"
 
 SOURCES += main.cpp\
+	AbstractSettingForm.cpp \
 	AlphaBlend.cpp \
+	ApplicationGlobal.cpp \
     BrushSlider.cpp \
 	ColorPreviewWidget.cpp \
 	Document.cpp \
@@ -24,6 +26,7 @@ SOURCES += main.cpp\
         MainWindow.cpp \
     BrushPreviewWidget.cpp \
     MiraCL.cpp \
+	MySettings.cpp \
     MyWidget.cpp \
     MyApplication.cpp \
     HueWidget.cpp \
@@ -31,6 +34,8 @@ SOURCES += main.cpp\
 	RingSlider.cpp \
     SaturationBrightnessWidget.cpp \
 	SelectionOutlineRenderer.cpp \
+	SettingGeneralForm.cpp \
+	SettingsDialog.cpp \
 	TransparentCheckerBrush.cpp \
 	antialias.cpp \
 	euclase.cpp \
@@ -47,17 +52,22 @@ SOURCES += main.cpp\
     ColorSlider.cpp
 
 HEADERS  += MainWindow.h \
+    AbstractSettingForm.h \
     AlphaBlend.h \
+    ApplicationGlobal.h \
     BrushPreviewWidget.h \
     BrushSlider.h \
     ColorPreviewWidget.h \
     Document.h \
     ImageViewRenderer.h \
     MiraCL.h \
+    MySettings.h \
     MyWidget.h \
     NewDialog.h \
     RingSlider.h \
     SelectionOutlineRenderer.h \
+    SettingGeneralForm.h \
+    SettingsDialog.h \
     TransparentCheckerBrush.h \
     antialias.h \
     euclase.h \
@@ -79,7 +89,9 @@ HEADERS  += MainWindow.h \
 
 FORMS    += MainWindow.ui \
     NewDialog.ui \
-    ResizeDialog.ui
+    ResizeDialog.ui \
+    SettingGeneralForm.ui \
+    SettingsDialog.ui
 
 RESOURCES += \
     resources.qrc

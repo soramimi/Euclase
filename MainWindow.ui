@@ -999,6 +999,8 @@
     <addaction name="action_trim"/>
     <addaction name="action_edit_copy"/>
     <addaction name="menu_Bounds"/>
+    <addaction name="separator"/>
+    <addaction name="action_settings"/>
    </widget>
    <widget class="QMenu" name="menu_File">
     <property name="title">
@@ -1112,6 +1114,11 @@
   <action name="action_filter_sepia">
    <property name="text">
     <string>Sepia</string>
+   </property>
+  </action>
+  <action name="action_settings">
+   <property name="text">
+    <string>&amp;Settings...</string>
    </property>
   </action>
  </widget>

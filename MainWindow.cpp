@@ -4,6 +4,7 @@
 #include "NewDialog.h"
 #include "ResizeDialog.h"
 #include "RoundBrushGenerator.h"
+#include "SettingsDialog.h"
 #include "antialias.h"
 #include "median.h"
 #include "resize.h"
@@ -1163,3 +1164,11 @@ void MainWindow::test()
 
 
 
+
+void MainWindow::on_action_settings_triggered()
+{
+	SettingsDialog dlg(this);
+	if (dlg.exec() == QDialog::Accepted) {
+
+	}
+}

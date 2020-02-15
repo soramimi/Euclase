@@ -145,6 +145,8 @@ private slots:
 	void on_action_clear_bounds_triggered();
 
 
+	void on_action_settings_triggered();
+
 public:
 	bool eventFilter(QObject *watched, QEvent *event);
 	void setCursor2(const QCursor &cursor);
