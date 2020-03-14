@@ -472,7 +472,7 @@ SelectionOutlineBitmap ImageViewWidget::renderSelectionOutlineBitmap(bool *abort
 		int vy = (int)vp0.y();
 		int vw = (int)vp1.x() - vx;
 		int vh = (int)vp1.y() - vy;
-		QImage selection;
+		Document::Image selection;
 		{
 			int dx = int(dp0.x());
 			int dy = int(dp0.y());
@@ -516,16 +516,16 @@ void ImageViewWidget::paintEvent(QPaintEvent *)
 		int img_h = m->destination_rect.height();
 		if (img_w > 0 && img_h > 0) {
 			if (!m->rendered_image.image.isNull()) {
-				QImage image = m->rendered_image.image;
+				Document::Image const *image = &m->rendered_image.image;
 				QPointF org = mapFromDocumentToViewport(QPointF(0, 0));
 				int ox = (int)floor(org.x() + 0.5);
 				int oy = (int)floor(org.y() + 0.5);
-				for (int y = 0; y < image.height(); y += 64) {
-					for (int x = 0; x < image.width(); x += 64) {
+				for (int y = 0; y < image->height(); y += 64) {
+					for (int x = 0; x < image->width(); x += 64) {
 						int src_x0 = m->rendered_image.rect.x() + x;
 						int src_y0 = m->rendered_image.rect.y() + y;
-						int src_x1 = m->rendered_image.rect.x() + std::min(x + 65, image.width());
-						int src_y1 = m->rendered_image.rect.y() + std::min(y + 65, image.height());
+						int src_x1 = m->rendered_image.rect.x() + std::min(x + 65, image->width());
+						int src_y1 = m->rendered_image.rect.y() + std::min(y + 65, image->height());
 						QPointF pt0(src_x0, src_y0);
 						QPointF pt1(src_x1, src_y1);
 						pt0 = mapFromDocumentToViewport(pt0);
@@ -546,7 +546,7 @@ void ImageViewWidget::paintEvent(QPaintEvent *)
 								QPainter pr2(&tmpimg);
 								pr2.setBrushOrigin(ox - dr.x(), oy - dr.y());
 								pr2.fillRect(tmpimg.rect(), TransparentCheckerBrush::brush());
-								pr2.drawImage(QRect(0, 0, dr.width(), dr.height()), image, sr);
+								pr2.drawImage(QRect(0, 0, dr.width(), dr.height()), image->getImage(), sr);
 							}
 							pr.drawImage(dr.x(), dr.y(), tmpimg);
 						}

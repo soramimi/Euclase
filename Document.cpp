@@ -87,28 +87,28 @@ void Document::renderToSinglePanel(Image *target_panel, QPoint const &target_off
 
 	if (w < 1 || h < 1) return;
 
-	QImage const &input_image = input_panel->image_;
+	Image const *input_image = input_panel;
 
 	const int dx = x0 - dst_org.x();
 	const int dy = y0 - dst_org.y();
 	const int sx = x0 - src_org.x();
 	const int sy = y0 - src_org.y();
 	uint8_t *tmpmask = nullptr;
-	QImage maskimg;
+	Image *maskimg = nullptr;
+	Image maskpanel;
 	if (mask_layer && !mask_layer->panels_.empty()) {
-		Image panel;
-		panel.setOffset(x0, y0);
-		panel.image_ = QImage(w, h, QImage::Format_Grayscale8);
-		panel.image_.fill(Qt::black);
-		renderToEachPanels_(&panel, target_offset, *mask_layer, nullptr, Qt::white, 255, abort);
-		maskimg = panel.image_;
+		maskpanel.setOffset(x0, y0);
+		maskpanel.make(w, h, QImage::Format_Grayscale8);
+		maskpanel.fill(Qt::black);
+		renderToEachPanels_(&maskpanel, target_offset, *mask_layer, nullptr, Qt::white, 255, abort);
+		maskimg = &maskpanel;
 	} else {
 		tmpmask = (uint8_t *)alloca(w);
 		memset(tmpmask, 255, w);
 	}
 
-	if (input_image.format() == QImage::Format_Grayscale8) {
-		QImage const &selection = input_image;
+	if (input_image->format() == QImage::Format_Grayscale8) {
+		Image const *selection = input_image;
 
 		QColor c = brush_color.isValid() ? brush_color : Qt::white;
 
@@ -122,9 +122,9 @@ void Document::renderToSinglePanel(Image *target_panel, QPoint const &target_off
 			euclase::PixelRGBA color(c.red(), c.green(), c.blue());
 			for (int i = 0; i < h; i++) {
 				using Pixel = euclase::PixelRGBA;
-				uint8_t const *msk = maskimg.isNull() ? tmpmask : maskimg.scanLine(i);
-				uint8_t const *src = selection.scanLine(sy + i);
-				Pixel *dst = reinterpret_cast<Pixel *>(target_panel->image_.scanLine(dy + i));
+				uint8_t const *msk = !maskimg ? tmpmask : maskimg->scanLine(i);
+				uint8_t const *src = selection->scanLine(sy + i);
+				Pixel *dst = reinterpret_cast<Pixel *>(target_panel->scanLine(dy + i));
 				for (int j = 0; j < w; j++) {
 					color.a = opacity * (src[sx + j] ^ invert) * msk[j] / (255 * 255);
 					dst[dx + j] = AlphaBlend::blend_with_gamma_collection(dst[dx + j], color);
@@ -135,9 +135,9 @@ void Document::renderToSinglePanel(Image *target_panel, QPoint const &target_off
 			uint8_t l = color.l;
 			for (int i = 0; i < h; i++) {
 				using Pixel = euclase::PixelGrayA;
-				uint8_t const *msk = maskimg.isNull() ? tmpmask : maskimg.scanLine(i);
-				uint8_t const *src = reinterpret_cast<uint8_t const *>(selection.scanLine(sy + i));
-				uint8_t *dst = reinterpret_cast<uint8_t *>(target_panel->image_.scanLine(dy + i));
+				uint8_t const *msk = !maskimg ? tmpmask : maskimg->scanLine(i);
+				uint8_t const *src = reinterpret_cast<uint8_t const *>(selection->scanLine(sy + i));
+				uint8_t *dst = reinterpret_cast<uint8_t *>(target_panel->scanLine(dy + i));
 				for (int j = 0; j < w; j++) {
 					uint8_t a = opacity * (src[sx + j] ^ invert) * msk[j] / (255 * 255);
 					dst[dx + j] = AlphaBlend::blend(Pixel(dst[dx + j]), Pixel(l, a)).l;
@@ -199,19 +199,19 @@ void Document::renderToSinglePanel(Image *target_panel, QPoint const &target_off
 
 		std::function<void(euclase::PixelRGBA const *src, euclase::PixelRGBA *dst, uint8_t const *msk, int w, RenderOption const &opt)> renderer;
 
-		if (input_image.format() == QImage::Format_RGBA8888) {
+		if (input_image->format() == QImage::Format_RGBA8888) {
 			renderer = RenderRGBA8888;
-		} else if (input_image.format() == QImage::Format_ARGB32) {
+		} else if (input_image->format() == QImage::Format_ARGB32) {
 			renderer = RenderARGB32;
-		} else if (input_image.format() == QImage::Format_RGB32) {
+		} else if (input_image->format() == QImage::Format_RGB32) {
 			renderer = RenderRGB32;
 		}
 
 		if (renderer) {
 			for (int i = 0; i < h; i++) {
-				uint8_t const *msk = maskimg.isNull() ? tmpmask : maskimg.scanLine(i);
-				euclase::PixelRGBA const *src = reinterpret_cast<euclase::PixelRGBA const *>(input_image.scanLine(sy + i));
-				euclase::PixelRGBA *dst = reinterpret_cast<euclase::PixelRGBA *>(target_panel->image_.scanLine(dy + i));
+				uint8_t const *msk = !maskimg ? tmpmask : maskimg->scanLine(i);
+				euclase::PixelRGBA const *src = reinterpret_cast<euclase::PixelRGBA const *>(input_image->scanLine(sy + i));
+				euclase::PixelRGBA *dst = reinterpret_cast<euclase::PixelRGBA *>(target_panel->scanLine(dy + i));
 				renderer(src + sx, dst + dx, msk, w, opt);
 			}
 			return;
@@ -255,19 +255,19 @@ void Document::renderToSinglePanel(Image *target_panel, QPoint const &target_off
 
 		std::function<void(euclase::PixelRGBA const *src, uint8_t *dst, uint8_t const *msk, int w, RenderOption const &opt)> renderer;
 
-		if (input_image.format() == QImage::Format_RGBA8888) {
+		if (input_image->format() == QImage::Format_RGBA8888) {
 			renderer = RenderRGBA8888;
-		} else if (input_image.format() == QImage::Format_ARGB32) {
+		} else if (input_image->format() == QImage::Format_ARGB32) {
 			renderer = RenderARGB32;
-		} else if (input_image.format() == QImage::Format_RGB32) {
+		} else if (input_image->format() == QImage::Format_RGB32) {
 			renderer = RenderRGB32;
 		}
 
 		if (renderer) {
 			for (int i = 0; i < h; i++) {
-				uint8_t const *msk = maskimg.isNull() ? tmpmask : maskimg.scanLine(i);
-				euclase::PixelRGBA const *src = reinterpret_cast<euclase::PixelRGBA const *>(input_image.scanLine(sy + i));
-				uint8_t *dst = reinterpret_cast<uint8_t *>(target_panel->image_.scanLine(dy + i));
+				uint8_t const *msk = !maskimg ? tmpmask : maskimg->scanLine(i);
+				euclase::PixelRGBA const *src = reinterpret_cast<euclase::PixelRGBA const *>(input_image->scanLine(sy + i));
+				uint8_t *dst = reinterpret_cast<uint8_t *>(target_panel->scanLine(dy + i));
 				renderer(src + sx, dst + dx, msk, w, opt);
 			}
 			return;
@@ -343,7 +343,7 @@ void Document::renderToLayer(Layer *target_layer, Layer const &input_layer, Laye
 						PanelPtr panel = FindPanel(target_layer, x, y);
 						if (!panel) {
 							panel = target_layer->addImagePanel(x, y, 64, 64);
-							panel.image()->image_.fill(Qt::transparent);
+							panel.image()->fill(Qt::transparent);
 						}
 						{
 							if (panel.isImage()) {
@@ -367,7 +367,7 @@ void Document::renderToLayer(Layer *target_layer, Layer const &input_layer, Laye
 				}
 				if (count == 0) {
 					PanelPtr panel = PanelPtr::makeImage();
-					panel->image_ = input_panel->image_.copy();
+					panel->setImage(input_panel->copyImage());
 					panel->setOffset(input_panel->offset());
 					if (sync) sync->lock();
 					target_layer->panels_.push_back(panel);
@@ -410,37 +410,37 @@ void Document::subSelection(Layer const &source, RenderOption const &opt, QMutex
 	renderToLayer(selection_layer(), source, nullptr, o, sync, abort);
 }
 
-QImage Document::renderSelection(const QRect &r, QMutex *sync, bool *abort) const
+Document::Image Document::renderSelection(const QRect &r, QMutex *sync, bool *abort) const
 {
 	Image panel;
-	panel.image_ = QImage(r.width(), r.height(), QImage::Format_Grayscale8);
-	panel.image_.fill(Qt::black);
+	panel.make(r.width(), r.height(), QImage::Format_Grayscale8);
+	panel.fill(Qt::black);
 	panel.setOffset(r.topLeft());
 	renderToEachPanels(&panel, QPoint(), *selection_layer(), nullptr, QColor(), 255, sync, abort);
-	return panel.image_;
+	return panel;
 }
 
-QImage Document::renderToLayer(const QRect &r, bool quickmask, QMutex *sync, bool *abort) const
+Document::Image Document::renderToLayer(const QRect &r, bool quickmask, QMutex *sync, bool *abort) const
 {
 	Image panel;
-	panel.image_ = QImage(r.width(), r.height(), QImage::Format_RGBA8888);
-	panel.image_.fill(Qt::transparent);
+	panel.make(r.width(), r.height(), QImage::Format_RGBA8888);
+	panel.fill(Qt::transparent);
 	panel.setOffset(r.topLeft());
 	renderToEachPanels(&panel, QPoint(), *current_layer(), nullptr, QColor(), 255, sync, abort);
 	if (quickmask) {
 		renderToEachPanels(&panel, QPoint(), *selection_layer(), nullptr, QColor(255, 0, 0), -128, sync, abort);
 	}
-	return panel.image_;
+	return panel;
 }
 
-QImage Document::crop(const QRect &r, QMutex *sync, bool *abort) const
+Document::Image Document::crop(const QRect &r, QMutex *sync, bool *abort) const
 {
 	Image panel;
-	panel.image_ = QImage(r.width(), r.height(), QImage::Format_RGBA8888);
-	panel.image_.fill(Qt::transparent);
+	panel.make(r.width(), r.height(), QImage::Format_RGBA8888);
+	panel.fill(Qt::transparent);
 	panel.setOffset(r.topLeft());
 	renderToEachPanels(&panel, QPoint(), *current_layer(), selection_layer(), QColor(), 255, sync, abort);
-	return panel.image_;
+	return panel;
 }
 
 void Document::crop2(const QRect &r)
@@ -454,15 +454,15 @@ QRect Document::Layer::rect() const
 {
 	QRect rect;
 	const_cast<Layer *>(this)->eachPanel([&](Image *p){
-		if (p->image_.format() == QImage::Format_Grayscale8) {
-			int w = p->image_.width();
-			int h = p->image_.height();
+		if (p->format() == QImage::Format_Grayscale8) {
+			int w = p->width();
+			int h = p->height();
 			int x0 = w;
 			int y0 = h;
 			int x1 = 0;
 			int y1 = 0;
 			for (int y = 0; y < h; y++) {
-				uint8_t const *s = p->image_.scanLine(y);
+				uint8_t const *s = p->scanLine(y);
 				for (int x = 0; x < w; x++) {
 					if (s[x] != 0) {
 						x0 = std::min(x0, x);
@@ -480,15 +480,15 @@ QRect Document::Layer::rect() const
 					rect = rect.united(r);
 				}
 			}
-		} else if (p->image_.format() == QImage::Format_RGBA8888) {
-			int w = p->image_.width();
-			int h = p->image_.height();
+		} else if (p->format() == QImage::Format_RGBA8888) {
+			int w = p->width();
+			int h = p->height();
 			int x0 = w;
 			int y0 = h;
 			int x1 = 0;
 			int y1 = 0;
 			for (int y = 0; y < h; y++) {
-				euclase::PixelRGBA const *s = (euclase::PixelRGBA const *)p->image_.scanLine(y);
+				euclase::PixelRGBA const *s = (euclase::PixelRGBA const *)p->scanLine(y);
 				for (int x = 0; x < w; x++) {
 					if (s[x].a != 0) {
 						x0 = std::min(x0, x);
@@ -516,15 +516,15 @@ void Document::changeSelection(SelectionOperation op, const QRect &rect, QMutex 
 	Document::Layer layer;
 	auto panel = layer.addImagePanel();
 	panel->setOffset(rect.topLeft());
-	panel->image_ = QImage(rect.size(), QImage::Format_Grayscale8);
-	panel->image_.fill(Qt::white);
-	if (0) {
-		panel->image_.fill(Qt::black);
-		QPainter pr(&panel->image_);
-		pr.setRenderHint(QPainter::Antialiasing);
-		pr.setBrush(Qt::white);
-		pr.drawEllipse(0, 0, rect.width(), rect.height());
-	}
+	panel->make(rect.size(), QImage::Format_Grayscale8);
+	panel->fill(Qt::white);
+//	if (0) {
+//		panel->fill(Qt::black);
+//		QPainter pr(&panel->getImage());
+//		pr.setRenderHint(QPainter::Antialiasing);
+//		pr.setBrush(Qt::white);
+//		pr.drawEllipse(0, 0, rect.width(), rect.height());
+//	}
 
 	RenderOption opt;
 
