@@ -66,6 +66,10 @@ struct PixelGrayA {
 		, a(a)
 	{
 	}
+	static PixelGrayA convert(PixelGrayA const &r, bool ignored)
+	{
+		return {r.l, r.a};
+	}
 	inline PixelGrayA(PixelRGBA const &t);
 	uint8_t gray() const
 	{
@@ -104,11 +108,17 @@ public:
 		, b(b)
 	{
 	}
-	FPixelRGB(PixelRGBA const &src)
-		: r(float(src.r / 255.0))
-		, g(float(src.g / 255.0))
-		, b(float(src.b / 255.0))
+	static FPixelRGB convert(PixelRGBA const &src, bool gamma_correction)
 	{
+		float r = src.r / 255.0;
+		float g = src.g / 255.0;
+		float b = src.b / 255.0;
+		if (gamma_correction) {
+			r *= r;
+			g *= g;
+			b *= b;
+		}
+		return {r, g, b};
 	}
 	FPixelRGB operator + (FPixelRGB const &right) const
 	{
@@ -161,16 +171,27 @@ public:
 		if (b >= 1) return 255;
 		return (uint8_t)floor(b * 255 + 0.5);
 	}
-	PixelRGBA color(float amount) const
+	PixelRGBA color(float amount, bool gamma_correction) const
 	{
 		if (amount == 1) {
-			return PixelRGBA(r8(), g8(), b8());
+			FPixelRGB t = *this;
+			if (gamma_correction) {
+				t.r = sqrt(t.r);
+				t.g = sqrt(t.g);
+				t.b = sqrt(t.b);
+			}
+			return PixelRGBA(t.r8(), t.g8(), t.b8());
 		} else if (amount == 0) {
 			return PixelRGBA(0, 0, 0);
 		}
 		float m = 1 / amount;
-		FPixelRGB p = *this * m;
-		return PixelRGBA(p.r8(), p.g8(), p.b8());
+		FPixelRGB t = *this * m;
+		if (gamma_correction) {
+			t.r = sqrt(t.r);
+			t.g = sqrt(t.g);
+			t.b = sqrt(t.b);
+		}
+		return PixelRGBA(t.r8(), t.g8(), t.b8());
 	}
 	operator PixelRGBA () const
 	{
@@ -189,9 +210,10 @@ public:
 		: l(y)
 	{
 	}
-	FPixelGray(PixelGrayA const &src)
-		: l(src.l / 255.0)
+	static FPixelGray convert(PixelGrayA const &src, bool gamma_correction)
 	{
+		(void)gamma_correction; // ignore
+		return {src.l / 255.0};
 	}
 	FPixelGray operator + (FPixelGray const &right) const
 	{
@@ -224,15 +246,22 @@ public:
 		if (l >= 1) return 255;
 		return (uint8_t)floor(l * 255 + 0.5);
 	}
-	PixelGrayA color(float amount) const
+	PixelGrayA color(float amount, bool gamma_correction) const
 	{
 		if (amount == 1) {
-			return PixelGrayA(y8());
+			float l = y8();
+			if (gamma_correction) {
+				l = sqrt(l);
+			}
+			return PixelGrayA(l);
 		} else if (amount == 0) {
 			return PixelGrayA(0);
 		}
 		float m = 1 / amount;
 		FPixelGray p = *this * m;
+		if (gamma_correction) {
+			p.l = sqrt(p.l);
+		}
 		return PixelGrayA(p.y8());
 	}
 	PixelGrayA toPixelGrayA() const
@@ -261,12 +290,17 @@ public:
 		, a(a)
 	{
 	}
-	FPixelRGBA(PixelRGBA const &src)
-		: r(float(src.r / 255.0))
-		, g(float(src.g / 255.0))
-		, b(float(src.b / 255.0))
-		, a(float(src.a / 255.0))
+	static FPixelRGBA convert(PixelRGBA const &src, bool gamma_correction)
 	{
+		float r = src.r / 255.0;
+		float g = src.g / 255.0;
+		float b = src.b / 255.0;
+		if (gamma_correction) {
+			r *= r;
+			g *= g;
+			b *= b;
+		}
+		return {r, g, b, float(src.a / 255.0)};
 	}
 	FPixelRGBA operator + (FPixelRGBA const &right) const
 	{
@@ -328,20 +362,21 @@ public:
 		if (a >= 1) return 255;
 		return (uint8_t)floor(a * 255 + 0.5);
 	}
-	PixelRGBA color(float amount) const
+	PixelRGBA color(float amount, bool gamma_correction) const
 	{
 		if (amount == 0) {
 			return PixelRGBA(0, 0, 0, 0);
 		}
-		FPixelRGBA pixel(*this);
-		pixel *= (1.0f / pixel.a);
-		pixel.a = pixel.a / amount;
-		pixel.a = clamp(pixel.a, 0.0f, 1.0f);
-		return PixelRGBA(pixel.r8(), pixel.g8(), pixel.b8(), pixel.a8());
-	}
-	PixelRGBA toPixelRGBAa(float amount) const
-	{
-		return color(amount);
+		FPixelRGBA t(*this);
+		t *= (1.0f / t.a);
+		t.a = t.a / amount;
+		t.a = clamp(t.a, 0.0f, 1.0f);
+		if (gamma_correction) {
+			t.r = sqrt(t.r);
+			t.g = sqrt(t.g);
+			t.b = sqrt(t.b);
+		}
+		return PixelRGBA(t.r8(), t.g8(), t.b8(), t.a8());
 	}
 	operator PixelRGBA () const
 	{
@@ -363,10 +398,13 @@ public:
 		, a(a)
 	{
 	}
-	FPixelGrayA(PixelGrayA const &src)
-		: l(float(src.l / 255.0))
-		, a(float(src.a / 255.0))
+	static FPixelGrayA convert(PixelGrayA const &src, bool gamma_correction)
 	{
+		float l = src.l / 255.0;
+		if (gamma_correction) {
+			l *= l;
+		}
+		return {l, float(src.a / 255.0)};
 	}
 	FPixelGrayA operator + (FPixelGrayA const &right) const
 	{
@@ -408,20 +446,19 @@ public:
 		if (a >= 1) return 255;
 		return (uint8_t)floor(a * 255 + 0.5);
 	}
-	PixelGrayA color(float amount) const
+	PixelGrayA color(float amount, bool gamma_correction) const
 	{
 		if (amount == 0) {
 			return PixelGrayA(0, 0);
 		}
-		FPixelGrayA pixel(*this);
-		pixel *= (1.0f / pixel.a);
-		pixel.a = pixel.a / amount;
-		pixel.a = clamp(pixel.a, 0.0f, 1.0f);
-		return PixelGrayA(pixel.v8(), pixel.a8());
-	}
-	PixelGrayA toPixelGrayAa(float amount) const
-	{
-		return color(amount);
+		FPixelGrayA t(*this);
+		t *= (1.0f / t.a);
+		t.a = t.a / amount;
+		t.a = clamp(t.a, 0.0f, 1.0f);
+		if (gamma_correction) {
+			t.l = sqrt(t.l);
+		}
+		return PixelGrayA(t.v8(), t.a8());
 	}
 };
 

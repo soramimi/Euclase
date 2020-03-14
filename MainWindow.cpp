@@ -319,7 +319,9 @@ void MainWindow::on_action_resize_triggered()
 		h = std::max(h, 1U);
 		QElapsedTimer t;
 		t.start();
-		QImage newimage = resizeImage(srcimage, w, h, EnlargeMethod::Bicubic);
+		bool alpha_channel = true;
+		bool gamma_correction = true;
+		QImage newimage = resizeImage(srcimage, w, h, EnlargeMethod::Bicubic, alpha_channel, gamma_correction);
 		qDebug() << QString::asprintf("%ums", (unsigned int)t.elapsed());
 		setImage(newimage, true);
 	}
@@ -426,16 +428,17 @@ void MainWindow::on_action_filter_sepia_triggered()
 	});
 }
 
-QImage filter_blur(QImage image, int radius);
+QImage filter_blur(QImage image, int radius, bool gamma_correction);
 
 void MainWindow::on_action_filter_blur_triggered()
 {
 	filter([](QImage const &image){
 		int radius = 10;
 		QImage newimage = image;
-		newimage = filter_blur(newimage, radius);
-		newimage = filter_blur(newimage, radius);
-		newimage = filter_blur(newimage, radius);
+		bool gamma_correction = true;
+		newimage = filter_blur(newimage, radius, gamma_correction);
+		newimage = filter_blur(newimage, radius, gamma_correction);
+		newimage = filter_blur(newimage, radius, gamma_correction);
 		return newimage;
 	});
 }

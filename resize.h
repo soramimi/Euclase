@@ -9,6 +9,6 @@ enum class EnlargeMethod {
 	Bicubic,
 };
 
-QImage resizeImage(QImage const &image, int dst_w, int dst_h, EnlargeMethod method = EnlargeMethod::Bilinear, bool alphachannel = true);
+QImage resizeImage(QImage const &image, int dst_w, int dst_h, EnlargeMethod method/* = EnlargeMethod::Bilinear*/, bool alphachannel/* = true*/, bool gamma_correction);
 
 #endif // IMAGE_H

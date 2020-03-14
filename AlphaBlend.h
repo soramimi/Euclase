@@ -146,7 +146,7 @@ public:
 
 	static inline PixelRGBA blend_with_gamma_collection(PixelRGBA const &base, PixelRGBA const &over)
 	{
-		return (PixelRGBA)gamma(blend(degamma(FPixelRGBA(base)), degamma(FPixelRGBA(over))));
+		return (PixelRGBA)gamma(blend(degamma(FPixelRGBA::convert(base, false)), degamma(FPixelRGBA::convert(over, false))));
 	}
 };
 
