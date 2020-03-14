@@ -218,7 +218,7 @@ QString misc::normalizePathSeparator(QString const &str)
 			v.push_back(c);
 		}
 		ushort const *p = &v[0];
-		return QString::fromUtf16(p, n);
+		return QString::fromUtf16(p, (int)n);
 	}
 	return QString();
 }

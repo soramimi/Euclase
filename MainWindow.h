@@ -38,7 +38,7 @@ private:
 	struct Private;
 	Private *m;
 
-	void setImage(const QImage &image, bool fitview);
+	void setImage(Document::Image image, bool fitview);
 	void setImage(QByteArray const &ba, bool fitview);
 
 	enum class Operation {
@@ -56,10 +56,10 @@ private:
 	void setColorHue(int value);
 	void setColorSaturation(int value);
 	void setColorValue(int value);
-	QImage renderFilterTargetImage();
+	Document::Image renderFilterTargetImage();
 	void onSelectionChanged();
 	void clearSelection();
-	QImage selectedImage() const;
+	Document::Image selectedImage() const;
 	MainWindow::RectHandle rectHitTest(const QPoint &pt) const;
 	QPointF pointOnDocument(int x, int y) const;
 	QPointF mapFromViewportToDocument(const QPointF &pt) const;
@@ -83,7 +83,7 @@ public:
 	QMutex *synchronizer() const;
 
 	void fitView();
-	QImage renderImage(const QRect &r, bool quickmask, bool *abort) const;
+	Document::Image renderImage(const QRect &r, bool quickmask, bool *abort) const;
 	QRect selectionRect() const;
 	void openFile(const QString &path);
 	int documentWidth() const;
@@ -150,6 +150,9 @@ private slots:
 public:
 	bool eventFilter(QObject *watched, QEvent *event);
 	void setCursor2(const QCursor &cursor);
+protected:
+	void dragEnterEvent(QDragEnterEvent *event);
+	void dropEvent(QDropEvent *event);
 };
 
 #endif // MAINWINDOW_H

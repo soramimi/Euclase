@@ -19,6 +19,7 @@
 #include <QClipboard>
 #include <QElapsedTimer>
 #include <omp.h>
+#include <QMimeData>
 
 struct MainWindow::Private {
 	Document doc;
@@ -231,7 +232,7 @@ void MainWindow::resetView(bool fitview)
 	hideRect();
 }
 
-void MainWindow::setImage(const QImage &image, bool fitview)
+void MainWindow::setImage(Document::Image image, bool fitview)
 {
 	clearDocument();
 
@@ -243,7 +244,7 @@ void MainWindow::setImage(const QImage &image, bool fitview)
 	clearSelection();
 
 	Document::Layer layer;
-	QImage tmpimage = image.convertToFormat(QImage::Format_RGBA8888);
+	QImage tmpimage = image.getImage().convertToFormat(QImage::Format_RGBA8888);
 	layer.setImage(QPoint(0, 0), tmpimage);
 	Document::RenderOption opt;
 	opt.mode = Document::RenderOption::DirectCopy;
@@ -254,12 +255,14 @@ void MainWindow::setImage(const QImage &image, bool fitview)
 
 void MainWindow::setImage(QByteArray const &ba, bool fitview)
 {
-	QImage image;
-	image.loadFromData(ba);
+	QImage img;
+	img.loadFromData(ba);
+	Document::Image image;
+	image.setImage(img);
 	setImage(image, fitview);
 }
 
-QImage MainWindow::renderImage(QRect const &r, bool quickmask, bool *abort) const
+Document::Image MainWindow::renderImage(QRect const &r, bool quickmask, bool *abort) const
 {
 	return document()->renderToLayer(r, quickmask, ui->widget_image_view->synchronizer(), abort);
 }
@@ -306,7 +309,7 @@ void MainWindow::onHueChanged(int hue)
 
 void MainWindow::on_action_resize_triggered()
 {
-	QImage srcimage = renderFilterTargetImage();
+	Document::Image srcimage = renderFilterTargetImage();
 	QSize sz = srcimage.size();
 
 	ResizeDialog dlg(this);
@@ -321,9 +324,11 @@ void MainWindow::on_action_resize_triggered()
 		t.start();
 		bool alpha_channel = true;
 		bool gamma_correction = true;
-		QImage newimage = resizeImage(srcimage, w, h, EnlargeMethod::Bicubic, alpha_channel, gamma_correction);
+		QImage newimage = resizeImage(srcimage.getImage(), w, h, EnlargeMethod::Bicubic, alpha_channel, gamma_correction);
 		qDebug() << QString::asprintf("%ums", (unsigned int)t.elapsed());
-		setImage(newimage, true);
+		Document::Image img;
+		img.setImage(newimage);
+		setImage(img, true);
 	}
 }
 
@@ -350,15 +355,15 @@ void MainWindow::on_action_file_save_as_triggered()
 	QString path = QFileDialog::getSaveFileName(this);
 	if (!path.isEmpty()) {
 		QSize sz = document()->size();
-		QImage img = document()->renderToLayer(QRect(0, 0, sz.width(), sz.height()), false, synchronizer(), nullptr);
-		img.save(path);
+		Document::Image img = document()->renderToLayer(QRect(0, 0, sz.width(), sz.height()), false, synchronizer(), nullptr);
+		img.getImage().save(path);
 	}
 }
 
-QImage MainWindow::renderFilterTargetImage()
+Document::Image MainWindow::renderFilterTargetImage()
 {
 	QSize sz = document()->size();
-	QImage image = renderImage(QRect(0, 0, sz.width(), sz.height()), false, nullptr);
+	Document::Image image = renderImage(QRect(0, 0, sz.width(), sz.height()), false, nullptr);
 	return image;
 }
 
@@ -367,8 +372,9 @@ void MainWindow::filter(std::function<QImage (QImage const &)> const &fn)
 	QElapsedTimer t;
 	t.start();
 
-	QImage image = renderFilterTargetImage();
-	image = fn(image);
+	Document::Image image = renderFilterTargetImage();
+	QImage img = fn(image.getImage());
+	image.setImage(img);
 	setImage(image, false);
 
 	qDebug() << QString::asprintf("%ums", (unsigned int)t.elapsed());
@@ -465,7 +471,7 @@ void MainWindow::on_verticalScrollBar_valueChanged(int value)
 	ui->widget_image_view->refrectScrollBar();
 }
 
-QImage MainWindow::selectedImage() const
+Document::Image MainWindow::selectedImage() const
 {
 	QRect r = selectionRect();
 	if (r.isEmpty()) {
@@ -805,6 +811,68 @@ void MainWindow::setCursor2(QCursor const &cursor)
 	ui->widget_image_view->setCursor2(cursor);
 }
 
+void MainWindow::dragEnterEvent(QDragEnterEvent *event)
+{
+	if (QApplication::modalWindow()) return;
+
+	if (event->mimeData()->hasUrls()) {
+		event->setDropAction(Qt::CopyAction);
+		event->accept();
+		return;
+	}
+	QMainWindow::dragEnterEvent(event);
+}
+
+void MainWindow::dropEvent(QDropEvent *event)
+{
+	if (QApplication::modalWindow()) return;
+
+	if (0) {
+		QMimeData const *mimedata = event->mimeData();
+		QByteArray encoded = mimedata->data("application/x-qabstractitemmodeldatalist");
+		QDataStream stream(&encoded, QIODevice::ReadOnly);
+		while (!stream.atEnd()) {
+			int row, col;
+			QMap<int,  QVariant> roledatamap;
+			stream >> row >> col >> roledatamap;
+		}
+	}
+
+	if (event->mimeData()->hasUrls()) {
+//		Q_ASSERT(mainwindow());
+		QStringList paths;
+		QByteArray ba = event->mimeData()->data("text/uri-list");
+		if (ba.size() > 4 && memcmp(ba.data(), "h\0t\0t\0p\0", 8) == 0) {
+			QString path = QString::fromUtf16((ushort const *)ba.data(), ba.size() / 2);
+			int i = path.indexOf('\n');
+			if (i >= 0) {
+				path = path.mid(0, i);
+			}
+			if (!path.isEmpty()) {
+				paths.push_back(path);
+			}
+		} else {
+			QList<QUrl> urls = event->mimeData()->urls();
+			for (QUrl const &url : urls) {
+				QString path = url.url();
+				paths.push_back(path);
+			}
+		}
+		for (QString const &path : paths) {
+			if (path.startsWith("file://")) {
+				int i = 7;
+#ifdef Q_OS_WIN
+				if (path.utf16()[i] == '/') {
+					i++;
+				}
+#endif
+				openFile(path.mid(i));
+			} else if (path.startsWith("http://") || path.startsWith("https://")) {
+			}
+		}
+	}
+}
+
 bool MainWindow::onMouseMove(int x, int y, bool leftbutton)
 {
 	Tool tool = currentTool();
@@ -1043,7 +1111,9 @@ bool MainWindow::eventFilter(QObject *watched, QEvent *event)
 									pr.drawPixmap(r, pm, pm.rect());
 								}
 							}
-							setImage(im, true);
+							Document::Image image;
+							image.setImage(im);
+							setImage(image, true);
 							qDebug() << QString("%1ms").arg(t.elapsed());
 						}
 					}
@@ -1126,8 +1196,8 @@ SelectionOutlineBitmap MainWindow::renderSelectionOutlineBitmap(bool *abort)
 
 void MainWindow::on_action_edit_copy_triggered()
 {	
-	QImage image = selectedImage();
-	QApplication::clipboard()->setImage(image);
+	Document::Image image = selectedImage();
+	QApplication::clipboard()->setImage(image.getImage());
 }
 
 void MainWindow::on_action_new_triggered()
@@ -1136,12 +1206,14 @@ void MainWindow::on_action_new_triggered()
 	if (dlg.exec() == QDialog::Accepted) {
 		QSize sz = dlg.imageSize();
 		if (dlg.from() == NewDialog::From::New) {
-			QImage image(sz.width(), sz.height(), QImage::Format_RGBA8888);
+			Document::Image image;
+			image.make(sz.width(), sz.height(), QImage::Format_RGBA8888);
+			image.fill(Qt::transparent);
 			setImage(image, true);
 			return;
 		}
 		if (dlg.from() == NewDialog::From::Clipboard) {
-			QImage image = selectedImage();
+			Document::Image image = selectedImage();
 			setImage(image, true);
 			return;
 		}

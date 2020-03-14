@@ -7,13 +7,14 @@
 #include <QRect>
 #include <QThread>
 #include <deque>
+#include "Document.h"
 
 class MainWindow;
 
 class RenderedImage {
 public:
 	QRect rect;
-	QImage image;
+	Document::Image image;
 };
 Q_DECLARE_METATYPE(RenderedImage)
 

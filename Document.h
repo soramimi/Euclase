@@ -7,6 +7,7 @@
 #include <functional>
 #include <QMutex>
 #include <QColor>
+#include "euclase.h"
 
 class Document {
 public:
@@ -28,6 +29,181 @@ public:
 	struct Image {
 		Header header_;
 		QImage image_;
+		enum Format {
+			RGB8,
+			RGBA8,
+			Grayscale8,
+			GrayscaleA8,
+			RGBF,
+			RGBAF,
+			GrayscaleF8,
+			GrayscaleAF8,
+		};
+		Format format_ = Format::RGBA8;
+		bool linear_ = false;
+		std::shared_ptr<std::vector<uint8_t>> data_;
+
+		bool isNull() const
+		{
+			return image_.isNull();
+		}
+
+		void make2(int width, int height, QImage::Format format)
+		{
+			switch (format) {
+			case QImage::Format_RGB32:
+				format_ = Format::RGB8;
+				data_ = std::make_shared<std::vector<uint8_t>>(width * height * 3);
+				break;
+			case QImage::Format_RGB888:
+				format_ = Format::RGB8;
+				data_ = std::make_shared<std::vector<uint8_t>>(width * height * 3);
+				break;
+			case QImage::Format_RGBA8888:
+				format_ = Format::RGBA8;
+				data_ = std::make_shared<std::vector<uint8_t>>(width * height * 4);
+				break;
+			case QImage::Format_Grayscale8:
+				format_ = Format::Grayscale8;
+				data_ = std::make_shared<std::vector<uint8_t>>(width * height);
+				break;
+			default:
+				data_.reset();
+			}
+		}
+
+		void make(int width, int height, QImage::Format format)
+		{
+			image_ = QImage(width, height, format);
+			make2(width, height, format);
+		}
+
+		void make(QSize const &sz, QImage::Format format)
+		{
+			make(sz.width(), sz.height(), format);
+		}
+
+		uint8_t *scanLine2(int y)
+		{
+			uint8_t *p = data_->data();
+			int w = width();
+			switch (format_) {
+			case Format::RGB8:
+				return p + 3 * w * y;
+			case Format::RGBA8:
+				return p + 4 * w * y;
+			case Format::Grayscale8:
+				return p + w * y;
+			}
+			return nullptr;
+		}
+
+		void fill(const QColor &color)
+		{
+			image_.fill(color);
+			int w = width();
+			int h = height();
+			switch (format_) {
+			case Format::RGB8:
+				for (int y = 0; y < h; y++) {
+					uint8_t *p =scanLine2(y);
+					for (int x = 0; x < w; x++) {
+						p[x * 3 + 0] = color.red();
+						p[x * 3 + 1] = color.green();
+						p[x * 3 + 2] = color.blue();
+					}
+				}
+				break;
+			case Format::RGBA8:
+				for (int y = 0; y < h; y++) {
+					uint8_t *p =scanLine2(y);
+					for (int x = 0; x < w; x++) {
+						p[x * 4 + 0] = color.red();
+						p[x * 4 + 1] = color.green();
+						p[x * 4 + 2] = color.blue();
+						p[x * 4 + 4] = color.alpha();
+					}
+				}
+				break;
+			case Format::Grayscale8:
+				for (int y = 0; y < h; y++) {
+					uint8_t *p =scanLine2(y);
+					for (int x = 0; x < w; x++) {
+						p[x] = euclase::gray(color.red(), color.green(), color.blue());
+					}
+				}
+				break;
+			}
+		}
+
+		void setImage(QImage const &image)
+		{
+			image_ = image;
+			int w = width();
+			int h = height();
+			make2(w, h, image.format());
+			switch (format_) {
+			case Format::RGB8:
+				for (int y = 0; y < h; y++) {
+					uint8_t const *s = image.scanLine(y);
+					uint8_t *d = scanLine2(y);
+					memcpy(d, s, w * 3);
+				}
+				return;
+			case Format::RGBA8:
+				for (int y = 0; y < h; y++) {
+					uint8_t const *s = image.scanLine(y);
+					uint8_t *d = scanLine2(y);
+					memcpy(d, s, w * 4);
+				}
+				return;
+			case Format::Grayscale8:
+				for (int y = 0; y < h; y++) {
+					uint8_t const *s = image.scanLine(y);
+					uint8_t *d = scanLine2(y);
+					memcpy(d, s, w);
+				}
+				return;
+			}
+		}
+
+		QImage &getImage()
+		{
+			return image_;
+		}
+
+		QImage const &getImage() const
+		{
+			return image_;
+		}
+
+		QImage copyImage() const
+		{
+			return image_.copy();
+		}
+
+		Image scaled(int w, int h) const
+		{
+			Image newimage;
+			QImage img = image_.scaled(w, h);
+			newimage.setImage(img);
+			return newimage;
+		}
+
+		QImage::Format format() const
+		{
+			return image_.format();
+		}
+
+		uint8_t *scanLine(int y)
+		{
+			return image_.scanLine(y);
+		}
+
+		uint8_t const *scanLine(int y) const
+		{
+			return image_.scanLine(y);
+		}
 
 		QPoint offset() const
 		{
@@ -54,6 +230,10 @@ public:
 			return image_.height();
 		}
 
+		QSize size() const
+		{
+			return image_.size();
+		}
 		bool isRGBA8888() const
 		{
 			return image_.format() == QImage::Format_RGBA8888;
@@ -240,8 +420,8 @@ public:
 			auto panel = PanelPtr::makeImage();
 			panel->setOffset(x, y);
 			if (w > 0 && h > 0) {
-				panel->image_ = QImage(w, h, QImage::Format_RGBA8888);
-				panel->image_.fill(Qt::transparent);
+				panel->make(w, h, QImage::Format_RGBA8888);
+				panel->fill(Qt::transparent);
 			}
 			panels_.push_back(panel);
 			std::sort(panels_.begin(), panels_.end(), [](PanelPtr const &l, PanelPtr const &r){
@@ -281,7 +461,7 @@ public:
 			clear(nullptr);
 			offset_ = offset;
 			addImagePanel();
-			panels_[0]->image_ = image;
+			panels_[0]->setImage(image);
 		}
 
 		QRect rect() const;
@@ -313,7 +493,7 @@ public:
 
 	void paintToCurrentLayer(const Layer &source, const RenderOption &opt, QMutex *sync, bool *abort);
 
-	QImage renderToLayer(QRect const &r, bool quickmask, QMutex *sync, bool *abort) const;
+	Image renderToLayer(QRect const &r, bool quickmask, QMutex *sync, bool *abort) const;
 private:
 	static void renderToEachPanels_(Image *target_panel, const QPoint &target_offset, const Layer &input_layer, Layer *mask_layer, const QColor &brush_color, int opacity, bool *abort);
 	static void renderToEachPanels(Image *target_panel, const QPoint &target_offset, const Layer &input_layer, Layer *mask_layer, const QColor &brush_color, int opacity, QMutex *sync, bool *abort);
@@ -328,9 +508,9 @@ public:
 	void clearSelection(QMutex *sync);
 	void addSelection(const Layer &source, const RenderOption &opt, QMutex *sync, bool *abort);
 	void subSelection(const Layer &source, const RenderOption &opt, QMutex *sync, bool *abort);
-	QImage renderSelection(const QRect &r, QMutex *sync, bool *abort) const;
+	Image renderSelection(const QRect &r, QMutex *sync, bool *abort) const;
 	void changeSelection(SelectionOperation op, QRect const &rect, QMutex *sync);
-	QImage crop(const QRect &r, QMutex *sync, bool *abort) const;
+	Image crop(const QRect &r, QMutex *sync, bool *abort) const;
 	void crop2(const QRect &r);
 	void clear(QMutex *sync);
 };
