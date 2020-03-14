@@ -14,7 +14,7 @@ class MainWindow;
 class RenderedImage {
 public:
 	QRect rect;
-	Document::Image image;
+	euclase::Image image;
 };
 Q_DECLARE_METATYPE(RenderedImage)
 

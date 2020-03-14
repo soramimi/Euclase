@@ -1,6 +1,7 @@
 #ifndef EUCLASE_H
 #define EUCLASE_H
 
+#include <QImage>
 #include <QPoint>
 #include <algorithm>
 #include <cmath>
@@ -68,6 +69,7 @@ struct PixelGrayA {
 	}
 	static PixelGrayA convert(PixelGrayA const &r, bool ignored)
 	{
+		(void)ignored;
 		return {r.l, r.a};
 	}
 	inline PixelGrayA(PixelRGBA const &t);
@@ -213,7 +215,7 @@ public:
 	static FPixelGray convert(PixelGrayA const &src, bool gamma_correction)
 	{
 		(void)gamma_correction; // ignore
-		return {src.l / 255.0};
+		return {src.l / 255.0F};
 	}
 	FPixelGray operator + (FPixelGray const &right) const
 	{
@@ -471,6 +473,86 @@ static inline FPixelRGBA degamma(FPixelRGBA const &pix)
 {
 	return FPixelRGBA(degamma(pix.r), degamma(pix.g), degamma(pix.b), pix.a);
 }
+
+// image
+
+struct ImageHeader {
+	unsigned int ref_ = 0;
+	QPoint offset_;
+
+	QPoint offset() const
+	{
+		return offset_;
+	}
+};
+
+class Image {
+public:
+	ImageHeader header_;
+	QImage image_;
+	enum Format {
+		RGB8,
+		RGBA8,
+		Grayscale8,
+		GrayscaleA8,
+		RGBF,
+		RGBAF,
+		GrayscaleF8,
+		GrayscaleAF8,
+	};
+	Format format_ = Format::RGBA8;
+	bool linear_ = false;
+	std::shared_ptr<std::vector<uint8_t>> data_;
+
+	Image() = default;
+	Image(QImage const &image)
+	{
+		setImage(image);
+	}
+
+	bool isNull() const;
+
+	void make2(int width, int height, QImage::Format format);
+
+	void make(int width, int height, QImage::Format format);
+
+	void make(QSize const &sz, QImage::Format format);
+
+	uint8_t *scanLine2(int y);
+
+	void fill(const QColor &color);
+
+	void setImage(QImage const &image);
+
+	QImage &getImage();
+
+	QImage const &getImage() const;
+
+	QImage copyImage() const;
+
+	Image scaled(int w, int h) const;
+
+	QImage::Format format() const;
+
+	uint8_t *scanLine(int y);
+
+	uint8_t const *scanLine(int y) const;
+
+	QPoint offset() const;
+
+	void setOffset(QPoint const &pt);
+
+	void setOffset(int x, int y);
+
+	int width() const;
+
+	int height() const;
+
+	QSize size() const;
+	bool isRGBA8888() const;
+
+	bool isGrayscale8() const;
+};
 
 // cubic bezier curve
 
