@@ -3,6 +3,10 @@
 
 class QImage;
 
-bool filter_antialias(QImage *image);
+namespace euclase {
+class Image;
+}
+
+bool filter_antialias(euclase::Image *image);
 
 #endif // ANTIALIAS_H

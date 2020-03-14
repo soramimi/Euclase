@@ -4,9 +4,13 @@
 
 #include <QImage>
 
-QImage filter_median(QImage image, int radius);
-QImage filter_maximize(QImage image, int radius);
-QImage filter_minimize(QImage image, int radius);
+namespace euclase {
+class Image;
+}
+
+euclase::Image filter_median(euclase::Image image, int radius);
+euclase::Image filter_maximize(euclase::Image image, int radius);
+euclase::Image filter_minimize(euclase::Image image, int radius);
 
 #endif
 

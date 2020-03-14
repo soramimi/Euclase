@@ -244,7 +244,7 @@ void MainWindow::setImage(euclase::Image image, bool fitview)
 	clearSelection();
 
 	Document::Layer layer;
-	QImage tmpimage = image.getImage().convertToFormat(QImage::Format_RGBA8888);
+//	QImage tmpimage = image.getImage().convertToFormat(QImage::Format_RGBA8888);
 	layer.setImage(QPoint(0, 0), image);
 	Document::RenderOption opt;
 	opt.mode = Document::RenderOption::DirectCopy;
@@ -322,9 +322,9 @@ void MainWindow::on_action_resize_triggered()
 		t.start();
 		bool alpha_channel = true;
 		bool gamma_correction = true;
-		QImage newimage = resizeImage(srcimage.getImage(), w, h, EnlargeMethod::Bicubic, alpha_channel, gamma_correction);
+		euclase::Image newimage = resizeImage(srcimage, w, h, EnlargeMethod::Bicubic, alpha_channel, gamma_correction);
 		qDebug() << QString::asprintf("%ums", (unsigned int)t.elapsed());
-		setImage(euclase::Image(newimage), true);
+		setImage(newimage, true);
 	}
 }
 
@@ -362,60 +362,63 @@ euclase::Image MainWindow::renderFilterTargetImage()
 	return renderImage(QRect(0, 0, sz.width(), sz.height()), false, nullptr);
 }
 
-void MainWindow::filter(std::function<QImage (QImage const &)> const &fn)
+void MainWindow::filter(std::function<euclase::Image (euclase::Image const &)> const &fn)
 {
 	QElapsedTimer t;
 	t.start();
 
 	euclase::Image image = renderFilterTargetImage();
-	QImage img = fn(image.getImage());
+	euclase::Image img = fn(image.getImage());
 //	image.setImage(img);
-	setImage(euclase::Image(img), false);
+	setImage(img, false);
 
 	qDebug() << QString::asprintf("%ums", (unsigned int)t.elapsed());
 }
 
 void MainWindow::on_action_filter_median_triggered()
 {
-	filter([](QImage const &image){
+	filter([](euclase::Image const &image){
 		return filter_median(image, 10);
 	});
 }
 
 void MainWindow::on_action_filter_maximize_triggered()
 {
-	filter([](QImage const &image){
+	filter([](euclase::Image const &image){
 		return filter_maximize(image, 10);
 	});
 }
 
 void MainWindow::on_action_filter_minimize_triggered()
 {
-	filter([](QImage const &image){
+	filter([](euclase::Image const &image){
 		return filter_minimize(image, 10);
 	});
 }
 
-QImage sepia(QImage const &image)
+euclase::Image sepia(euclase::Image const &image)
 {
-	QImage newimage = image.copy();
-	int w = newimage.width();
-	int h = newimage.height();
+	int w = image.width();
+	int h = image.height();
+	euclase::Image newimage;
+	newimage.make(w, h, image.format());
 	if (w > 0 || h > 0) {
 #pragma omp parallel for
 		for (int y = 0; y < h; y++) {
-			uint8_t *p = newimage.scanLine(y);
+			uint8_t const *s = image.scanLine(y);
+			uint8_t *d = newimage.scanLine(y);
 			for (int x = 0; x < w; x++) {
-				double r = p[0];
-				double g = p[1];
-				double b = p[2];
+				double r = s[x * 4 + 0];
+				double g = s[x * 4 + 1];
+				double b = s[x * 4 + 2];
+				int a = s[x * 4 + 3];
 				r = pow(r / 255, 0.62) * 205 + 19;
 				g = pow(g / 255, 1.00) * 182 + 17;
 				b = pow(b / 255, 1.16) * 156 + 21;
-				p[0] = r;
-				p[1] = g;
-				p[2] = b;
-				p += 4;
+				d[x * 4 + 0] = r;
+				d[x * 4 + 1] = g;
+				d[x * 4 + 2] = b;
+				d[x * 4 + 3] = a;
 			}
 		}
 	}
@@ -424,18 +427,16 @@ QImage sepia(QImage const &image)
 
 void MainWindow::on_action_filter_sepia_triggered()
 {
-	filter([](QImage const &image){
+	filter([](euclase::Image const &image){
 		return sepia(image);
 	});
 }
 
-QImage filter_blur(QImage image, int radius, bool gamma_correction);
-
 void MainWindow::on_action_filter_blur_triggered()
 {
-	filter([](QImage const &image){
+	filter([](euclase::Image const &image){
 		int radius = 10;
-		QImage newimage = image;
+		euclase::Image newimage = image;
 		bool gamma_correction = true;
 		newimage = filter_blur(newimage, radius, gamma_correction);
 		newimage = filter_blur(newimage, radius, gamma_correction);
@@ -446,8 +447,8 @@ void MainWindow::on_action_filter_blur_triggered()
 
 void MainWindow::on_action_filter_antialias_triggered()
 {
-	filter([](QImage const &image){
-		QImage newimage = image;
+	filter([](euclase::Image const &image){
+		euclase::Image newimage = image;
 		filter_antialias(&newimage);
 		return newimage;
 	});

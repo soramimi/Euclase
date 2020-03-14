@@ -54,20 +54,20 @@ void euclase::Image::make2(int width, int height, QImage::Format format)
 {
 	switch (format) {
 	case QImage::Format_RGB32:
-		format_ = Format::RGB8;
-		data_ = std::make_shared<std::vector<uint8_t>>(width * height * 3);
+		data_ = euclase::ImageDataPtr(width * height * 3);
+		data_->format_ = ImageFormat::RGB8;
 		break;
 	case QImage::Format_RGB888:
-		format_ = Format::RGB8;
-		data_ = std::make_shared<std::vector<uint8_t>>(width * height * 3);
+		data_ = euclase::ImageDataPtr(width * height * 3);
+		data_->format_ = ImageFormat::RGB8;
 		break;
 	case QImage::Format_RGBA8888:
-		format_ = Format::RGBA8;
-		data_ = std::make_shared<std::vector<uint8_t>>(width * height * 4);
+		data_ = euclase::ImageDataPtr(width * height * 4);
+		data_->format_ = ImageFormat::RGBA8;
 		break;
 	case QImage::Format_Grayscale8:
-		format_ = Format::Grayscale8;
-		data_ = std::make_shared<std::vector<uint8_t>>(width * height);
+		data_ = euclase::ImageDataPtr(width * height);
+		data_->format_ = ImageFormat::Grayscale8;
 		break;
 	default:
 		data_.reset();
@@ -87,14 +87,14 @@ void euclase::Image::make(const QSize &sz, QImage::Format format)
 
 uint8_t *euclase::Image::scanLine2(int y)
 {
-	uint8_t *p = data_->data();
+	uint8_t *p = data_->bytes.data();
 	int w = width();
-	switch (format_) {
-	case Format::RGB8:
+	switch (format2()) {
+	case ImageFormat::RGB8:
 		return p + 3 * w * y;
-	case Format::RGBA8:
+	case ImageFormat::RGBA8:
 		return p + 4 * w * y;
-	case Format::Grayscale8:
+	case ImageFormat::Grayscale8:
 		return p + w * y;
 	}
 	return nullptr;
@@ -105,10 +105,10 @@ void euclase::Image::fill(const QColor &color)
 	image_.fill(color);
 	int w = width();
 	int h = height();
-	switch (format_) {
-	case Format::RGB8:
+	switch (format2()) {
+	case ImageFormat::RGB8:
 		for (int y = 0; y < h; y++) {
-			uint8_t *p =scanLine2(y);
+			uint8_t *p = scanLine2(y);
 			for (int x = 0; x < w; x++) {
 				p[x * 3 + 0] = color.red();
 				p[x * 3 + 1] = color.green();
@@ -116,20 +116,20 @@ void euclase::Image::fill(const QColor &color)
 			}
 		}
 		break;
-	case Format::RGBA8:
+	case ImageFormat::RGBA8:
 		for (int y = 0; y < h; y++) {
-			uint8_t *p =scanLine2(y);
+			uint8_t *p = scanLine2(y);
 			for (int x = 0; x < w; x++) {
 				p[x * 4 + 0] = color.red();
 				p[x * 4 + 1] = color.green();
 				p[x * 4 + 2] = color.blue();
-				p[x * 4 + 4] = color.alpha();
+				p[x * 4 + 3] = color.alpha();
 			}
 		}
 		break;
-	case Format::Grayscale8:
+	case ImageFormat::Grayscale8:
 		for (int y = 0; y < h; y++) {
-			uint8_t *p =scanLine2(y);
+			uint8_t *p = scanLine2(y);
 			for (int x = 0; x < w; x++) {
 				p[x] = euclase::gray(color.red(), color.green(), color.blue());
 			}
@@ -144,22 +144,22 @@ void euclase::Image::setImage(const QImage &image)
 	int w = width();
 	int h = height();
 	make2(w, h, image.format());
-	switch (format_) {
-	case Format::RGB8:
+	switch (format2()) {
+	case ImageFormat::RGB8:
 		for (int y = 0; y < h; y++) {
 			uint8_t const *s = image.scanLine(y);
 			uint8_t *d = scanLine2(y);
 			memcpy(d, s, w * 3);
 		}
 		return;
-	case Format::RGBA8:
+	case ImageFormat::RGBA8:
 		for (int y = 0; y < h; y++) {
 			uint8_t const *s = image.scanLine(y);
 			uint8_t *d = scanLine2(y);
 			memcpy(d, s, w * 4);
 		}
 		return;
-	case Format::Grayscale8:
+	case ImageFormat::Grayscale8:
 		for (int y = 0; y < h; y++) {
 			uint8_t const *s = image.scanLine(y);
 			uint8_t *d = scanLine2(y);

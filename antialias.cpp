@@ -1,4 +1,5 @@
 #include "antialias.h"
+#include "euclase.h"
 
 #include <QImage>
 #include <stdint.h>
@@ -140,7 +141,7 @@ private:
 		}
 	};
 public:
-	void filter(QImage *image)
+	void filter(euclase::Image *image)
 	{
 		width = image->width();
 		height = image->height();
@@ -207,7 +208,7 @@ public:
 		}
 	};
 
-	void filling(QImage *image)
+	void filling(euclase::Image *image)
 	{
 		int w = image->width();
 		int h = image->height();
@@ -255,7 +256,7 @@ public:
 		}
 	}
 public:
-	void filter(QImage *image)
+	void filter(euclase::Image *image)
 	{
 		filling(image);
 
@@ -289,7 +290,7 @@ public:
 
 } // namespace
 
-bool filter_antialias(QImage *image)
+bool filter_antialias(euclase::Image *image)
 {
 	if (!image) {
 		qDebug() << "antialias: Null pointer.";
@@ -307,8 +308,7 @@ bool filter_antialias(QImage *image)
 		return true;
 	}
 
-	*image = image->convertToFormat(QImage::Format_RGBA8888);
-	if (!image->isNull()) {
+	if (image->format() == QImage::Format_RGBA8888) {
 		AntialiasRGB888().filter(image);
 		return true;
 	}

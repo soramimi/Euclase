@@ -486,23 +486,95 @@ struct ImageHeader {
 	}
 };
 
+enum ImageFormat {
+	Null,
+	RGB8,
+	RGBA8,
+	Grayscale8,
+	GrayscaleA8,
+	RGBF,
+	RGBAF,
+	GrayscaleF8,
+	GrayscaleAF8,
+};
+
+struct ImageData {
+	unsigned int ref = 0;
+	ImageFormat format_ = ImageFormat::RGBA8;
+	bool linear_ = false;
+	std::vector<uint8_t> bytes;
+	ImageData() = default;
+	ImageData(size_t n)
+		: bytes(n)
+	{
+	}
+};
+
+class ImageDataPtr {
+private:
+	ImageData *ptr = nullptr;
+	void assign(ImageData *p)
+	{
+		if (p) {
+			p->ref++;
+		}
+		if (ptr) {
+			if (ptr->ref > 1) {
+				ptr->ref--;
+			} else {
+				delete ptr;
+			}
+		}
+		ptr = p;
+	}
+public:
+	ImageDataPtr() = default;
+	ImageDataPtr(size_t n)
+	{
+		assign(new ImageData);
+		ptr->bytes.resize(n);
+	}
+	ImageDataPtr(ImageDataPtr const &r)
+	{
+		assign(r.ptr);
+	}
+	~ImageDataPtr()
+	{
+		reset();
+	}
+	void reset()
+	{
+		assign(nullptr);
+	}
+	void operator = (ImageDataPtr const &r)
+	{
+		assign(r.ptr);
+	}
+	operator ImageData * ()
+	{
+		return ptr;
+	}
+	operator ImageData const * () const
+	{
+		return ptr;
+	}
+	ImageData *operator -> ()
+	{
+		return ptr;
+	}
+	ImageData const *operator -> () const
+	{
+		return ptr;
+	}
+};
+
 class Image {
 public:
 	ImageHeader header_;
 	QImage image_;
-	enum Format {
-		RGB8,
-		RGBA8,
-		Grayscale8,
-		GrayscaleA8,
-		RGBF,
-		RGBAF,
-		GrayscaleF8,
-		GrayscaleAF8,
-	};
-	Format format_ = Format::RGBA8;
-	bool linear_ = false;
-	std::shared_ptr<std::vector<uint8_t>> data_;
+
+//	std::shared_ptr<ImageData> data_;
+	ImageDataPtr data_;
 
 	Image() = default;
 	Image(QImage const &image)
@@ -511,6 +583,11 @@ public:
 	}
 
 	bool isNull() const;
+
+	ImageFormat format2() const
+	{
+		return data_ ? data_->format_ : ImageFormat::Null;
+	}
 
 	void make2(int width, int height, QImage::Format format);
 

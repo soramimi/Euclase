@@ -25,7 +25,7 @@ static double bicubic(double t)
 	return 0;
 }
 
-QImage resizeNearestNeighbor(QImage const &image, int dst_w, int dst_h)
+euclase::Image resizeNearestNeighbor(euclase::Image const &image, int dst_w, int dst_h)
 {
 	const int src_w = image.width();
 	const int src_h = image.height();
@@ -45,9 +45,8 @@ QImage resizeNearestNeighbor(QImage const &image, int dst_w, int dst_h)
 }
 
 template <typename PIXEL>
-QImage resizeAveragingT(QImage const &image, int dst_w, int dst_h, bool gamma_correction)
+euclase::Image resizeAveragingT(euclase::Image const &image, int dst_w, int dst_h, bool gamma_correction)
 {
-//	bool gamma_correction = true;
 	const int src_w = image.width();
 	const int src_h = image.height();
 	QImage newimg(dst_w, dst_h, QImage::Format_RGBA8888);
@@ -102,9 +101,8 @@ QImage resizeAveragingT(QImage const &image, int dst_w, int dst_h, bool gamma_co
 }
 
 template <typename PIXEL>
-QImage resizeAveragingHT(QImage const &image, int dst_w, bool gamma_correction)
+euclase::Image resizeAveragingHT(euclase::Image const &image, int dst_w, bool gamma_correction)
 {
-//	bool gamma_correction = true;
 	const int src_w = image.width();
 	const int src_h = image.height();
 	QImage newimg(dst_w, src_h, QImage::Format_RGBA8888);
@@ -141,9 +139,8 @@ QImage resizeAveragingHT(QImage const &image, int dst_w, bool gamma_correction)
 }
 
 template <typename PIXEL>
-QImage resizeAveragingVT(QImage const &image, int dst_h, bool gamma_correction)
+euclase::Image resizeAveragingVT(euclase::Image const &image, int dst_h, bool gamma_correction)
 {
-//	bool gamma_correction = true;
 	const int src_w = image.width();
 	const int src_h = image.height();
 	QImage newimg(src_w, dst_h, QImage::Format_RGBA8888);
@@ -185,9 +182,8 @@ struct bilinear_t {
 };
 
 template <typename PIXEL>
-QImage resizeBilinearT(QImage const &image, int dst_w, int dst_h, bool gamma_correction)
+euclase::Image resizeBilinearT(euclase::Image const &image, int dst_w, int dst_h, bool gamma_correction)
 {
-//	bool gamma_correction = true;
 	const int src_w = image.width();
 	const int src_h = image.height();
 	QImage newimg(dst_w, dst_h, QImage::Format_RGBA8888);
@@ -254,9 +250,8 @@ QImage resizeBilinearT(QImage const &image, int dst_w, int dst_h, bool gamma_cor
 }
 
 template <typename PIXEL>
-QImage resizeBilinearHT(QImage const &image, int dst_w, bool gamma_correction)
+euclase::Image resizeBilinearHT(euclase::Image const &image, int dst_w, bool gamma_correction)
 {
-//	bool gamma_correction = true;
 	const int src_w = image.width();
 	const int src_h = image.height();
 	QImage newimg(dst_w, src_h, QImage::Format_RGBA8888);
@@ -294,9 +289,8 @@ QImage resizeBilinearHT(QImage const &image, int dst_w, bool gamma_correction)
 }
 
 template <typename PIXEL>
-QImage resizeBilinearVT(QImage const &image, int dst_h, bool gamma_correction)
+euclase::Image resizeBilinearVT(euclase::Image const &image, int dst_h, bool gamma_correction)
 {
-//	bool gamma_correction = true;
 	const int src_w = image.width();
 	const int src_h = image.height();
 	QImage newimg(src_w, dst_h, QImage::Format_RGBA8888);
@@ -354,12 +348,12 @@ static bicubic_lut_t makeBicubicLookupTable(int src, int dst, std::vector<double
 }
 
 template <typename PIXEL>
-QImage resizeBicubicT(QImage const &image, int dst_w, int dst_h, bool gamma_correction)
+euclase::Image resizeBicubicT(euclase::Image const &image, int dst_w, int dst_h, bool gamma_correction)
 {
-//	bool gamma_correction = true;
 	const int src_w = image.width();
 	const int src_h = image.height();
-	QImage newimg(dst_w, dst_h, QImage::Format_RGBA8888);
+	euclase::Image newimg;
+	newimg.make(dst_w, dst_h, QImage::Format_RGBA8888);
 
 	std::vector<double> bicubic_lut_x;
 	std::vector<double> bicubic_lut_y;
@@ -400,9 +394,8 @@ QImage resizeBicubicT(QImage const &image, int dst_w, int dst_h, bool gamma_corr
 }
 
 template <typename PIXEL>
-QImage resizeBicubicHT(QImage const &image, int dst_w, bool gamma_correction)
+QImage resizeBicubicHT(euclase::Image const &image, int dst_w, bool gamma_correction)
 {
-//	bool gamma_correction = true;
 	const int src_w = image.width();
 	const int src_h = image.height();
 	QImage newimg(dst_w, src_h, QImage::Format_RGBA8888);
@@ -435,9 +428,8 @@ QImage resizeBicubicHT(QImage const &image, int dst_w, bool gamma_correction)
 }
 
 template <typename PIXEL>
-QImage resizeBicubicVT(QImage const &image, int dst_h, bool gamma_correction)
+QImage resizeBicubicVT(euclase::Image const &image, int dst_h, bool gamma_correction)
 {
-//	bool gamma_correction = true;
 	const int src_w = image.width();
 	const int src_h = image.height();
 	QImage newimg(src_w, dst_h, QImage::Format_RGBA8888);
@@ -470,9 +462,8 @@ QImage resizeBicubicVT(QImage const &image, int dst_h, bool gamma_correction)
 
 //
 
-template <typename PIXEL, typename FPIXEL> QImage BlurFilter(QImage const &image, int radius, bool gamma_correction)
+template <typename PIXEL, typename FPIXEL> euclase::Image BlurFilter(euclase::Image const &image, int radius, bool gamma_correction)
 {
-//	bool gamma_correction = true;
 	int w = image.width();
 	int h = image.height();
 	QImage newimage(w, h, image.format());
@@ -550,32 +541,32 @@ template <typename PIXEL, typename FPIXEL> QImage BlurFilter(QImage const &image
 
 }
 
-QImage resizeImage(QImage const &image, int dst_w, int dst_h, EnlargeMethod method, bool alphachannel, bool gamma_correction)
+euclase::Image resizeImage(euclase::Image const &image, int dst_w, int dst_h, EnlargeMethod method, bool alphachannel, bool gamma_correction)
 {
-	QImage newimage = image;
+	euclase::Image newimage;
 	if (dst_w > 0 && dst_h > 0) {
 		int w, h;
-		w = newimage.width();
-		h = newimage.height();
+		w = image.width();
+		h = image.height();
 		if (w != dst_w || h != dst_h) {
 			if (dst_w < w || dst_h < h) {
 				if (dst_w < w && dst_h < h) {
 					if (alphachannel) {
-						newimage = resizeAveragingT<FPixelRGBA>(newimage, dst_w, dst_h, gamma_correction);
+						newimage = resizeAveragingT<FPixelRGBA>(image, dst_w, dst_h, gamma_correction);
 					} else {
-						newimage = resizeAveragingT<FPixelRGB>(newimage, dst_w, dst_h, gamma_correction);
+						newimage = resizeAveragingT<FPixelRGB>(image, dst_w, dst_h, gamma_correction);
 					}
 				} else if (dst_w < w) {
 					if (alphachannel) {
-						newimage = resizeAveragingHT<FPixelRGBA>(newimage, dst_w, gamma_correction);
+						newimage = resizeAveragingHT<FPixelRGBA>(image, dst_w, gamma_correction);
 					} else {
-						newimage = resizeAveragingHT<FPixelRGB>(newimage, dst_w, gamma_correction);
+						newimage = resizeAveragingHT<FPixelRGB>(image, dst_w, gamma_correction);
 					}
 				} else if (dst_h < h) {
 					if (alphachannel) {
-						newimage = resizeAveragingVT<FPixelRGBA>(newimage, dst_h, gamma_correction);
+						newimage = resizeAveragingVT<FPixelRGBA>(image, dst_h, gamma_correction);
 					} else {
-						newimage = resizeAveragingVT<FPixelRGB>(newimage, dst_h, gamma_correction);
+						newimage = resizeAveragingVT<FPixelRGB>(image, dst_h, gamma_correction);
 					}
 				}
 			}
@@ -585,41 +576,41 @@ QImage resizeImage(QImage const &image, int dst_w, int dst_h, EnlargeMethod meth
 				if (method == EnlargeMethod::Bilinear) {
 					if (dst_w > w && dst_h > h) {
 						if (alphachannel) {
-							newimage = resizeBilinearT<FPixelRGBA>(newimage, dst_w, dst_h, gamma_correction);
+							newimage = resizeBilinearT<FPixelRGBA>(image, dst_w, dst_h, gamma_correction);
 						} else {
-							newimage = resizeBilinearT<FPixelRGB>(newimage, dst_w, dst_h, gamma_correction);
+							newimage = resizeBilinearT<FPixelRGB>(image, dst_w, dst_h, gamma_correction);
 						}
 					} else if (dst_w > w) {
 						if (alphachannel) {
-							newimage = resizeBilinearHT<FPixelRGBA>(newimage, dst_w, gamma_correction);
+							newimage = resizeBilinearHT<FPixelRGBA>(image, dst_w, gamma_correction);
 						} else {
-							newimage = resizeBilinearHT<FPixelRGB>(newimage, dst_w, gamma_correction);
+							newimage = resizeBilinearHT<FPixelRGB>(image, dst_w, gamma_correction);
 						}
 					} else if (dst_h > h) {
 						if (alphachannel) {
-							newimage = resizeBilinearVT<FPixelRGBA>(newimage, dst_h, gamma_correction);
+							newimage = resizeBilinearVT<FPixelRGBA>(image, dst_h, gamma_correction);
 						} else {
-							newimage = resizeBilinearVT<FPixelRGB>(newimage, dst_h, gamma_correction);
+							newimage = resizeBilinearVT<FPixelRGB>(image, dst_h, gamma_correction);
 						}
 					}
 				} else if (method == EnlargeMethod::Bicubic) {
 					if (dst_w > w && dst_h > h) {
 						if (alphachannel) {
-							newimage = resizeBicubicT<FPixelRGBA>(newimage, dst_w, dst_h, gamma_correction);
+							newimage = resizeBicubicT<FPixelRGBA>(image, dst_w, dst_h, gamma_correction);
 						} else {
-							newimage = resizeBicubicT<FPixelRGB>(newimage, dst_w, dst_h, gamma_correction);
+							newimage = resizeBicubicT<FPixelRGB>(image, dst_w, dst_h, gamma_correction);
 						}
 					} else if (dst_w > w) {
 						if (alphachannel) {
-							newimage = resizeBicubicHT<FPixelRGBA>(newimage, dst_w, gamma_correction);
+							newimage = resizeBicubicHT<FPixelRGBA>(image, dst_w, gamma_correction);
 						} else {
-							newimage = resizeBicubicHT<FPixelRGB>(newimage, dst_w, gamma_correction);
+							newimage = resizeBicubicHT<FPixelRGB>(image, dst_w, gamma_correction);
 						}
 					} else if (dst_h > h) {
 						if (alphachannel) {
-							newimage = resizeBicubicVT<FPixelRGBA>(newimage, dst_h, gamma_correction);
+							newimage = resizeBicubicVT<FPixelRGBA>(image, dst_h, gamma_correction);
 						} else {
-							newimage = resizeBicubicVT<FPixelRGB>(newimage, dst_h, gamma_correction);
+							newimage = resizeBicubicVT<FPixelRGB>(image, dst_h, gamma_correction);
 						}
 					}
 				} else {
@@ -627,16 +618,16 @@ QImage resizeImage(QImage const &image, int dst_w, int dst_h, EnlargeMethod meth
 				}
 			}
 		}
-		return std::move(newimage);
+		return newimage;
 	}
-	return QImage();
+	return {};
 }
 
-QImage filter_blur(QImage image, int radius, bool gamma_correction)
+euclase::Image filter_blur(euclase::Image image, int radius, bool gamma_correction)
 {
 	if (image.format() == QImage::Format_Grayscale8) {
 		return BlurFilter<PixelGrayA, FPixelGrayA>(image, radius, gamma_correction);
 	}
-	image = image.convertToFormat(QImage::Format_RGBA8888);
+//	image = image.convertToFormat(QImage::Format_RGBA8888);
 	return BlurFilter<PixelRGBA, FPixelRGBA>(image, radius, gamma_correction);
 }

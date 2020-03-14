@@ -294,7 +294,7 @@ struct maximize_filter_y_t {
 
 
 
-template <typename PIXEL, typename FILTER> QImage Filter(QImage image, int radius)
+template <typename PIXEL, typename FILTER> euclase::Image Filter(euclase::Image image, int radius)
 {
 	int w = image.width();
 	int h = image.height();
@@ -313,7 +313,7 @@ template <typename PIXEL, typename FILTER> QImage Filter(QImage image, int radiu
 		int sw = w + radius * 2;
 		int sh = h + radius * 2;
 		std::vector<PIXEL> src(sw * sh);
-		PIXEL *dst = (PIXEL *)image.bits();
+		PIXEL *dst = (PIXEL *)image.scanLine(0);
 
 		for (int y = 0; y < h; y++) {
 			PIXEL *d = (PIXEL *)&src[(y + radius) * sw + radius];
@@ -361,21 +361,21 @@ template <typename PIXEL, typename FILTER> QImage Filter(QImage image, int radiu
 } // namespace
 
 
-QImage filter_median(QImage image, int radius)
+euclase::Image filter_median(euclase::Image image, int radius)
 {
-	image = image.convertToFormat(QImage::Format_RGBA8888);
+//	image = image.convertToFormat(QImage::Format_RGBA8888);
 	return Filter<PixelRGBA, median_filter_rgb_t>(image, radius);
 }
 
-QImage filter_maximize(QImage image, int radius)
+euclase::Image filter_maximize(euclase::Image image, int radius)
 {
-	image = image.convertToFormat(QImage::Format_RGBA8888);
+//	image = image.convertToFormat(QImage::Format_RGBA8888);
 	return Filter<PixelRGBA, maximize_filter_rgb_t>(image, radius);
 }
 
-QImage filter_minimize(QImage image, int radius)
+euclase::Image filter_minimize(euclase::Image image, int radius)
 {
-	image = image.convertToFormat(QImage::Format_RGBA8888);
+//	image = image.convertToFormat(QImage::Format_RGBA8888);
 	return Filter<PixelRGBA, minimize_filter_rgb_t>(image, radius);
 }
 
