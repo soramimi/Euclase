@@ -150,6 +150,9 @@ private slots:
 public:
 	bool eventFilter(QObject *watched, QEvent *event);
 	void setCursor2(const QCursor &cursor);
+protected:
+	void dragEnterEvent(QDragEnterEvent *event);
+	void dropEvent(QDropEvent *event);
 };
 
 #endif // MAINWINDOW_H

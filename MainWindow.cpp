@@ -19,6 +19,7 @@
 #include <QClipboard>
 #include <QElapsedTimer>
 #include <omp.h>
+#include <QMimeData>
 
 struct MainWindow::Private {
 	Document doc;
@@ -800,6 +801,68 @@ bool MainWindow::onMouseLeftButtonPress(int x, int y)
 void MainWindow::setCursor2(QCursor const &cursor)
 {
 	ui->widget_image_view->setCursor2(cursor);
+}
+
+void MainWindow::dragEnterEvent(QDragEnterEvent *event)
+{
+	if (QApplication::modalWindow()) return;
+
+	if (event->mimeData()->hasUrls()) {
+		event->setDropAction(Qt::CopyAction);
+		event->accept();
+		return;
+	}
+	QMainWindow::dragEnterEvent(event);
+}
+
+void MainWindow::dropEvent(QDropEvent *event)
+{
+	if (QApplication::modalWindow()) return;
+
+	if (0) {
+		QMimeData const *mimedata = event->mimeData();
+		QByteArray encoded = mimedata->data("application/x-qabstractitemmodeldatalist");
+		QDataStream stream(&encoded, QIODevice::ReadOnly);
+		while (!stream.atEnd()) {
+			int row, col;
+			QMap<int,  QVariant> roledatamap;
+			stream >> row >> col >> roledatamap;
+		}
+	}
+
+	if (event->mimeData()->hasUrls()) {
+//		Q_ASSERT(mainwindow());
+		QStringList paths;
+		QByteArray ba = event->mimeData()->data("text/uri-list");
+		if (ba.size() > 4 && memcmp(ba.data(), "h\0t\0t\0p\0", 8) == 0) {
+			QString path = QString::fromUtf16((ushort const *)ba.data(), ba.size() / 2);
+			int i = path.indexOf('\n');
+			if (i >= 0) {
+				path = path.mid(0, i);
+			}
+			if (!path.isEmpty()) {
+				paths.push_back(path);
+			}
+		} else {
+			QList<QUrl> urls = event->mimeData()->urls();
+			for (QUrl const &url : urls) {
+				QString path = url.url();
+				paths.push_back(path);
+			}
+		}
+		for (QString const &path : paths) {
+			if (path.startsWith("file://")) {
+				int i = 7;
+#ifdef Q_OS_WIN
+				if (path.utf16()[i] == '/') {
+					i++;
+				}
+#endif
+				openFile(path.mid(i));
+			} else if (path.startsWith("http://") || path.startsWith("https://")) {
+			}
+		}
+	}
 }
 
 bool MainWindow::onMouseMove(int x, int y, bool leftbutton)

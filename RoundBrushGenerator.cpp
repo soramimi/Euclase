@@ -36,8 +36,8 @@ static inline double mm_hypot(double a, double b)
 
 RoundBrushGenerator::RoundBrushGenerator(double size, double softness)
 {
-	radius = size / 2 + 0.25F;
-	blur = radius - radius * softness;
+	radius = float(size / 2 + 0.25);
+	blur = float(radius - radius * softness);
 	mul = radius - blur;
 	if (mul > 0) {
 		mul = 1 / mul;
