@@ -62,7 +62,7 @@ Document::Layer *Document::selection_layer() const
 	return &m->selection_layer;
 }
 
-void Document::renderToSinglePanel(Image *target_panel, QPoint const &target_offset, Image const *input_panel, QPoint const &input_offset, Layer const *mask_layer, RenderOption const &opt, QColor const &brush_color, int opacity, bool *abort)
+void Document::renderToSinglePanel(euclase::Image *target_panel, QPoint const &target_offset, euclase::Image const *input_panel, QPoint const &input_offset, Layer const *mask_layer, RenderOption const &opt, QColor const &brush_color, int opacity, bool *abort)
 {
 	const QPoint dst_org = target_offset + target_panel->offset();
 	const QPoint src_org = input_offset + input_panel->offset();
@@ -87,15 +87,15 @@ void Document::renderToSinglePanel(Image *target_panel, QPoint const &target_off
 
 	if (w < 1 || h < 1) return;
 
-	Image const *input_image = input_panel;
+	euclase::Image const *input_image = input_panel;
 
 	const int dx = x0 - dst_org.x();
 	const int dy = y0 - dst_org.y();
 	const int sx = x0 - src_org.x();
 	const int sy = y0 - src_org.y();
 	uint8_t *tmpmask = nullptr;
-	Image *maskimg = nullptr;
-	Image maskpanel;
+	euclase::Image *maskimg = nullptr;
+	euclase::Image maskpanel;
 	if (mask_layer && !mask_layer->panels_.empty()) {
 		maskpanel.setOffset(x0, y0);
 		maskpanel.make(w, h, QImage::Format_Grayscale8);
@@ -108,7 +108,7 @@ void Document::renderToSinglePanel(Image *target_panel, QPoint const &target_off
 	}
 
 	if (input_image->format() == QImage::Format_Grayscale8) {
-		Image const *selection = input_image;
+		euclase::Image const *selection = input_image;
 
 		QColor c = brush_color.isValid() ? brush_color : Qt::white;
 
@@ -228,6 +228,7 @@ void Document::renderToSinglePanel(Image *target_panel, QPoint const &target_off
 				d = AlphaBlend::blend_with_gamma_collection(euclase::PixelRGBA(d), color);
 				dst[j] = d.gray();
 			}
+			(void)opt;
 		};
 
 		auto RenderARGB32 = [](euclase::PixelRGBA const *src, uint8_t *dst, uint8_t const *msk, int w, RenderOption const &opt){
@@ -239,6 +240,7 @@ void Document::renderToSinglePanel(Image *target_panel, QPoint const &target_off
 				d = AlphaBlend::blend_with_gamma_collection(euclase::PixelRGBA(d), color);
 				dst[j] = d.gray();
 			}
+			(void)opt;
 		};
 
 		auto RenderRGB32 = [](euclase::PixelRGBA const *src, uint8_t *dst, uint8_t const *msk, int w, RenderOption const &opt){
@@ -251,6 +253,7 @@ void Document::renderToSinglePanel(Image *target_panel, QPoint const &target_off
 				d = AlphaBlend::blend_with_gamma_collection(d, color);
 				dst[j] = d.gray();
 			}
+			(void)opt;
 		};
 
 		std::function<void(euclase::PixelRGBA const *src, uint8_t *dst, uint8_t const *msk, int w, RenderOption const &opt)> renderer;
@@ -276,7 +279,7 @@ void Document::renderToSinglePanel(Image *target_panel, QPoint const &target_off
 
 }
 
-void Document::renderToEachPanels_(Image *target_panel, QPoint const &target_offset, Layer const &input_layer, Layer *mask_layer, QColor const &brush_color, int opacity, bool *abort)
+void Document::renderToEachPanels_(euclase::Image *target_panel, QPoint const &target_offset, Layer const &input_layer, Layer *mask_layer, QColor const &brush_color, int opacity, bool *abort)
 {
 	if (mask_layer && mask_layer->panels_.empty()) {
 		mask_layer = nullptr;
@@ -294,7 +297,7 @@ void Document::renderToEachPanels_(Image *target_panel, QPoint const &target_off
 	}
 }
 
-void Document::renderToEachPanels(Image *target_panel, QPoint const &target_offset, Layer const &input_layer, Layer *mask_layer, QColor const &brush_color, int opacity, QMutex *sync, bool *abort)
+void Document::renderToEachPanels(euclase::Image *target_panel, QPoint const &target_offset, Layer const &input_layer, Layer *mask_layer, QColor const &brush_color, int opacity, QMutex *sync, bool *abort)
 {
 	if (sync) {
 		QMutexLocker lock(sync);
@@ -410,9 +413,9 @@ void Document::subSelection(Layer const &source, RenderOption const &opt, QMutex
 	renderToLayer(selection_layer(), source, nullptr, o, sync, abort);
 }
 
-Document::Image Document::renderSelection(const QRect &r, QMutex *sync, bool *abort) const
+euclase::Image Document::renderSelection(const QRect &r, QMutex *sync, bool *abort) const
 {
-	Image panel;
+	euclase::Image panel;
 	panel.make(r.width(), r.height(), QImage::Format_Grayscale8);
 	panel.fill(Qt::black);
 	panel.setOffset(r.topLeft());
@@ -420,9 +423,9 @@ Document::Image Document::renderSelection(const QRect &r, QMutex *sync, bool *ab
 	return panel;
 }
 
-Document::Image Document::renderToLayer(const QRect &r, bool quickmask, QMutex *sync, bool *abort) const
+euclase::Image Document::renderToLayer(const QRect &r, bool quickmask, QMutex *sync, bool *abort) const
 {
-	Image panel;
+	euclase::Image panel;
 	panel.make(r.width(), r.height(), QImage::Format_RGBA8888);
 	panel.fill(Qt::transparent);
 	panel.setOffset(r.topLeft());
@@ -433,9 +436,9 @@ Document::Image Document::renderToLayer(const QRect &r, bool quickmask, QMutex *
 	return panel;
 }
 
-Document::Image Document::crop(const QRect &r, QMutex *sync, bool *abort) const
+euclase::Image Document::crop(const QRect &r, QMutex *sync, bool *abort) const
 {
-	Image panel;
+	euclase::Image panel;
 	panel.make(r.width(), r.height(), QImage::Format_RGBA8888);
 	panel.fill(Qt::transparent);
 	panel.setOffset(r.topLeft());
@@ -453,7 +456,7 @@ void Document::crop2(const QRect &r)
 QRect Document::Layer::rect() const
 {
 	QRect rect;
-	const_cast<Layer *>(this)->eachPanel([&](Image *p){
+	const_cast<Layer *>(this)->eachPanel([&](euclase::Image *p){
 		if (p->format() == QImage::Format_Grayscale8) {
 			int w = p->width();
 			int h = p->height();

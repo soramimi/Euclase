@@ -232,7 +232,7 @@ void MainWindow::resetView(bool fitview)
 	hideRect();
 }
 
-void MainWindow::setImage(Document::Image image, bool fitview)
+void MainWindow::setImage(euclase::Image image, bool fitview)
 {
 	clearDocument();
 
@@ -257,12 +257,12 @@ void MainWindow::setImage(QByteArray const &ba, bool fitview)
 {
 	QImage img;
 	img.loadFromData(ba);
-	Document::Image image;
+	euclase::Image image;
 	image.setImage(img);
 	setImage(image, fitview);
 }
 
-Document::Image MainWindow::renderImage(QRect const &r, bool quickmask, bool *abort) const
+euclase::Image MainWindow::renderImage(QRect const &r, bool quickmask, bool *abort) const
 {
 	return document()->renderToLayer(r, quickmask, ui->widget_image_view->synchronizer(), abort);
 }
@@ -309,7 +309,7 @@ void MainWindow::onHueChanged(int hue)
 
 void MainWindow::on_action_resize_triggered()
 {
-	Document::Image srcimage = renderFilterTargetImage();
+	euclase::Image srcimage = renderFilterTargetImage();
 	QSize sz = srcimage.size();
 
 	ResizeDialog dlg(this);
@@ -326,7 +326,7 @@ void MainWindow::on_action_resize_triggered()
 		bool gamma_correction = true;
 		QImage newimage = resizeImage(srcimage.getImage(), w, h, EnlargeMethod::Bicubic, alpha_channel, gamma_correction);
 		qDebug() << QString::asprintf("%ums", (unsigned int)t.elapsed());
-		Document::Image img;
+		euclase::Image img;
 		img.setImage(newimage);
 		setImage(img, true);
 	}
@@ -355,15 +355,15 @@ void MainWindow::on_action_file_save_as_triggered()
 	QString path = QFileDialog::getSaveFileName(this);
 	if (!path.isEmpty()) {
 		QSize sz = document()->size();
-		Document::Image img = document()->renderToLayer(QRect(0, 0, sz.width(), sz.height()), false, synchronizer(), nullptr);
+		euclase::Image img = document()->renderToLayer(QRect(0, 0, sz.width(), sz.height()), false, synchronizer(), nullptr);
 		img.getImage().save(path);
 	}
 }
 
-Document::Image MainWindow::renderFilterTargetImage()
+euclase::Image MainWindow::renderFilterTargetImage()
 {
 	QSize sz = document()->size();
-	Document::Image image = renderImage(QRect(0, 0, sz.width(), sz.height()), false, nullptr);
+	euclase::Image image = renderImage(QRect(0, 0, sz.width(), sz.height()), false, nullptr);
 	return image;
 }
 
@@ -372,7 +372,7 @@ void MainWindow::filter(std::function<QImage (QImage const &)> const &fn)
 	QElapsedTimer t;
 	t.start();
 
-	Document::Image image = renderFilterTargetImage();
+	euclase::Image image = renderFilterTargetImage();
 	QImage img = fn(image.getImage());
 	image.setImage(img);
 	setImage(image, false);
@@ -471,7 +471,7 @@ void MainWindow::on_verticalScrollBar_valueChanged(int value)
 	ui->widget_image_view->refrectScrollBar();
 }
 
-Document::Image MainWindow::selectedImage() const
+euclase::Image MainWindow::selectedImage() const
 {
 	QRect r = selectionRect();
 	if (r.isEmpty()) {
@@ -1111,7 +1111,7 @@ bool MainWindow::eventFilter(QObject *watched, QEvent *event)
 									pr.drawPixmap(r, pm, pm.rect());
 								}
 							}
-							Document::Image image;
+							euclase::Image image;
 							image.setImage(im);
 							setImage(image, true);
 							qDebug() << QString("%1ms").arg(t.elapsed());
@@ -1196,7 +1196,7 @@ SelectionOutlineBitmap MainWindow::renderSelectionOutlineBitmap(bool *abort)
 
 void MainWindow::on_action_edit_copy_triggered()
 {	
-	Document::Image image = selectedImage();
+	euclase::Image image = selectedImage();
 	QApplication::clipboard()->setImage(image.getImage());
 }
 
@@ -1206,14 +1206,14 @@ void MainWindow::on_action_new_triggered()
 	if (dlg.exec() == QDialog::Accepted) {
 		QSize sz = dlg.imageSize();
 		if (dlg.from() == NewDialog::From::New) {
-			Document::Image image;
+			euclase::Image image;
 			image.make(sz.width(), sz.height(), QImage::Format_RGBA8888);
 			image.fill(Qt::transparent);
 			setImage(image, true);
 			return;
 		}
 		if (dlg.from() == NewDialog::From::Clipboard) {
-			Document::Image image = selectedImage();
+			euclase::Image image = selectedImage();
 			setImage(image, true);
 			return;
 		}

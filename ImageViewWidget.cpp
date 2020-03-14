@@ -472,7 +472,7 @@ SelectionOutlineBitmap ImageViewWidget::renderSelectionOutlineBitmap(bool *abort
 		int vy = (int)vp0.y();
 		int vw = (int)vp1.x() - vx;
 		int vh = (int)vp1.y() - vy;
-		Document::Image selection;
+		euclase::Image selection;
 		{
 			int dx = int(dp0.x());
 			int dy = int(dp0.y());
@@ -516,7 +516,7 @@ void ImageViewWidget::paintEvent(QPaintEvent *)
 		int img_h = m->destination_rect.height();
 		if (img_w > 0 && img_h > 0) {
 			if (!m->rendered_image.image.isNull()) {
-				Document::Image const *image = &m->rendered_image.image;
+				euclase::Image const *image = &m->rendered_image.image;
 				QPointF org = mapFromDocumentToViewport(QPointF(0, 0));
 				int ox = (int)floor(org.x() + 0.5);
 				int oy = (int)floor(org.y() + 0.5);
