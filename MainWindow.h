@@ -71,6 +71,7 @@ private:
 	QRect boundsRect() const;
 	void resetView(bool fitview);
 	void filter(std::function<euclase::Image (euclase::Image const &)> const &fn);
+	void filter_xBRZ(int factor);
 protected:
 	void keyPressEvent(QKeyEvent *event);
 public:
@@ -146,6 +147,10 @@ private slots:
 
 
 	void on_action_settings_triggered();
+
+	void on_action_filter_2xBRZ_triggered();
+
+	void on_action_filter_4xBRZ_triggered();
 
 public:
 	bool eventFilter(QObject *watched, QEvent *event);

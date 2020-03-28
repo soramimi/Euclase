@@ -3,7 +3,7 @@ QT       += core gui widgets svg
 
 TARGET = Euclase
 TEMPLATE = app
-CONFIG += c++11
+CONFIG += c++14
 
 DESTDIR = $$PWD/_bin
 
@@ -49,7 +49,8 @@ SOURCES += main.cpp\
     charvec.cpp \
     joinpath.cpp \
 	resize.cpp \
-    ColorSlider.cpp
+    ColorSlider.cpp \
+	xbrz/xbrz.cpp
 
 HEADERS  += MainWindow.h \
     AbstractSettingForm.h \
@@ -85,7 +86,10 @@ HEADERS  += MainWindow.h \
     charvec.h \
     joinpath.h \
     resize.h \
-    ColorSlider.h
+    ColorSlider.h \
+    xbrz/xbrz.h \
+    xbrz/xbrz_config.h \
+    xbrz/xbrz_tools.h
 
 FORMS    += MainWindow.ui \
     NewDialog.ui \

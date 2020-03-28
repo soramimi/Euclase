@@ -984,7 +984,7 @@
      <x>0</x>
      <y>0</y>
      <width>1096</width>
-     <height>21</height>
+     <height>25</height>
     </rect>
    </property>
    <widget class="QMenu" name="menu_Edit">
@@ -1023,6 +1023,8 @@
     <addaction name="action_filter_blur"/>
     <addaction name="action_filter_antialias"/>
     <addaction name="action_filter_sepia"/>
+    <addaction name="action_filter_2xBRZ"/>
+    <addaction name="action_filter_4xBRZ"/>
    </widget>
    <addaction name="menu_File"/>
    <addaction name="menu_Edit"/>
@@ -1122,6 +1124,16 @@
   <action name="action_settings">
    <property name="text">
     <string>&amp;Settings...</string>
+   </property>
+  </action>
+  <action name="action_filter_2xBRZ">
+   <property name="text">
+    <string>2xBRZ</string>
+   </property>
+  </action>
+  <action name="action_filter_4xBRZ">
+   <property name="text">
+    <string>4xBRZ</string>
    </property>
   </action>
  </widget>

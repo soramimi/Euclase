@@ -1229,17 +1229,42 @@ void MainWindow::on_action_select_rectangle_triggered()
 	}
 }
 
-void MainWindow::test()
-{
-}
-
-
-
-
 void MainWindow::on_action_settings_triggered()
 {
 	SettingsDialog dlg(this);
 	if (dlg.exec() == QDialog::Accepted) {
 
 	}
+}
+
+#include "xbrz/xbrz.h"
+
+void MainWindow::filter_xBRZ(int factor)
+{
+	euclase::Image image = renderFilterTargetImage();
+	QImage srcimage = image.getImage();
+	srcimage = srcimage.convertToFormat(QImage::Format_RGBA8888);
+	int w = srcimage.width();
+	int h = srcimage.height();
+	if (w > 0 && h > 0) {
+		QImage dstimage(w * factor, h * factor, QImage::Format_RGBA8888);
+		xbrz::ScalerCfg cfg;
+		xbrz::scale(factor, (uint32_t*)srcimage.bits(), (uint32_t*)dstimage.bits(), w, h, xbrz::ColorFormat::RGBA, cfg, 0, h);
+		setImage(euclase::Image(dstimage), true);
+	}
+}
+
+void MainWindow::on_action_filter_2xBRZ_triggered()
+{
+	filter_xBRZ(2);
+}
+
+void MainWindow::on_action_filter_4xBRZ_triggered()
+{
+	filter_xBRZ(4);
+}
+
+void MainWindow::test()
+{
+
 }
