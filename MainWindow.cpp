@@ -20,6 +20,7 @@
 #include <QElapsedTimer>
 #include <omp.h>
 #include <QMimeData>
+#include "MySettings.h"
 
 struct MainWindow::Private {
 	Document doc;
@@ -322,7 +323,8 @@ void MainWindow::on_action_resize_triggered()
 		t.start();
 		bool alpha_channel = true;
 		bool gamma_correction = true;
-		euclase::Image newimage = resizeImage(srcimage, w, h, EnlargeMethod::Bicubic, alpha_channel, gamma_correction);
+		EnlargeMethod method = dlg.method();
+		euclase::Image newimage = resizeImage(srcimage, w, h, method, alpha_channel, gamma_correction);
 		qDebug() << QString::asprintf("%ums", (unsigned int)t.elapsed());
 		setImage(newimage, true);
 	}
@@ -331,7 +333,6 @@ void MainWindow::on_action_resize_triggered()
 void MainWindow::openFile(QString const &path)
 {
 	QByteArray ba;
-
 	QFile file(path);
 	if (file.open(QFile::ReadOnly)) {
 		ba = file.readAll();
@@ -341,9 +342,16 @@ void MainWindow::openFile(QString const &path)
 
 void MainWindow::on_action_file_open_triggered()
 {
-	QString path = QFileDialog::getOpenFileName(this);
-	if (path.isEmpty()) return;
-	openFile(path);
+	MySettings s;
+	static const char *DefaultDirectory = "DefaultDirectory";
+	s.beginGroup("Global");
+	QString path = s.value(DefaultDirectory).toString();
+	path = QFileDialog::getOpenFileName(this, tr("Open"), path);
+	if (!path.isEmpty()) {
+		QString dir = QFileInfo(path).absoluteDir().absolutePath();
+		s.setValue(DefaultDirectory, dir);
+		openFile(path);
+	}
 }
 
 void MainWindow::on_action_file_save_as_triggered()
@@ -1238,6 +1246,8 @@ void MainWindow::on_action_settings_triggered()
 }
 
 #include "xbrz/xbrz.h"
+
+#include "MySettings.h"
 
 void MainWindow::filter_xBRZ(int factor)
 {

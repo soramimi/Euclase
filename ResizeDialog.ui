@@ -7,7 +7,7 @@
     <x>0</x>
     <y>0</y>
     <width>246</width>
-    <height>103</height>
+    <height>180</height>
    </rect>
   </property>
   <property name="windowTitle">
@@ -37,6 +37,36 @@
       <widget class="QLineEdit" name="lineEdit_height"/>
      </item>
     </layout>
+   </item>
+   <item>
+    <widget class="QGroupBox" name="groupBox">
+     <property name="title">
+      <string>Method</string>
+     </property>
+     <layout class="QVBoxLayout" name="verticalLayout_2">
+      <item>
+       <widget class="QRadioButton" name="radioButton_nearest_neighbor">
+        <property name="text">
+         <string>Nearest Neighbor</string>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <widget class="QRadioButton" name="radioButton_bilinear">
+        <property name="text">
+         <string>Bilinear</string>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <widget class="QRadioButton" name="radioButton_bicubic">
+        <property name="text">
+         <string>Bicubic</string>
+        </property>
+       </widget>
+      </item>
+     </layout>
+    </widget>
    </item>
    <item>
     <spacer name="verticalSpacer">

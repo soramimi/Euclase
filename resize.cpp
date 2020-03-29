@@ -544,10 +544,10 @@ template <typename PIXEL, typename FPIXEL> euclase::Image BlurFilter(euclase::Im
 euclase::Image resizeImage(euclase::Image const &image, int dst_w, int dst_h, EnlargeMethod method, bool alphachannel, bool gamma_correction)
 {
 	euclase::Image newimage;
-	if (dst_w > 0 && dst_h > 0) {
-		int w, h;
-		w = image.width();
-		h = image.height();
+	int w, h;
+	w = image.width();
+	h = image.height();
+	if (w > 0 && h > 0 && dst_w > 0 && dst_h > 0) {
 		if (w != dst_w || h != dst_h) {
 			if (dst_w < w || dst_h < h) {
 				if (dst_w < w && dst_h < h) {
@@ -614,7 +614,7 @@ euclase::Image resizeImage(euclase::Image const &image, int dst_w, int dst_h, En
 						}
 					}
 				} else {
-					newimage = resizeNearestNeighbor(newimage, dst_w, dst_h);
+					newimage = resizeNearestNeighbor(image, dst_w, dst_h);
 				}
 			}
 		}

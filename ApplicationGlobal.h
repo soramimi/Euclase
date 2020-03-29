@@ -13,6 +13,8 @@ public:
 	QString app_config_dir;
 	QString config_file_path;
 
+	QString open_file_dir;
+
 	ApplicationGlobal();
 };
 

@@ -9,6 +9,8 @@ ResizeDialog::ResizeDialog(QWidget *parent) :
 	Qt::WindowFlags flags = windowFlags();
 	flags &= ~Qt::WindowContextHelpButtonHint;
 	setWindowFlags(flags);
+
+	ui->radioButton_bicubic->click();
 }
 
 ResizeDialog::~ResizeDialog()
@@ -31,6 +33,13 @@ QSize ResizeDialog::imageSize() const
 	int w = ui->lineEdit_width->text().toUInt();
 	int h = ui->lineEdit_height->text().toUInt();
 	return QSize(w, h);
+}
+
+EnlargeMethod ResizeDialog::method() const
+{
+	if (ui->radioButton_bilinear->isChecked()) return EnlargeMethod::Bilinear;
+	if (ui->radioButton_bicubic->isChecked()) return EnlargeMethod::Bicubic;
+	return EnlargeMethod::NearestNeighbor;
 }
 
 void ResizeDialog::on_lineEdit_width_textChanged(const QString &text)

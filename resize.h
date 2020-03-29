@@ -8,7 +8,7 @@ class Image;
 }
 
 enum class EnlargeMethod {
-	Nearest,
+	NearestNeighbor,
 	Bilinear,
 	Bicubic,
 };

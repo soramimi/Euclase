@@ -3,6 +3,8 @@
 
 #include <QDialog>
 
+#include "resize.h"
+
 namespace Ui {
 class ResizeDialog;
 }
@@ -20,6 +22,7 @@ public:
 	void setImageSize(const QSize &sz);
 
 	QSize imageSize() const;
+	EnlargeMethod method() const;
 private slots:
 	void on_lineEdit_width_textChanged(const QString &text);
 
