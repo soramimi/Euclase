@@ -223,7 +223,7 @@ public:
 				}
 				if (j > x) {
 					int i = x;
-					j -= i;
+					x = j;
 					int m = (i + j) / 2;
 					uint8_t r = 128;
 					uint8_t g = 128;
@@ -250,7 +250,6 @@ public:
 						p[j * 4 + 1] = r;
 						p[j * 4 + 2] = r;
 					}
-					x = j;
 				}
 			}
 		}
@@ -292,6 +291,7 @@ public:
 
 bool filter_antialias(euclase::Image *image)
 {
+	qDebug() << image->format();
 	if (!image) {
 		qDebug() << "antialias: Null pointer.";
 		return false;
