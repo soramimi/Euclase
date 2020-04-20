@@ -552,16 +552,18 @@ private:
 template <class Scaler, class ColorDistance, class OobReader> //scaler policy: see "Scaler2x" reference implementation
 void scaleImage(const uint32_t* src, uint32_t* trg, int srcWidth, int srcHeight, const xbrz::ScalerCfg& cfg, int yFirst, int yLast)
 {
+	const int SCALE = Scaler::scale;
+
     yFirst = std::max(yFirst, 0);
     yLast  = std::min(yLast, srcHeight);
     if (yFirst >= yLast || srcWidth <= 0)
         return;
 
-    const int trgWidth = srcWidth * Scaler::scale;
+	const int trgWidth = srcWidth * SCALE;
 
     //(ab)use space of "sizeof(uint32_t) * srcWidth * Scaler::scale" at the end of the image as temporary
     //buffer for "on the fly preprocessing" without risk of accidental overwriting before accessing
-    unsigned char* const preProcBuf = reinterpret_cast<unsigned char*>(trg + yLast * Scaler::scale * trgWidth) - srcWidth;
+	unsigned char* const preProcBuf = reinterpret_cast<unsigned char*>(trg + yLast * SCALE * trgWidth) - srcWidth;
 
     //initialize preprocessing buffer for first row of current stripe: detect upper left and right corner blending
     //this cannot be optimized for adjacent processing stripes; we must not allow for a memory race condition!
@@ -631,7 +633,7 @@ void scaleImage(const uint32_t* src, uint32_t* trg, int srcWidth, int srcHeight,
 #pragma omp parallel for
 	for (int y = yFirst; y < yLast; ++y)
     {
-        uint32_t* out = trg + Scaler::scale * y * trgWidth; //consider MT "striped" access
+		uint32_t* out = trg + SCALE * y * trgWidth; //consider MT "striped" access
 
         const OobReader oobReader(src, srcWidth, srcHeight, y);
 
@@ -665,7 +667,7 @@ void scaleImage(const uint32_t* src, uint32_t* trg, int srcWidth, int srcHeight,
             addBottomL(preProcBuf[0], res.blend_g); //set 3rd known corner for (0, y)
         }
 
-        for (int x = 0; x < srcWidth; ++x, out += Scaler::scale)
+		for (int x = 0; x < srcWidth; ++x, out += SCALE)
         {
 #if defined _MSC_VER && !defined NDEBUG
             breakIntoDebugger = debugPixelX == x && debugPixelY == y;
@@ -712,7 +714,7 @@ void scaleImage(const uint32_t* src, uint32_t* trg, int srcWidth, int srcHeight,
             }
 
             //fill block of size scale * scale with the given color
-            fillBlock(out, trgWidth * sizeof(uint32_t), ker4.f, Scaler::scale, Scaler::scale);
+			fillBlock(out, trgWidth * sizeof(uint32_t), ker4.f, SCALE, SCALE);
             //place *after* preprocessing step, to not overwrite the results while processing the last pixel!
 
             //blend all four corners of current pixel
