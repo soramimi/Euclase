@@ -120,14 +120,47 @@ public:
 	public:
 		QPoint offset_;
 		bool tile_mode_ = false;
-		std::vector<PanelPtr> panels_;
+		std::vector<PanelPtr> primary_panels;
+		std::vector<PanelPtr> alternate_panels;
+		bool use_alternate_panel = false;
+
+		std::vector<PanelPtr> *panels()
+		{
+			return use_alternate_panel ? &alternate_panels : &primary_panels;
+		}
+
+		std::vector<PanelPtr> const *panels() const
+		{
+			return const_cast<Layer *>(this)->panels();
+		}
+
+		int panelCount() const
+		{
+			return (int)panels()->size();
+		}
+
+		void setImage_(euclase::Image const &image)
+		{
+			std::vector<PanelPtr> *p;
+			if (use_alternate_panel) {
+				p = &alternate_panels;
+			} else {
+				p = &primary_panels;
+			}
+			*((*p)[0]) = image;
+		}
+
+		PanelPtr panel(int i) const
+		{
+			return (*panels())[i];
+		}
 
 		void clear(QMutex *sync)
 		{
 			if (sync) sync->lock();
 
 			offset_ = QPoint();
-			panels_.clear();
+			primary_panels.clear();
 
 			if (sync) sync->unlock();
 		}
@@ -140,8 +173,8 @@ public:
 				panel->make(w, h, QImage::Format_RGBA8888);
 				panel->fill(Qt::transparent);
 			}
-			panels_.push_back(panel);
-			std::sort(panels_.begin(), panels_.end(), [](PanelPtr const &l, PanelPtr const &r){
+			panels()->push_back(panel);
+			std::sort(panels()->begin(), panels()->end(), [](PanelPtr const &l, PanelPtr const &r){
 				auto COMP = [](PanelPtr const &l, PanelPtr const &r){
 					if (l->offset().y() < r->offset().y()) return -1;
 					if (l->offset().y() > r->offset().y()) return 1;
@@ -168,17 +201,32 @@ public:
 
 		void eachPanel(std::function<void(euclase::Image *)> const &fn)
 		{
-			for (PanelPtr &ptr : panels_) {
+			for (PanelPtr &ptr : *panels()) {
 				fn(ptr.image());
 			}
 		}
 
-		void setImage(QPoint const &offset, euclase::Image const &image)
+		void setAlternate(bool alternate)
+		{
+			use_alternate_panel = alternate;
+		}
+
+		void setImage_(QPoint const &offset, euclase::Image const &image)
 		{
 			clear(nullptr);
 			offset_ = offset;
 			addImagePanel();
-			*(panels_[0]) = image;//->setImage(image);
+			setImage_(image);
+		}
+
+		void discardAlternatePanels(QMutex *sync)
+		{
+			if (sync) sync->lock();
+
+			alternate_panels.clear();
+			use_alternate_panel = false;
+
+			if (sync) sync->unlock();
 		}
 
 		QRect rect() const;

@@ -462,8 +462,10 @@ QImage resizeBicubicVT(euclase::Image const &image, int dst_h, bool gamma_correc
 
 //
 
-template <typename PIXEL, typename FPIXEL> euclase::Image BlurFilter(euclase::Image const &image, int radius, bool gamma_correction)
+template <typename PIXEL, typename FPIXEL> euclase::Image BlurFilter(euclase::Image const &image, int radius, bool gamma_correction, bool *cancel_request)
 {
+	if (*cancel_request) return {};
+
 	int w = image.width();
 	int h = image.height();
 	QImage newimage(w, h, image.format());
@@ -483,6 +485,7 @@ template <typename PIXEL, typename FPIXEL> euclase::Image BlurFilter(euclase::Im
 
 #pragma omp parallel for
 		for (int y = 0; y < h; y++) {
+			if (*cancel_request) continue;
 			FPIXEL pixel;
 			for (int i = 0; i < radius * 2 + 1; i++) {
 				int y2 = y + i - radius;
@@ -529,6 +532,8 @@ template <typename PIXEL, typename FPIXEL> euclase::Image BlurFilter(euclase::Im
 				}
 			}
 		}
+
+		if (*cancel_request) return {};
 
 		for (int y = 0; y < h; y++) {
 			PIXEL *s = &buffer[y * w];
@@ -623,11 +628,11 @@ euclase::Image resizeImage(euclase::Image const &image, int dst_w, int dst_h, En
 	return {};
 }
 
-euclase::Image filter_blur(euclase::Image image, int radius, bool gamma_correction)
+euclase::Image filter_blur(euclase::Image image, int radius, bool gamma_correction, bool *cancel_request)
 {
 	if (image.format() == QImage::Format_Grayscale8) {
-		return BlurFilter<PixelGrayA, FPixelGrayA>(image, radius, gamma_correction);
+		return BlurFilter<PixelGrayA, FPixelGrayA>(image, radius, gamma_correction, cancel_request);
 	}
 //	image = image.convertToFormat(QImage::Format_RGBA8888);
-	return BlurFilter<PixelRGBA, FPixelRGBA>(image, radius, gamma_correction);
+	return BlurFilter<PixelRGBA, FPixelRGBA>(image, radius, gamma_correction, cancel_request);
 }

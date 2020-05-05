@@ -22,6 +22,8 @@ SOURCES += main.cpp\
     BrushSlider.cpp \
 	ColorPreviewWidget.cpp \
 	Document.cpp \
+	FilterDialog.cpp \
+	FilterThread.cpp \
 	ImageViewRenderer.cpp \
         MainWindow.cpp \
     BrushPreviewWidget.cpp \
@@ -60,6 +62,8 @@ HEADERS  += MainWindow.h \
     BrushSlider.h \
     ColorPreviewWidget.h \
     Document.h \
+    FilterDialog.h \
+    FilterThread.h \
     ImageViewRenderer.h \
     MiraCL.h \
     MySettings.h \
@@ -92,6 +96,7 @@ HEADERS  += MainWindow.h \
     xbrz/xbrz_tools.h
 
 FORMS    += MainWindow.ui \
+    FilterDialog.ui \
     NewDialog.ui \
     ResizeDialog.ui \
     SettingGeneralForm.ui \

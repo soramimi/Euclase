@@ -21,6 +21,11 @@
 #include <omp.h>
 #include <QMimeData>
 #include "MySettings.h"
+#include "xbrz/xbrz.h"
+
+#include "FilterDialog.h"
+#include "MySettings.h"
+
 
 struct MainWindow::Private {
 	Document doc;
@@ -233,7 +238,7 @@ void MainWindow::resetView(bool fitview)
 	hideRect();
 }
 
-void MainWindow::setImage(euclase::Image image, bool fitview)
+void MainWindow::setImage(euclase::Image image, bool fitview, bool alternate)
 {
 	clearDocument();
 
@@ -246,19 +251,36 @@ void MainWindow::setImage(euclase::Image image, bool fitview)
 
 	Document::Layer layer;
 //	QImage tmpimage = image.getImage().convertToFormat(QImage::Format_RGBA8888);
-	layer.setImage(QPoint(0, 0), image);
+	layer.setImage_(QPoint(0, 0), image);
 	Document::RenderOption opt;
 	opt.mode = Document::RenderOption::DirectCopy;
+	if (alternate) {
+		document()->current_layer()->setAlternate(true);
+	}
 	document()->renderToLayer(document()->current_layer(), layer, nullptr, opt, ui->widget_image_view->synchronizer(), nullptr);
 
 	resetView(fitview);
 }
 
-void MainWindow::setImage(QByteArray const &ba, bool fitview)
+void MainWindow::filterCompleted(RenderedImage const &image)
+{
+	qDebug() << Q_FUNC_INFO;
+
+	Document::Layer layer;
+//	QImage tmpimage = image.getImage().convertToFormat(QImage::Format_RGBA8888);
+	layer.setImage_(QPoint(0, 0), image.image);
+	Document::RenderOption opt;
+	opt.mode = Document::RenderOption::DirectCopy;
+	document()->current_layer()->setAlternate(true);
+	document()->renderToLayer(document()->current_layer(), layer, nullptr, opt, ui->widget_image_view->synchronizer(), nullptr);
+	updateImageView();
+}
+
+void MainWindow::setImage(QByteArray const &ba, bool fitview, bool alternate)
 {
 	QImage img;
 	img.loadFromData(ba);
-	setImage(euclase::Image(img), fitview);
+	setImage(euclase::Image(img), fitview, alternate);
 }
 
 euclase::Image MainWindow::renderImage(QRect const &r, bool quickmask, bool *abort) const
@@ -326,7 +348,7 @@ void MainWindow::on_action_resize_triggered()
 		EnlargeMethod method = dlg.method();
 		euclase::Image newimage = resizeImage(srcimage, w, h, method, alpha_channel, gamma_correction);
 		qDebug() << QString::asprintf("%ums", (unsigned int)t.elapsed());
-		setImage(newimage, true);
+		setImage(newimage, true, false);
 	}
 }
 
@@ -337,7 +359,7 @@ void MainWindow::openFile(QString const &path)
 	if (file.open(QFile::ReadOnly)) {
 		ba = file.readAll();
 	}
-	setImage(ba, true);
+	setImage(ba, true, false);
 }
 
 void MainWindow::on_action_file_open_triggered()
@@ -370,37 +392,49 @@ euclase::Image MainWindow::renderFilterTargetImage()
 	return renderImage(QRect(0, 0, sz.width(), sz.height()), false, nullptr);
 }
 
-void MainWindow::filter(std::function<euclase::Image (euclase::Image const &)> const &fn)
+void MainWindow::filter(std::function<euclase::Image (euclase::Image const &image, int param, bool *cancel_request)> const &fn)
 {
+	bool cancel = false;
 	QElapsedTimer t;
 	t.start();
 
 	euclase::Image image = renderFilterTargetImage();
-	euclase::Image img = fn(image.getImage());
+#if 0
+	euclase::Image img = fn(image.getImage(), &cancel);
 //	image.setImage(img);
-	setImage(img, false);
+#else
+	FilterDialog dlg(this, image, fn);
+	if (dlg.exec() == QDialog::Accepted) {
+		euclase::Image img = dlg.result();
+		setImage(img, false, true);
+	} else {
+		qDebug() << "!";
+		document()->current_layer()->discardAlternatePanels(synchronizer());
+		updateImageView();
+	}
+#endif
 
 	qDebug() << QString::asprintf("%ums", (unsigned int)t.elapsed());
 }
 
 void MainWindow::on_action_filter_median_triggered()
 {
-	filter([](euclase::Image const &image){
-		return filter_median(image, 10);
+	filter([](euclase::Image const &image, int param, bool *cancel){
+		return filter_median(image, param);
 	});
 }
 
 void MainWindow::on_action_filter_maximize_triggered()
 {
-	filter([](euclase::Image const &image){
-		return filter_maximize(image, 10);
+	filter([](euclase::Image const &image, int param, bool *cancel){
+		return filter_maximize(image, param);
 	});
 }
 
 void MainWindow::on_action_filter_minimize_triggered()
 {
-	filter([](euclase::Image const &image){
-		return filter_minimize(image, 10);
+	filter([](euclase::Image const &image, int param, bool *cancel){
+		return filter_minimize(image, param);
 	});
 }
 
@@ -435,27 +469,28 @@ euclase::Image sepia(euclase::Image const &image)
 
 void MainWindow::on_action_filter_sepia_triggered()
 {
-	filter([](euclase::Image const &image){
+	filter([](euclase::Image const &image, int param, bool *cancel){
 		return sepia(image);
 	});
 }
 
 void MainWindow::on_action_filter_blur_triggered()
 {
-	filter([](euclase::Image const &image){
-		int radius = 10;
+	auto fn = [](euclase::Image const &image, int param, bool *cancel_request){
+		int radius = param;
 		euclase::Image newimage = image;
 		bool gamma_correction = true;
-		newimage = filter_blur(newimage, radius, gamma_correction);
-		newimage = filter_blur(newimage, radius, gamma_correction);
-		newimage = filter_blur(newimage, radius, gamma_correction);
+		newimage = filter_blur(newimage, radius, gamma_correction, cancel_request);
+		newimage = filter_blur(newimage, radius, gamma_correction, cancel_request);
+		newimage = filter_blur(newimage, radius, gamma_correction, cancel_request);
 		return newimage;
-	});
+	};
+	filter(fn);
 }
 
 void MainWindow::on_action_filter_antialias_triggered()
 {
-	filter([](euclase::Image const &image){
+	filter([](euclase::Image const &image, int param, bool *cancel){
 		euclase::Image newimage = image;
 		filter_antialias(&newimage);
 		return newimage;
@@ -573,7 +608,7 @@ void MainWindow::drawBrush(bool one)
 		Document::Layer layer;
 //		euclase::Image img(image);
 //		img.setImage(image);
-		layer.setImage(QPoint(x0, y0), euclase::Image(image));
+		layer.setImage_(QPoint(x0, y0), euclase::Image(image));
 		paintLayer(Operation::PaintToCurrentLayer, layer);
 	};
 
@@ -1117,7 +1152,7 @@ bool MainWindow::eventFilter(QObject *watched, QEvent *event)
 									pr.drawPixmap(r, pm, pm.rect());
 								}
 							}
-							setImage(euclase::Image(im), true);
+							setImage(euclase::Image(im), true, false);
 							qDebug() << QString("%1ms").arg(t.elapsed());
 						}
 					}
@@ -1213,12 +1248,12 @@ void MainWindow::on_action_new_triggered()
 			euclase::Image image;
 			image.make(sz.width(), sz.height(), QImage::Format_RGBA8888);
 			image.fill(Qt::transparent);
-			setImage(image, true);
+			setImage(image, true, false);
 			return;
 		}
 		if (dlg.from() == NewDialog::From::Clipboard) {
 			euclase::Image image = selectedImage();
-			setImage(image, true);
+			setImage(image, true, false);
 			return;
 		}
 	}
@@ -1245,10 +1280,6 @@ void MainWindow::on_action_settings_triggered()
 	}
 }
 
-#include "xbrz/xbrz.h"
-
-#include "MySettings.h"
-
 void MainWindow::filter_xBRZ(int factor)
 {
 	euclase::Image image = renderFilterTargetImage();
@@ -1260,7 +1291,7 @@ void MainWindow::filter_xBRZ(int factor)
 		QImage dstimage(w * factor, h * factor, QImage::Format_RGBA8888);
 		xbrz::ScalerCfg cfg;
 		xbrz::scale(factor, (uint32_t*)srcimage.bits(), (uint32_t*)dstimage.bits(), w, h, xbrz::ColorFormat::RGBA, cfg, 0, h);
-		setImage(euclase::Image(dstimage), true);
+		setImage(euclase::Image(dstimage), true, false);
 	}
 }
 

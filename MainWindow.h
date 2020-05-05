@@ -2,6 +2,7 @@
 #define MAINWINDOW_H
 
 #include "Document.h"
+#include "ImageViewRenderer.h"
 #include "SelectionOutlineRenderer.h"
 
 #include <QMainWindow>
@@ -38,8 +39,8 @@ private:
 	struct Private;
 	Private *m;
 
-	void setImage(euclase::Image image, bool fitview);
-	void setImage(QByteArray const &ba, bool fitview);
+	void setImage(euclase::Image image, bool fitview, bool alternate);
+	void setImage(QByteArray const &ba, bool fitview, bool alternate);
 
 	enum class Operation {
 		PaintToCurrentLayer,
@@ -70,7 +71,7 @@ private:
 	bool isRectValid() const;
 	QRect boundsRect() const;
 	void resetView(bool fitview);
-	void filter(std::function<euclase::Image (euclase::Image const &)> const &fn);
+	void filter(std::function<euclase::Image (euclase::Image const &image, int param, bool *cancel_request)> const &fn);
 	void filter_xBRZ(int factor);
 protected:
 	void keyPressEvent(QKeyEvent *event);
@@ -151,7 +152,8 @@ private slots:
 	void on_action_filter_2xBRZ_triggered();
 
 	void on_action_filter_4xBRZ_triggered();
-
+public slots:
+	void filterCompleted(const RenderedImage &image);
 public:
 	bool eventFilter(QObject *watched, QEvent *event);
 	void setCursor2(const QCursor &cursor);

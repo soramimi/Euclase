@@ -96,7 +96,7 @@ void Document::renderToSinglePanel(euclase::Image *target_panel, QPoint const &t
 	uint8_t *tmpmask = nullptr;
 	euclase::Image *maskimg = nullptr;
 	euclase::Image maskpanel;
-	if (mask_layer && !mask_layer->panels_.empty()) {
+	if (mask_layer && mask_layer->panelCount() != 0) {
 		maskpanel.setOffset(x0, y0);
 		maskpanel.make(w, h, QImage::Format_Grayscale8);
 		maskpanel.fill(Qt::black);
@@ -281,17 +281,17 @@ void Document::renderToSinglePanel(euclase::Image *target_panel, QPoint const &t
 
 void Document::renderToEachPanels_(euclase::Image *target_panel, QPoint const &target_offset, Layer const &input_layer, Layer *mask_layer, QColor const &brush_color, int opacity, bool *abort)
 {
-	if (mask_layer && mask_layer->panels_.empty()) {
+	if (mask_layer && mask_layer->panelCount() == 0) {
 		mask_layer = nullptr;
 	}
 //	for (PanelPtr const &input_panel : input_layer.panels_) {
 #pragma omp parallel for
-	for (int i = 0; i < (int)input_layer.panels_.size(); i++) {
+	for (int i = 0; i < input_layer.panelCount(); i++) {
 		if (abort && *abort) {
 //			break;
 			continue;
 		}
-		PanelPtr const &input_panel = input_layer.panels_[i];
+		PanelPtr const &input_panel = input_layer.panel(i);
 		RenderOption opt;
 		renderToSinglePanel(target_panel, target_offset, input_panel.image(), input_layer.offset(), mask_layer, opt, brush_color, opacity);
 	}
@@ -310,15 +310,15 @@ void Document::renderToEachPanels(euclase::Image *target_panel, QPoint const &ta
 
 void Document::renderToLayer(Layer *target_layer, Layer const &input_layer, Layer *mask_layer, RenderOption const &opt, QMutex *sync, bool *abort)
 {
-	for (PanelPtr const &input_panel : input_layer.panels_) {
+	for (PanelPtr const &input_panel : *input_layer.panels()) {
 		if (input_panel.isImage()) {
 			if (target_layer->tile_mode_) {
 				auto FindPanel = [](Layer const *layer, int x, int y){
 					int lo = 0;
-					int hi = (int)layer->panels_.size();
+					int hi = layer->panelCount();
 					while (lo < hi) {
 						int m = (lo + hi) / 2;
-						PanelPtr p = layer->panels_[m];
+						PanelPtr p = layer->panel(m);
 						Q_ASSERT(p);
 						auto COMP = [](PanelPtr const &p, int x, int y){
 							if (p->offset().y() < y) return -1;
@@ -358,7 +358,7 @@ void Document::renderToLayer(Layer *target_layer, Layer const &input_layer, Laye
 				}
 			} else {
 				int count = 0;
-				for (PanelPtr &panel : target_layer->panels_) {
+				for (PanelPtr &panel : *target_layer->panels()) {
 					if (abort && *abort) return;
 					if (sync) sync->lock();
 					if (panel.isImage()) {
@@ -373,7 +373,7 @@ void Document::renderToLayer(Layer *target_layer, Layer const &input_layer, Laye
 					panel->setImage(input_panel->copyImage());
 					panel->setOffset(input_panel->offset());
 					if (sync) sync->lock();
-					target_layer->panels_.push_back(panel);
+					target_layer->panels()->push_back(panel);
 					if (sync) sync->unlock();
 				}
 			}

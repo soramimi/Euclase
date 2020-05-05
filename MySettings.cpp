@@ -12,7 +12,6 @@
 //#include <QStandardPaths>
 //#include <QString>
 
-char const *KEY_AutoReconnect = "AutoReconnect";
 
 QString makeApplicationDataDir()
 {
