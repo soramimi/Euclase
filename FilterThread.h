@@ -21,9 +21,10 @@ class FilterThread : public QThread {
 protected:
 	void run();
 public:
+	FilterThread();
 	QMutex mutex_;
 	QWaitCondition waiter_;
-	std::atomic<FilterStatus> status_ = FilterStatus::Idle;
+	std::atomic<FilterStatus> status_;
 	bool cancel_request = false;
 	std::function<euclase::Image (euclase::Image const &, int, bool *cancel_request)> fn;
 	euclase::Image source_image;

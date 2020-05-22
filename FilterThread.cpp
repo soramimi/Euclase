@@ -2,6 +2,10 @@
 
 #include <QDebug>
 
+FilterThread::FilterThread()
+{
+	status_ = FilterStatus::Idle;
+}
 
 void FilterThread::run()
 {
