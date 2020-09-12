@@ -20,9 +20,11 @@
 #include <QElapsedTimer>
 #include <omp.h>
 #include <QMimeData>
+#include <QShortcut>
 #include "MySettings.h"
 #include "xbrz/xbrz.h"
 
+#include "ColorDialog.h"
 #include "FilterDialog.h"
 #include "MySettings.h"
 
@@ -69,23 +71,26 @@ MainWindow::MainWindow(QWidget *parent)
 	ui->toolButton_rect->setCheckable(true);
 	ui->toolButton_scroll->click();
 
-	ui->horizontalSlider_rgb_r->setVisualType(ColorSlider::RGB_R);
-	ui->horizontalSlider_rgb_g->setVisualType(ColorSlider::RGB_G);
-	ui->horizontalSlider_rgb_b->setVisualType(ColorSlider::RGB_B);
-	ui->horizontalSlider_hsv_h->setVisualType(ColorSlider::HSV_H);
-	ui->horizontalSlider_hsv_s->setVisualType(ColorSlider::HSV_S);
-	ui->horizontalSlider_hsv_v->setVisualType(ColorSlider::HSV_V);
+//	ui->horizontalSlider_rgb_r->setVisualType(ColorSlider::RGB_R);
+//	ui->horizontalSlider_rgb_g->setVisualType(ColorSlider::RGB_G);
+//	ui->horizontalSlider_rgb_b->setVisualType(ColorSlider::RGB_B);
+//	ui->horizontalSlider_hsv_h->setVisualType(ColorSlider::HSV_H);
+//	ui->horizontalSlider_hsv_s->setVisualType(ColorSlider::HSV_S);
+//	ui->horizontalSlider_hsv_v->setVisualType(ColorSlider::HSV_V);
 
 	ui->horizontalSlider_size->setVisualType(BrushSlider::SIZE);
 	ui->horizontalSlider_softness->setVisualType(BrushSlider::SOFTNESS);
 
-	ui->tabWidget->setCurrentWidget(ui->tab_color_hsv);
+//	ui->tabWidget->setCurrentWidget(ui->tab_color_hsv);
+	ui->widget_color_edit->bind(ui->widget_color);
 
 	connect(ui->widget_color, &SaturationBrightnessWidget::changeColor, this, &MainWindow::setCurrentColor);
 
 	connect(ui->widget_image_view, &ImageViewWidget::scaleChanged, [&](double scale){
 		ui->widget_brush->changeScale(scale);
 	});
+
+	connect(new QShortcut(QKeySequence("Ctrl+T"), this), &QShortcut::activated, this, &MainWindow::test);
 
 	setColor(Qt::black, Qt::white);
 
@@ -137,32 +142,34 @@ int MainWindow::documentHeight() const
 
 void MainWindow::setColor(QColor primary_color, QColor secondary_color)
 {
+
 	m->primary_color = primary_color;
 	if (secondary_color.isValid()) {
 		m->secondary_color = secondary_color;
 	}
 
-	auto Set = [&](int v, ColorSlider *slider, QSpinBox *spin){
-		bool f1 = slider->blockSignals(true);
-		slider->setColor(m->primary_color);
-		slider->setValue(v);
-		slider->blockSignals(f1);
-		bool f2 = spin->blockSignals(true);
-		spin->setValue(v);
-		spin->blockSignals(f2);
-	};
-	Set(primary_color.red(), ui->horizontalSlider_rgb_r, ui->spinBox_rgb_r);
-	Set(primary_color.green(), ui->horizontalSlider_rgb_g, ui->spinBox_rgb_g);
-	Set(primary_color.blue(), ui->horizontalSlider_rgb_b, ui->spinBox_rgb_b);
-	Set(primary_color.hue(), ui->horizontalSlider_hsv_h, ui->spinBox_hsv_h);
-	Set(primary_color.saturation(), ui->horizontalSlider_hsv_s, ui->spinBox_hsv_s);
-	Set(primary_color.value(), ui->horizontalSlider_hsv_v, ui->spinBox_hsv_v);
+	ui->widget_color_edit->setColor(m->primary_color);
+//	auto Set = [&](int v, ColorSlider *slider, QSpinBox *spin){
+//		bool f1 = slider->blockSignals(true);
+//		slider->setColor(m->primary_color);
+//		slider->setValue(v);
+//		slider->blockSignals(f1);
+//		bool f2 = spin->blockSignals(true);
+//		spin->setValue(v);
+//		spin->blockSignals(f2);
+//	};
+//	Set(primary_color.red(), ui->horizontalSlider_rgb_r, ui->spinBox_rgb_r);
+//	Set(primary_color.green(), ui->horizontalSlider_rgb_g, ui->spinBox_rgb_g);
+//	Set(primary_color.blue(), ui->horizontalSlider_rgb_b, ui->spinBox_rgb_b);
+//	Set(primary_color.hue(), ui->horizontalSlider_hsv_h, ui->spinBox_hsv_h);
+//	Set(primary_color.saturation(), ui->horizontalSlider_hsv_s, ui->spinBox_hsv_s);
+//	Set(primary_color.value(), ui->horizontalSlider_hsv_v, ui->spinBox_hsv_v);
 
-	{
-		bool f = ui->widget_color->blockSignals(true);
-		ui->widget_color->setHue(primary_color.hue());
-		ui->widget_color->blockSignals(f);
-	}
+//	{
+//		bool f = ui->widget_color->blockSignals(true);
+//		ui->widget_color->setHue(primary_color.hue());
+//		ui->widget_color->blockSignals(f);
+//	}
 
 	ui->widget_color_preview->setColor(m->primary_color, m->secondary_color);
 }
@@ -1307,5 +1314,6 @@ void MainWindow::on_action_filter_4xBRZ_triggered()
 
 void MainWindow::test()
 {
-
+	ColorDialog dlg(this);
+	dlg.exec();
 }

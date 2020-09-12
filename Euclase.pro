@@ -20,6 +20,8 @@ SOURCES += main.cpp\
 	AlphaBlend.cpp \
 	ApplicationGlobal.cpp \
     BrushSlider.cpp \
+    ColorDialog.cpp \
+    ColorEditWidget.cpp \
 	ColorPreviewWidget.cpp \
 	Document.cpp \
 	FilterDialog.cpp \
@@ -60,6 +62,8 @@ HEADERS  += MainWindow.h \
     ApplicationGlobal.h \
     BrushPreviewWidget.h \
     BrushSlider.h \
+    ColorDialog.h \
+    ColorEditWidget.h \
     ColorPreviewWidget.h \
     Document.h \
     FilterDialog.h \
@@ -96,6 +100,8 @@ HEADERS  += MainWindow.h \
     xbrz/xbrz_tools.h
 
 FORMS    += MainWindow.ui \
+    ColorDialog.ui \
+    ColorEditWidget.ui \
     FilterDialog.ui \
     NewDialog.ui \
     ResizeDialog.ui \

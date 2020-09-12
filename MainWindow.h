@@ -48,7 +48,6 @@ private:
 	void paintLayer(Operation op, const Document::Layer &layer);
 
 	void drawBrush(bool one);
-	void test();
 	void updateImageView();
 	void updateSelectionOutline();
 	void setColorRed(int value);
@@ -152,6 +151,7 @@ private slots:
 	void on_action_filter_2xBRZ_triggered();
 
 	void on_action_filter_4xBRZ_triggered();
+	void test();
 public slots:
 	void filterCompleted(const RenderedImage &image);
 public:
