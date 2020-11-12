@@ -6,8 +6,39 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
+#include <atomic>
 
 namespace euclase {
+
+class RefCounter {
+private:
+	std::atomic_uint32_t ref;
+public:
+	RefCounter() = default;
+	RefCounter(RefCounter const &r)
+	{
+		ref.store(r.ref.load());
+	}
+	void operator = (RefCounter const &r)
+	{
+		ref.store(r.ref.load());
+	}
+	operator unsigned int () const
+	{
+		return ref;
+	}
+	void operator ++ (int)
+	{
+		ref++;
+	}
+	void operator -- (int)
+	{
+		ref--;
+	}
+};
+
+
+
 
 template <typename T>
 static inline T clamp(T a, T min, T max)
@@ -477,7 +508,7 @@ static inline FPixelRGBA degamma(FPixelRGBA const &pix)
 // image
 
 struct ImageHeader {
-	unsigned int ref_ = 0;
+	RefCounter ref;
 	QPoint offset_;
 
 	QPoint offset() const
@@ -499,7 +530,7 @@ enum ImageFormat {
 };
 
 struct ImageData {
-	unsigned int ref = 0;
+	RefCounter ref;
 	ImageFormat format_ = ImageFormat::RGBA8;
 	bool linear_ = false;
 	std::vector<uint8_t> bytes;

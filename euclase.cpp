@@ -189,7 +189,7 @@ euclase::Image euclase::Image::scaled(int w, int h) const
 	Image newimage;
 	QImage img = image_.scaled(w, h);
 	newimage.setImage(img);
-	return newimage;
+	return std::move(newimage);
 }
 
 QImage::Format euclase::Image::format() const

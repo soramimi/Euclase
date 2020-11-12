@@ -41,11 +41,11 @@ public:
 				return;
 			}
 			if (p) {
-				p->ref_++;
+				p->ref++;
 			}
 			if (object_) {
-				if (object_->ref_ > 1) {
-					object_->ref_--;
+				if (object_->ref > 1) {
+					object_->ref--;
 				} else {
 					reinterpret_cast<euclase::Image *>(object_)->~Image();
 					free(reinterpret_cast<void *>(object_));
@@ -109,7 +109,7 @@ public:
 			if (!o) throw std::bad_alloc();
 			new(o) euclase::Image(*reinterpret_cast<euclase::Image const *>(object_));
 			euclase::Image *p = reinterpret_cast<euclase::Image *>(o);
-			p->header_.ref_ = 0;
+			p->header_.ref = {};
 			PanelPtr ptr;
 			ptr.assign(&p->header_);
 			return ptr;
