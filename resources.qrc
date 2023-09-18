@@ -1,0 +1,9 @@
+<RCC>
+    <qresource prefix="/">
+        <file>image/size.png</file>
+        <file>image/softness.png</file>
+        <file>image/hand.svg</file>
+        <file>image/brush.svg</file>
+        <file>image/bounds.svg</file>
+    </qresource>
+</RCC>

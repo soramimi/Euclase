@@ -1,0 +1,12 @@
+*.user
+_bin/
+*.autosave
+.DS_Store
+*.so
+*.o
+*.dll
+*.exp
+*.lib
+*.obj
+_build*
+build-*

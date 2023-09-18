@@ -1,0 +1,2 @@
+#include "windows.h"
+IDR_MANIFEST 24 "Euclase.manifest"
