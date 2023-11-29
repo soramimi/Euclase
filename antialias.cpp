@@ -235,8 +235,8 @@ public:
 					}
 					while (i < m) {
 						p[i * 4 + 0] = r;
-						p[i * 4 + 1] = r;
-						p[i * 4 + 2] = r;
+						p[i * 4 + 1] = g;
+						p[i * 4 + 2] = b;
 						i++;
 					}
 					if (j + 1 < w) {
@@ -247,8 +247,8 @@ public:
 					while (m < j) {
 						j--;
 						p[j * 4 + 0] = r;
-						p[j * 4 + 1] = r;
-						p[j * 4 + 2] = r;
+						p[j * 4 + 1] = g;
+						p[j * 4 + 2] = b;
 					}
 				}
 			}
@@ -304,13 +304,24 @@ bool filter_antialias(euclase::Image *image)
 	}
 
 	if (image->format() == euclase::Image::Format_8_Grayscale) {
+		*image = image->toHost();
 		AntialiasGray8().filter(image);
 		return true;
 	}
 
 	if (image->format() == euclase::Image::Format_8_RGBA) {
+		*image = image->toHost();
 		AntialiasRGB888().filter(image);
 		return true;
+	}
+
+	if (image->format() == euclase::Image::Format_F_RGBA) {
+		*image = image->convert(euclase::Image::Format_8_RGBA);
+		if (filter_antialias(image)) {
+			*image = image->convert(euclase::Image::Format_F_RGBA);
+			return true;
+		}
+		return false;
 	}
 
 	qDebug() << "antialias: Unsupported image format.";
