@@ -1,16 +1,227 @@
 #ifndef EUCLASE_H
 #define EUCLASE_H
 
+#ifdef USE_QT
 #include <QImage>
-#include <QPoint>
+#endif
+
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
 #include <atomic>
-#include <QDebug>
 #include <utility>
 
 namespace euclase {
+
+class Size {
+private:
+	int w_ = 0;
+	int h_ = 0;
+public:
+	Size() = default;
+	Size(int w, int h)
+		: w_(w)
+		, h_(h)
+	{
+	}
+#ifdef USE_QT
+	Size(QSize const &sz)
+		: w_(sz.width())
+		, h_(sz.height())
+	{
+	}
+	operator QSize () const
+	{
+		return {w_, h_};
+	}
+#endif
+	int width() const
+	{
+		return w_;
+	}
+	int height() const
+	{
+		return h_;
+	}
+};
+
+class SizeF {
+private:
+	double w_ = 0;
+	double h_ = 0;
+public:
+	SizeF() = default;
+	SizeF(double w, double h)
+		: w_(w)
+		, h_(h)
+	{
+	}
+#ifdef USE_QT
+	SizeF(QSizeF const &sz)
+		: w_(sz.width())
+		, h_(sz.height())
+	{
+	}
+	operator QSizeF () const
+	{
+		return {w_, h_};
+	}
+#endif
+	double width() const
+	{
+		return w_;
+	}
+	double height() const
+	{
+		return h_;
+	}
+};
+
+class Point {
+private:
+	int x_ = 0;
+	int y_ = 0;
+public:
+	Point() = default;
+	Point(int x, int y)
+		: x_(x)
+		, y_(y)
+	{
+	}
+#ifdef USE_QT
+	Point(QPoint const &pt)
+		: x_(pt.x())
+		, y_(pt.y())
+	{
+	}
+	operator QPoint () const
+	{
+		return {x_, y_};
+	}
+#endif
+	int x() const
+	{
+		return x_;
+	}
+	int y() const
+	{
+		return y_;
+	}
+	int &rx()
+	{
+		return x_;
+	}
+	int &ry()
+	{
+		return y_;
+	}
+};
+
+class PointF {
+private:
+	double x_ = 0;
+	double y_ = 0;
+public:
+	PointF() = default;
+	PointF(double x, double y)
+		: x_(x)
+		, y_(y)
+	{
+	}
+#ifdef USE_QT
+	PointF(QPointF const &pt)
+		: x_(pt.x())
+		, y_(pt.y())
+	{
+	}
+	operator QPointF () const
+	{
+		return {x_, y_};
+	}
+#endif
+	double x() const
+	{
+		return x_;
+	}
+	double y() const
+	{
+		return y_;
+	}
+	double &rx()
+	{
+		return x_;
+	}
+	double &ry()
+	{
+		return y_;
+	}
+};
+
+enum class k {
+	transparent,
+	black,
+	white,
+};
+
+class Color {
+private:
+	uint8_t r = 0;
+	uint8_t g = 0;
+	uint8_t b = 0;
+	uint8_t a = 255;
+public:
+	Color(euclase::k s)
+	{
+		switch (s) {
+		case k::transparent:
+			a = 0;
+			return;
+		case k::black:
+			r = 0;
+			g = 0;
+			b = 0;
+			a = 255;
+			return;
+		case k::white:
+			r = 255;
+			g = 255;
+			b = 255;
+			a = 255;
+			return;
+		}
+	}
+	Color(uint8_t r, uint8_t g, uint8_t b, uint8_t a = 255)
+		: r(r)
+		, g(g)
+		, b(b)
+		, a(a)
+	{
+	}
+#ifdef USE_QT
+	Color(QColor const &color)
+		: r(color.red())
+		, g(color.green())
+		, b(color.blue())
+	{
+	}
+#endif
+	uint8_t red() const
+	{
+		return r;
+	}
+	uint8_t green() const
+	{
+		return g;
+	}
+	uint8_t blue() const
+	{
+		return b;
+	}
+	uint8_t alpha() const
+	{
+		return a;
+	}
+};
 
 class RefCounter {
 private:
@@ -71,8 +282,33 @@ static inline float degamma(float v)
 	return v * v;
 }
 
+struct OctetGray;
 struct OctetGrayA;
+class FloatRGB;
 class FloatRGBA;
+
+struct OctetRGB {
+	uint8_t r, g, b;
+	OctetRGB()
+		: r(0)
+		, g(0)
+		, b(0)
+	{
+	}
+	OctetRGB(uint8_t r, uint8_t g, uint8_t b)
+		: r(r)
+		, g(g)
+		, b(b)
+	{
+	}
+	inline OctetRGB(OctetGrayA const &t);
+	uint8_t gray() const
+	{
+		return euclase::gray(r, g, b);
+	}
+	static OctetRGB convert(OctetGray const &t);
+	static OctetRGB convert(FloatRGB const &t);
+};
 
 struct OctetRGBA {
 	uint8_t r, g, b, a;
@@ -115,6 +351,7 @@ struct OctetGray {
 		return r;
 	}
 	inline OctetGray(OctetRGBA const &t);
+	static inline OctetGray convert(OctetRGB const &s);
 	static inline OctetGray convert(FloatRGBA const &r);
 	static inline OctetGray convert(OctetRGBA const &r);
 	uint8_t gray() const
@@ -446,6 +683,22 @@ public:
 	}
 };
 
+inline OctetRGB OctetRGB::convert(OctetGray const &t)
+{
+	return OctetRGB(t.v, t.v, t.v);
+}
+
+inline OctetRGB OctetRGB::convert(FloatRGB const &t)
+{
+	auto u8 = [](float v){
+		return (uint8_t)clamp(floorf(gamma(v) * 255 + 0.5), 0.0f, 255.0f);
+	};
+	auto r = u8(t.r);
+	auto g = u8(t.g);
+	auto b = u8(t.b);
+	return OctetRGB(r, g, b);
+}
+
 inline OctetRGBA OctetRGBA::convert(FloatRGBA const &t)
 {
 	auto u8 = [](float v){
@@ -592,6 +845,11 @@ FloatGray FloatGray::convert(FloatRGBA const &r)
 	return FloatGray(grayf(r.r, r.g, r.b) * r.a);
 }
 
+OctetGray OctetGray::convert(OctetRGB const &s)
+{
+	return OctetGray(::euclase::gray(s.r, s.g, s.b));
+}
+
 OctetGray OctetGray::convert(FloatRGBA const &r)
 {
 	auto s = degamma(r);
@@ -633,7 +891,9 @@ public:
 	};
 	enum MemoryType {
 		Host,
+#ifdef USE_CUDA
 		CUDA,
+#endif
 		};
 private:
 	struct Data {
@@ -649,8 +909,10 @@ private:
 			switch (memtype_) {
 			case Host:
 				return ((uint8_t *)this + sizeof(Data));
+#ifdef USE_CUDA
 			case CUDA:
 				return (uint8_t *)cudamem_;
+#endif
 			}
 			Q_ASSERT(0);
 			return nullptr;
@@ -695,16 +957,21 @@ public:
 		if (memtype() == Host) return *this;
 		return copy(Host);
 	}
+#ifdef USE_CUDA
 	Image toCUDA() const
 	{
 		if (memtype() == CUDA) return *this;
 		return copy(CUDA);
 	}
-
+#endif
+#ifdef USE_QT
 	Image(QImage const &image)
 	{
 		setImage(image);
 	}
+	void setImage(QImage const &image);
+	QImage qimage() const;
+#endif
 
 	bool isNull() const
 	{
@@ -743,11 +1010,7 @@ public:
 	uint8_t *scanLine(int y);
 	uint8_t const *scanLine(int y) const;
 
-	void fill(const QColor &color);
-
-	void setImage(QImage const &image);
-
-	QImage qimage() const;
+	void fill(const Color &color);
 
 	Image scaled(int w, int h, bool smooth) const;
 
@@ -761,20 +1024,34 @@ public:
 		return ptr_ ? ptr_->height_ : 0;
 	}
 
-	QSize size() const;
+	Size size() const;
 
-	Image convert(Image::Format newformat) const;
+	int bytesPerPixel() const;
+	int bytesPerLine() const
+	{
+		return bytesPerPixel() * width();
+	}
+
+	Image convertToFormat(Image::Format newformat) const;
 	Image makeFPImage() const;
 
 	void swap(Image &other);
 };
 
+#ifdef USE_QT
 QImage::Format qimageformat(Image::Format format);
+#endif
+
 int bytesPerPixel(Image::Format format);
+
+inline int Image::bytesPerPixel() const
+{
+	return euclase::bytesPerPixel(format());
+}
 
 inline uint8_t *Image::scanLine(int y)
 {
-	return ptr_ ? (ptr_->data() + bytesPerPixel(format()) * width() * y) : nullptr;
+	return ptr_ ? (ptr_->data() + bytesPerPixel() * width() * y) : nullptr;
 }
 
 inline uint8_t const *Image::scanLine(int y) const
@@ -786,8 +1063,8 @@ inline uint8_t const *Image::scanLine(int y) const
 
 double cubicBezierPoint(double p0, double p1, double p2, double p3, double t);
 double cubicBezierGradient(double p0, double p1, double p2, double p3, double t);
-QPointF cubicBezierPoint(QPointF &p0, QPointF &p1, QPointF &p2, QPointF &p3, double t);
-void cubicBezierSplit(QPointF *p0, QPointF *p1, QPointF *p2, QPointF *p3, QPointF *q0, QPointF *q1, QPointF *q2, QPointF *q3, double t);
+PointF cubicBezierPoint(const PointF &p0, const PointF &p1, const PointF &p2, const PointF &p3, double t);
+void cubicBezierSplit(PointF *p0, PointF *p1, PointF *p2, PointF *p3, PointF *q0, PointF *q1, PointF *q2, PointF *q3, double t);
 
 //
 
@@ -806,6 +1083,19 @@ struct FloatHSV {
 
 FloatHSV rgb_to_hsv(FloatRGB const &rgb);
 FloatRGB hsv_to_rgb(FloatHSV const &hsv);
+
+enum class EnlargeMethod {
+	NearestNeighbor,
+	Bilinear,
+	Bicubic,
+};
+euclase::Image resizeImage(euclase::Image const &image, int dst_w, int dst_h, EnlargeMethod method/* = EnlargeMethod::Bilinear*/);
+euclase::Image filter_blur(euclase::Image image, int radius, bool *cancel, std::function<void (float)> progress);
+
+std::optional<Image> load_jpeg(char const *path);
+std::optional<Image> load_png(char const *path);
+bool save_jpeg(Image const &image, char const *path);
+bool save_png(Image const &image, char const *path);
 
 } // namespace euclase
 

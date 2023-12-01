@@ -153,7 +153,7 @@ euclase::Image LayerComposer::render(int x, int y, int w, int h)
 {
 	Canvas::Panel panel;
 	panel.imagep()->make(w / m->div, h / m->div, euclase::Image::Format_F_RGBA, m->composed_panels.memtype_);
-	panel.imagep()->fill(Qt::transparent);
+	panel.imagep()->fill(euclase::k::transparent);
 	panel.setOffset(x / m->div, y / m->div);
 	{
 		std::vector<Canvas::Layer *> layers;

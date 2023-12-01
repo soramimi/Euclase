@@ -36,11 +36,11 @@ QSize ResizeDialog::imageSize() const
 	return QSize(w, h);
 }
 
-EnlargeMethod ResizeDialog::method() const
+euclase::EnlargeMethod ResizeDialog::method() const
 {
-	if (ui->radioButton_bilinear->isChecked()) return EnlargeMethod::Bilinear;
-	if (ui->radioButton_bicubic->isChecked()) return EnlargeMethod::Bicubic;
-	return EnlargeMethod::NearestNeighbor;
+	if (ui->radioButton_bilinear->isChecked()) return euclase::EnlargeMethod::Bilinear;
+	if (ui->radioButton_bicubic->isChecked()) return euclase::EnlargeMethod::Bicubic;
+	return euclase::EnlargeMethod::NearestNeighbor;
 }
 
 void ResizeDialog::sync_x()

@@ -2,8 +2,8 @@
 #define RESIZEDIALOG_H
 
 #include <QDialog>
-
-#include "resize.h"
+#include "euclase.h"
+// #include "resize.h"
 
 namespace Ui {
 class ResizeDialog;
@@ -22,7 +22,7 @@ public:
 	void setImageSize(const QSize &sz);
 
 	QSize imageSize() const;
-	EnlargeMethod method() const;
+	euclase::EnlargeMethod method() const;
 private slots:
 	void on_lineEdit_width_textChanged(const QString &text);
 

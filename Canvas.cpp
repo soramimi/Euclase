@@ -153,7 +153,7 @@ void Canvas::renderToSinglePanel(Panel *target_panel, QPoint const &target_offse
 	Panel maskpanel;
 	if (mask_layer && mask_layer->panelCount() != 0) {
 		maskpanel.imagep()->make(w, h, euclase::Image::Format_8_Grayscale);
-		maskpanel.imagep()->fill(Qt::black);
+		maskpanel.imagep()->fill(euclase::k::black);
 		maskpanel.setOffset(x0, y0);
 		renderToEachPanels_internal_(&maskpanel, target_offset, *mask_layer, nullptr, Qt::white, 255, {}, abort);
 		maskimg = maskpanel.imagep();
@@ -343,8 +343,8 @@ void Canvas::renderToSinglePanel(Panel *target_panel, QPoint const &target_offse
 			}
 		};
 
-		euclase::Image in = input_image->convert(euclase::Image::Format_8_RGBA).toHost();
-		euclase::Image out = target_panel->image().convert(euclase::Image::Format_8_RGBA).toHost();
+		euclase::Image in = input_image->convertToFormat(euclase::Image::Format_8_RGBA).toHost();
+		euclase::Image out = target_panel->image().convertToFormat(euclase::Image::Format_8_RGBA).toHost();
 		Do(&in, &out);
 		out.memconvert(target_panel->image().memtype());
 		*target_panel->imagep() = out;
@@ -660,7 +660,7 @@ void Canvas::renderToLayer(Layer *target_layer, Layer::ActivePanel activepanel, 
 					Panel *p = findPanel(targetpanels, QPoint(x, y));
 					if (!p) {
 						p = target_layer->addImagePanel(targetpanels, x, y, PANEL_SIZE, PANEL_SIZE, target_layer->format_, target_layer->memtype_);
-						p->imagep()->fill(Qt::transparent);
+						p->imagep()->fill(euclase::k::transparent);
 					}
 					renderToSinglePanel(p, target_layer->offset(), &input_panel, input_layer.offset(), mask_layer, opt, opt.brush_color, 255, abort);
 					if (sync) sync->unlock();
@@ -706,7 +706,7 @@ Canvas::Panel Canvas::renderSelection(const QRect &r, QMutex *sync, bool *abort)
 {
 	Panel panel;
 	panel.imagep()->make(r.width(), r.height(), euclase::Image::Format_8_Grayscale, selection_layer()->memtype_);
-	panel.imagep()->fill(Qt::black);
+	panel.imagep()->fill(euclase::k::black);
 	panel.setOffset(r.topLeft());
 	std::vector<Layer *> layers;
 	layers.push_back(selection_layer());
@@ -723,7 +723,7 @@ Canvas::Panel Canvas::renderToPanel(InputLayer inputlayer, euclase::Image::Forma
 
 	Panel panel;
 	panel.imagep()->make(r.width(), r.height(), format, current_layer()->memtype_);
-	panel.imagep()->fill(Qt::transparent);
+	panel.imagep()->fill(euclase::k::transparent);
 	panel.setOffset(r.topLeft());
 	std::vector<Layer *> layers;
 	switch (inputlayer) {
@@ -745,7 +745,7 @@ Canvas::Panel Canvas::crop(const QRect &r, QMutex *sync, bool *abort) const
 {
 	Panel panel;
 	panel.imagep()->make(r.width(), r.height(), euclase::Image::Format_8_RGBA);
-	panel.imagep()->fill(Qt::transparent);
+	panel.imagep()->fill(euclase::k::transparent);
 	panel.setOffset(r.topLeft());
 	std::vector<Layer *> layers;
 	layers.push_back(current_layer());
@@ -767,7 +767,7 @@ Canvas::Panel *Canvas::Layer::addImagePanel(std::vector<Panel> *panels, int x, i
 		Panel panel;
 		if (w > 0 && h > 0) {
 			panel->make(w, h, format_, memtype_);
-			panel->fill(Qt::transparent);
+			panel->fill(euclase::k::transparent);
 		}
 		panel.setOffset(x, y);
 		return panel;
@@ -887,7 +887,7 @@ void Canvas::changeSelection(SelectionOperation op, const QRect &rect, QMutex *s
 	layer.format_ = format;
 	layer.memtype_ = m->selection_layer.memtype_;
 	Panel *panel = layer.addImagePanel(&layer.primary_panels, rect.x(), rect.y(), rect.width(), rect.height(), layer.format_, layer.memtype_);
-	panel->imagep()->fill(Qt::white);
+	panel->imagep()->fill(euclase::k::white);
 
 	RenderOption opt;
 

@@ -385,7 +385,7 @@ euclase::Image filter_median(euclase::Image const &image, int radius, FilterStat
 		return filter_median(image.toHost(), radius, status);
 	}
 	if (image.format() == euclase::Image::Format_F_RGBA) {
-		euclase::Image tmpimg = image.convert(euclase::Image::Format_8_RGBA).toHost();
+		euclase::Image tmpimg = image.convertToFormat(euclase::Image::Format_8_RGBA).toHost();
 		tmpimg = filter_median(tmpimg, radius, status);
 		return tmpimg.makeFPImage();
 	}
@@ -399,7 +399,7 @@ euclase::Image filter_maximize(euclase::Image const &image, int radius, FilterSt
 		return filter_maximize(image.toHost(), radius, status);
 	}
 	if (image.format() == euclase::Image::Format_F_RGBA) {
-		euclase::Image tmpimg = image.convert(euclase::Image::Format_8_RGBA).toHost();
+		euclase::Image tmpimg = image.convertToFormat(euclase::Image::Format_8_RGBA).toHost();
 		tmpimg = filter_maximize(tmpimg, radius, status);
 		return tmpimg.makeFPImage();
 	}
@@ -413,7 +413,7 @@ euclase::Image filter_minimize(euclase::Image const &image, int radius, FilterSt
 		return filter_minimize(image.toHost(), radius, status);
 	}
 	if (image.format() == euclase::Image::Format_F_RGBA) {
-		euclase::Image tmpimg = image.convert(euclase::Image::Format_8_RGBA).toHost();
+		euclase::Image tmpimg = image.convertToFormat(euclase::Image::Format_8_RGBA).toHost();
 		tmpimg = filter_minimize(tmpimg, radius, status);
 		return tmpimg.makeFPImage();
 	}

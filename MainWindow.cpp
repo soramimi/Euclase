@@ -13,7 +13,7 @@
 #include "SettingsDialog.h"
 #include "antialias.h"
 #include "median.h"
-#include "resize.h"
+// #include "resize.h"
 #include "ui_MainWindow.h"
 #include "xbrz/xbrz.h"
 #include <QBitmap>
@@ -28,6 +28,7 @@
 #include <QShortcut>
 #include <omp.h>
 #include <stdint.h>
+#include "euclase.h"
 
 
 struct MainWindow::Private {
@@ -254,7 +255,7 @@ void MainWindow::setImage(euclase::Image image, bool fitview)
 	Canvas::Layer layer;
 	{
 		image = image.memconvert(canvas()->current_layer()->memtype_);
-		image = image.convert(canvas()->current_layer()->format_);
+		image = image.convertToFormat(canvas()->current_layer()->format_);
 		layer.setImage(QPoint(0, 0), image);
 	}
 	Canvas::RenderOption opt;
@@ -372,7 +373,7 @@ void MainWindow::on_action_resize_triggered()
 		unsigned int h = sz.height();
 		w = std::max(w, 1U);
 		h = std::max(h, 1U);
-		EnlargeMethod method = dlg.method();
+		euclase::EnlargeMethod method = dlg.method();
 		euclase::Image newimage = resizeImage(srcimage, w, h, method);
 		newimage.memconvert(memtype);
 		setImage(newimage, true);
@@ -418,7 +419,7 @@ void MainWindow::filter(FilterContext *context, AbstractFilterForm *form, std::f
 		euclase::Image img;
 		if (canvas()->selection_layer()->primary_panels.empty()) {
 			img = euclase::Image(r.width(), r.height(), euclase::Image::Format_8_Grayscale, canvas()->selection_layer()->memtype_);
-			img.fill(Qt::white);
+			img.fill(euclase::k::white);
 		} else {
 			Canvas::Panel panel = canvas()->renderSelection(r, nullptr, nullptr);
 			img = panel.image();
@@ -656,6 +657,7 @@ void MainWindow::drawBrush(bool one)
 		}
 		paintLayer(Operation::PaintToCurrentLayer, layer);
 	};
+
 
 	auto Point = [&](double t){
 		return euclase::cubicBezierPoint(m->brush_bezier[0], m->brush_bezier[1], m->brush_bezier[2], m->brush_bezier[3], t);
@@ -1343,7 +1345,7 @@ void MainWindow::on_action_new_triggered()
 		if (dlg.from() == NewDialog::From::New) {
 			euclase::Image image;
 			image.make(sz.width(), sz.height(), euclase::Image::Format_F_RGBA);
-			image.fill(Qt::white);
+			image.fill(euclase::k::white);
 			setImage(image, true);
 			return;
 		}

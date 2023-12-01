@@ -6,12 +6,17 @@ QT += core gui widgets svg
 
 DESTDIR = $$PWD/_bin
 
+DEFINES += USE_QT=1
+DEFINES += USE_CUDA=1
+
 #win32:LIBS += -lkernel32.lib
 !win32:LIBS += -ldl
 
 unix:QMAKE_CXXFLAGS += -fopenmp -msse4.1
 unix:QMAKE_LFLAGS += -fopenmp
 msvc:QMAKE_CXXFLAGS += /openmp
+
+LIBS += -lpng -ljpeg
 
 
 #INCLUDEPATH += "C:/Program Files/NVIDIA GPU Computing Toolkit/CUDA/v7.5/include"
@@ -60,7 +65,6 @@ SOURCES += main.cpp\
 	joinpath.cpp \
 	median.cpp \
 	misc.cpp \
-	resize.cpp \
 	xbrz/xbrz.cpp
 
 HEADERS += \
@@ -106,7 +110,6 @@ HEADERS += \
 	main.h \
 	median.h \
 	misc.h \
-	resize.h \
 	uninitialized_vector.h \
 	xbrz/xbrz.h \
 	xbrz/xbrz_config.h \
