@@ -334,7 +334,7 @@ template <typename PIXEL, typename FILTER> euclase::Image Filter(euclase::Image 
 
 		std::atomic_int rows = 0;
 
-#pragma omp parallel for schedule(static, 8)
+#pragma omp parallel for // schedule(static, 8)
 		for (int y = 0; y < h; y++) {
 			if (isInterrupted()) continue;
 
@@ -379,71 +379,77 @@ template <typename PIXEL, typename FILTER> euclase::Image Filter(euclase::Image 
 
 } // namespace
 
-euclase::Image filter_median(euclase::Image const &image, int radius, FilterStatus *status)
+enum Operation {
+	Median,
+	Maximize,
+	Minimize,
+};
+
+euclase::Image perform_filter_(Operation op, euclase::Image const &image, int radius, FilterStatus *status)
 {
 	if (image.memtype() != euclase::Image::Host) {
-		return filter_median(image.toHost(), radius, status);
+		return perform_filter_(op, image.toHost(), radius, status);
 	}
 
 	auto format = image.format();
 
 	if (format == euclase::Image::Format_F_RGBA) {
 		euclase::Image tmpimg = image.convertToFormat(euclase::Image::Format_8_RGBA).toHost();
-		tmpimg = filter_median(tmpimg, radius, status);
+		tmpimg = perform_filter_(op, tmpimg, radius, status);
 		return tmpimg.makeFPImage();
 	}
 	if (format == euclase::Image::Format_F_GrayscaleA) {
 		euclase::Image tmpimg = image.convertToFormat(euclase::Image::Format_8_GrayscaleA).toHost();
-		tmpimg = filter_median(tmpimg, radius, status);
+		tmpimg = perform_filter_(op, tmpimg, radius, status);
 		return tmpimg.convertToFormat(format);
 	}
 
 	if (format == euclase::Image::Format_8_RGB) {
 		euclase::Image tmpimg = image.convertToFormat(euclase::Image::Format_8_RGBA).toHost();
-		tmpimg = filter_median(tmpimg, radius, status);
+		tmpimg = perform_filter_(op, tmpimg, radius, status);
 		return tmpimg.convertToFormat(format);
 	}
 	if (format == euclase::Image::Format_8_Grayscale) {
 		euclase::Image tmpimg = image.convertToFormat(euclase::Image::Format_8_GrayscaleA).toHost();
-		tmpimg = filter_median(tmpimg, radius, status);
+		tmpimg = perform_filter_(op, tmpimg, radius, status);
 		return tmpimg.convertToFormat(format);
 	}
 
 	if (format == euclase::Image::Format_8_RGBA) {
-		return Filter<OctetRGBA, median_filter_rgb_t>(image, radius, status);
-	}
-	if (format == euclase::Image::Format_8_GrayscaleA) {
-		return Filter<OctetGrayA, median_filter_y_t>(image, radius, status);
+		switch (op) {
+		case Median:
+			return Filter<OctetRGBA, median_filter_rgb_t>(image, radius, status);
+		case Maximize:
+			return Filter<OctetRGBA, maximize_filter_rgb_t>(image, radius, status);
+		case Minimize:
+			return Filter<OctetRGBA, minimize_filter_rgb_t>(image, radius, status);
+		}
+	} else if (format == euclase::Image::Format_8_GrayscaleA) {
+		switch (op) {
+		case Median:
+			return Filter<OctetGrayA, median_filter_y_t>(image, radius, status);
+		case Maximize:
+			return Filter<OctetGrayA, maximize_filter_y_t>(image, radius, status);
+		case Minimize:
+			return Filter<OctetGrayA, minimize_filter_y_t>(image, radius, status);
+		}
 	}
 	return {};
 }
 
+euclase::Image filter_median(euclase::Image const &image, int radius, FilterStatus *status)
+{
+	return perform_filter_(Median, image, radius, status);
+}
+
 euclase::Image filter_maximize(euclase::Image const &image, int radius, FilterStatus *status)
 {
-	if (image.memtype() != euclase::Image::Host) {
-		return filter_maximize(image.toHost(), radius, status);
-	}
-	if (image.format() == euclase::Image::Format_F_RGBA) {
-		euclase::Image tmpimg = image.convertToFormat(euclase::Image::Format_8_RGBA).toHost();
-		tmpimg = filter_maximize(tmpimg, radius, status);
-		return tmpimg.makeFPImage();
-	}
-
-	return Filter<OctetRGBA, maximize_filter_rgb_t>(image, radius, status);
+	return perform_filter_(Maximize, image, radius, status);
 }
 
 euclase::Image filter_minimize(euclase::Image const &image, int radius, FilterStatus *status)
 {
-	if (image.memtype() != euclase::Image::Host) {
-		return filter_minimize(image.toHost(), radius, status);
-	}
-	if (image.format() == euclase::Image::Format_F_RGBA) {
-		euclase::Image tmpimg = image.convertToFormat(euclase::Image::Format_8_RGBA).toHost();
-		tmpimg = filter_minimize(tmpimg, radius, status);
-		return tmpimg.makeFPImage();
-	}
-
-	return Filter<OctetRGBA, minimize_filter_rgb_t>(image, radius, status);
+	return perform_filter_(Minimize, image, radius, status);
 }
 
 
