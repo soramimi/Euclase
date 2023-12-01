@@ -8,6 +8,7 @@
 #include <string.h>
 #include <stdint.h>
 #include "euclase.h"
+#include "FilterStatus.h"
 
 namespace {
 
@@ -378,19 +379,43 @@ template <typename PIXEL, typename FILTER> euclase::Image Filter(euclase::Image 
 
 } // namespace
 
-
 euclase::Image filter_median(euclase::Image const &image, int radius, FilterStatus *status)
 {
 	if (image.memtype() != euclase::Image::Host) {
 		return filter_median(image.toHost(), radius, status);
 	}
-	if (image.format() == euclase::Image::Format_F_RGBA) {
+
+	auto format = image.format();
+
+	if (format == euclase::Image::Format_F_RGBA) {
 		euclase::Image tmpimg = image.convertToFormat(euclase::Image::Format_8_RGBA).toHost();
 		tmpimg = filter_median(tmpimg, radius, status);
 		return tmpimg.makeFPImage();
 	}
+	if (format == euclase::Image::Format_F_GrayscaleA) {
+		euclase::Image tmpimg = image.convertToFormat(euclase::Image::Format_8_GrayscaleA).toHost();
+		tmpimg = filter_median(tmpimg, radius, status);
+		return tmpimg.convertToFormat(format);
+	}
 
-	return Filter<OctetRGBA, median_filter_rgb_t>(image, radius, status);
+	if (format == euclase::Image::Format_8_RGB) {
+		euclase::Image tmpimg = image.convertToFormat(euclase::Image::Format_8_RGBA).toHost();
+		tmpimg = filter_median(tmpimg, radius, status);
+		return tmpimg.convertToFormat(format);
+	}
+	if (format == euclase::Image::Format_8_Grayscale) {
+		euclase::Image tmpimg = image.convertToFormat(euclase::Image::Format_8_GrayscaleA).toHost();
+		tmpimg = filter_median(tmpimg, radius, status);
+		return tmpimg.convertToFormat(format);
+	}
+
+	if (format == euclase::Image::Format_8_RGBA) {
+		return Filter<OctetRGBA, median_filter_rgb_t>(image, radius, status);
+	}
+	if (format == euclase::Image::Format_8_GrayscaleA) {
+		return Filter<OctetGrayA, median_filter_y_t>(image, radius, status);
+	}
+	return {};
 }
 
 euclase::Image filter_maximize(euclase::Image const &image, int radius, FilterStatus *status)

@@ -2,9 +2,7 @@
 #ifndef MEDIAN_H_
 #define MEDIAN_H_
 
-#include "FilterStatus.h"
-
-#include <QImage>
+struct FilterStatus;
 
 namespace euclase {
 class Image;

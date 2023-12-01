@@ -10,6 +10,8 @@
 #include <cstdint>
 #include <atomic>
 #include <utility>
+#include <cassert>
+#include <functional>
 
 namespace euclase {
 
@@ -282,12 +284,17 @@ static inline float degamma(float v)
 	return v * v;
 }
 
-struct OctetGray;
-struct OctetGrayA;
 class FloatRGB;
 class FloatRGBA;
+class FloatGray;
+class FloatGrayA;
+class OctetRGB;
+class OctetRGBA;
+class OctetGray;
+class OctetGrayA;
 
-struct OctetRGB {
+class OctetRGB {
+public:
 	uint8_t r, g, b;
 	OctetRGB()
 		: r(0)
@@ -310,7 +317,8 @@ struct OctetRGB {
 	static OctetRGB convert(FloatRGB const &t);
 };
 
-struct OctetRGBA {
+class OctetRGBA {
+public:
 	uint8_t r, g, b, a;
 	OctetRGBA()
 		: r(0)
@@ -334,7 +342,8 @@ struct OctetRGBA {
 	static OctetRGBA convert(FloatRGBA const &t);
 };
 
-struct OctetGray {
+class OctetGray {
+public:
 	uint8_t v;
 	OctetGray()
 		: v(0)
@@ -344,31 +353,37 @@ struct OctetGray {
 		: v(l)
 	{
 	}
-	OctetGray(OctetGrayA const &r);
 	static OctetGray convert(OctetGray const &r, bool ignored)
 	{
 		(void)ignored;
 		return r;
 	}
-	inline OctetGray(OctetRGBA const &t);
-	static inline OctetGray convert(OctetRGB const &s);
-	static inline OctetGray convert(FloatRGBA const &r);
-	static inline OctetGray convert(OctetRGBA const &r);
+	explicit inline OctetGray(OctetRGBA const &t);
+	static inline OctetGray convert(OctetRGB const &t);
+	static inline OctetGray convert(FloatRGBA const &t);
+	static inline OctetGray convert(OctetRGBA const &r)
+	{
+		auto y = ::euclase::gray(r.r, r.g, r.b);
+		return OctetGray(uint8_t((y * r.a + 128) / 255));
+	}
+	static OctetGray convert(OctetGrayA const &r);
+
 	uint8_t gray() const
 	{
 		return v;
 	}
 };
 
-struct OctetGrayA {
+class OctetGrayA {
+public:
 	uint8_t v, a;
 	OctetGrayA()
 		: v(0)
 		, a(0)
 	{
 	}
-	explicit OctetGrayA(uint8_t l, uint8_t a = 255)
-		: v(l)
+	explicit OctetGrayA(uint8_t v, uint8_t a = 255)
+		: v(v)
 		, a(a)
 	{
 	}
@@ -382,6 +397,13 @@ struct OctetGrayA {
 	{
 		return v;
 	}
+	static inline OctetGrayA convert(FloatRGBA const &t);
+	static inline OctetGrayA convert(FloatRGB const &t);
+	static inline OctetGrayA convert(FloatGrayA const &t);
+	static inline OctetGrayA convert(FloatGray const &t);
+	static inline OctetGrayA convert(OctetRGBA const &t);
+	static inline OctetGrayA convert(OctetRGB const &t);
+	static inline OctetGrayA convert(OctetGray const &t);
 };
 
 inline OctetRGBA::OctetRGBA(OctetGrayA const &t)
@@ -398,10 +420,7 @@ inline OctetGrayA::OctetGrayA(OctetRGBA const &t)
 {
 }
 
-inline OctetGray::OctetGray(OctetGrayA const &r)
-	: v(r.v)
-{
-}
+
 
 class FloatRGB {
 public:
@@ -426,6 +445,11 @@ public:
 		float g = degamma(src.g / 255.0);
 		float b = degamma(src.b / 255.0);
 		return {r, g, b};
+	}
+	static FloatRGB convert(OctetGrayA const &src)
+	{
+		float v = degamma(src.v / 255.0);
+		return {v, v, v};
 	}
 	FloatRGB operator + (FloatRGB const &right) const
 	{
@@ -551,7 +575,7 @@ public:
 	{
 		if (v <= 0) return 0;
 		if (v >= 1) return 255;
-		return (uint8_t)floor(v * 255 + 0.5f);
+		return (uint8_t)floor(gamma(v) * 255 + 0.5f);
 	}
 	FloatGray limit() const
 	{
@@ -572,7 +596,7 @@ public:
 	{
 		return OctetGray(y8());
 	}
-	static inline FloatGray convert(FloatRGBA const &r);
+	static inline FloatGray convert(FloatRGBA const &t);
 };
 
 class FloatRGBA {
@@ -766,7 +790,7 @@ public:
 	{
 		if (v <= 0) return 0;
 		if (v >= 1) return 255;
-		return (uint8_t)floor(v * 255 + 0.5);
+		return clamp(int(gamma(v) * 255 + 0.5), 0, 255);
 	}
 	uint8_t a8() const
 	{
@@ -840,27 +864,27 @@ FloatRGBA FloatRGBA::convert(OctetRGBA const &src)
 	return degamma(FloatRGBA(r, g, b, a));
 }
 
-FloatGray FloatGray::convert(FloatRGBA const &r)
+FloatGray FloatGray::convert(FloatRGBA const &t)
 {
-	return FloatGray(grayf(r.r, r.g, r.b) * r.a);
+	return FloatGray(grayf(t.r, t.g, t.b) * t.a);
 }
 
-OctetGray OctetGray::convert(OctetRGB const &s)
+OctetGray OctetGray::convert(OctetRGB const &t)
 {
-	return OctetGray(::euclase::gray(s.r, s.g, s.b));
+	return OctetGray(::euclase::gray(t.r, t.g, t.b));
 }
 
-OctetGray OctetGray::convert(FloatRGBA const &r)
+OctetGray OctetGray::convert(FloatRGBA const &t)
 {
-	auto s = degamma(r);
-	auto y = ::euclase::gray(s.r8(), s.g8(), s.b8());
-	return OctetGray(uint8_t(y * r.a));
+//	auto s = degamma(r);
+	auto y = ::euclase::gray(t.r8(), t.g8(), t.b8());
+	y = gamma(y);
+	return OctetGray(uint8_t(y * t.a));
 }
 
-OctetGray OctetGray::convert(OctetRGBA const &r)
+inline OctetGray OctetGray::convert(const OctetGrayA &r)
 {
-	auto y = ::euclase::gray(r.r, r.g, r.b);
-	return OctetGray(uint8_t((y * r.a + 128) / 255));
+	return OctetGray(r.v);
 }
 
 FloatGray FloatGray::convert(OctetRGBA const &r)
@@ -868,6 +892,47 @@ FloatGray FloatGray::convert(OctetRGBA const &r)
 	auto s = FloatRGBA::convert(r);
 	return FloatGray(grayf(s.r, s.g, s.b) * s.a);
 }
+
+OctetGrayA OctetGrayA::convert(const FloatRGBA &t)
+{
+	return OctetGrayA(::euclase::gray(t.r, t.g, t.b), 255);
+}
+
+OctetGrayA OctetGrayA::convert(const FloatRGB &t)
+{
+	float y = ::euclase::grayf(t.r, t.g, t.b);
+	return OctetGrayA(clamp(int(gamma(y) * 255 + 0.5), 0, 255), 255);
+}
+
+OctetGrayA OctetGrayA::convert(const FloatGrayA &t)
+{
+	int y = t.v8();
+	int a = clamp(int(t.a * 255 + 0.5), 0, 255);
+	return OctetGrayA(y, a);
+}
+
+OctetGrayA OctetGrayA::convert(const FloatGray &t)
+{
+	return OctetGrayA(clamp(int(gamma(t.v) * 255 + 0.5), 0, 255), 255);
+}
+
+OctetGrayA OctetGrayA::convert(const OctetRGBA &t)
+{
+	uint8_t v = ::euclase::gray(t.r, t.g, t.b);
+	return OctetGrayA(v, t.a);
+}
+
+OctetGrayA OctetGrayA::convert(const OctetRGB &t)
+{
+	uint8_t v = ::euclase::gray(t.r, t.g, t.b);
+	return OctetGrayA(v, 255);
+}
+
+OctetGrayA OctetGrayA::convert(const OctetGray &t)
+{
+	return OctetGrayA(t.gray(), 255);
+}
+
 
 template <typename T> static inline T limit(T const &t)
 {
@@ -914,7 +979,7 @@ private:
 				return (uint8_t *)cudamem_;
 #endif
 			}
-			Q_ASSERT(0);
+			assert(0);
 			return nullptr;
 		}
 		uint8_t const *data() const
@@ -999,11 +1064,11 @@ public:
 		init(width, height, format, memtype);
 	}
 
-	void *data()
+	uint8_t *data()
 	{
 		return ptr_ ? ptr_->data() : nullptr;
 	}
-	void const *data() const
+	uint8_t const *data() const
 	{
 		return const_cast<Image *>(this)->data();
 	}
@@ -1092,10 +1157,12 @@ enum class EnlargeMethod {
 euclase::Image resizeImage(euclase::Image const &image, int dst_w, int dst_h, EnlargeMethod method/* = EnlargeMethod::Bilinear*/);
 euclase::Image filter_blur(euclase::Image image, int radius, bool *cancel, std::function<void (float)> progress);
 
+#if 0
 std::optional<Image> load_jpeg(char const *path);
 std::optional<Image> load_png(char const *path);
 bool save_jpeg(Image const &image, char const *path);
 bool save_png(Image const &image, char const *path);
+#endif
 
 } // namespace euclase
 

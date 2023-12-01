@@ -5,6 +5,7 @@
 #include "FilterFormBlur.h"
 #include "FilterFormColorCorrection.h"
 #include "FilterFormMedian.h"
+#include "FilterStatus.h"
 #include "MainWindow.h"
 #include "MySettings.h"
 #include "NewDialog.h"
@@ -496,7 +497,7 @@ void MainWindow::on_action_filter_sepia_triggered()
 	FilterContext fc;
 	fc.setParameter("amount", 10);
 	filter(&fc, nullptr, [](FilterContext *context){
-		FilterStatus s(context);
+		FilterStatus s(context->cancel_ptr(), context->progress_ptr());
 		return sepia(context->sourceImage(), &s);
 	});
 }
@@ -506,7 +507,7 @@ void MainWindow::on_action_filter_median_triggered()
 	FilterContext fc;
 	fc.setParameter("amount", 10);
 	filter(&fc, new FilterFormMedian(this), [](FilterContext *context){
-		FilterStatus s(context);
+		FilterStatus s(context->cancel_ptr(), context->progress_ptr());
 		int value = context->parameter("amount").toInt();
 		return filter_median(context->sourceImage(), value, &s);
 	});
@@ -517,7 +518,7 @@ void MainWindow::on_action_filter_maximize_triggered()
 	FilterContext fc;
 	fc.setParameter("amount", 10);
 	filter(&fc, nullptr, [](FilterContext *context){
-		FilterStatus s(context);
+		FilterStatus s(context->cancel_ptr(), context->progress_ptr());
 		int value = context->parameter("amount").toInt();
 		return filter_maximize(context->sourceImage(), value, &s);
 	});
@@ -528,7 +529,7 @@ void MainWindow::on_action_filter_minimize_triggered()
 	FilterContext fc;
 	fc.setParameter("amount", 10);
 	filter(&fc, nullptr, [](FilterContext *context){
-		FilterStatus s(context);
+		FilterStatus s(context->cancel_ptr(), context->progress_ptr());
 		int value = context->parameter("amount").toInt();
 		return filter_minimize(context->sourceImage(), value, &s);
 	});
@@ -539,7 +540,7 @@ void MainWindow::on_action_filter_blur_triggered()
 	auto fn = [](FilterContext *context){
 		int radius = context->parameter("amount").toInt();
 		euclase::Image newimage = context->sourceImage().toHost();
-		FilterStatus s(context);
+		FilterStatus s(context->cancel_ptr(), context->progress_ptr());
 		for (int pass = 0; pass < 3; pass++) {
 			auto progress = [&](float v){
 				*s.progress = (pass + v) / 3.0f;
@@ -1512,7 +1513,7 @@ void MainWindow::colorCollection()
 	fc.setParameter("saturation", 0);
 	fc.setParameter("brightness", 0);
 	filter(&fc, new FilterFormColorCorrection(this), [](FilterContext *context){
-		FilterStatus s(context);
+		FilterStatus s(context->cancel_ptr(), context->progress_ptr());
 		ColorCorrectionParams params;
 		params.hue = context->parameter("hue").toInt() / 360.f;
 		params.saturation = context->parameter("saturation").toInt() / 100.f;

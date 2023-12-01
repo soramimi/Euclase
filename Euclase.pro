@@ -16,7 +16,19 @@ unix:QMAKE_CXXFLAGS += -fopenmp -msse4.1
 unix:QMAKE_LFLAGS += -fopenmp
 msvc:QMAKE_CXXFLAGS += /openmp
 
-LIBS += -lpng -ljpeg
+win32 {
+	DEFINES += _USE_MATH_DEFINES=1
+	INCLUDEPATH += C:/develop/libimage/libpng/lpng1640
+	INCLUDEPATH += C:/develop/libimage/libjpeg/jpeg-6b
+	LIBS += C:/develop/libimage/libpng/out/x64/Release/libjpeg.lib
+	LIBS += C:/develop/libimage/libjpeg/out/x64/Release/libjpeg.lib
+	LIBS += C:/develop/libimage/libz/out/x64/Release/libz.lib
+}
+!win32 {
+	LIBS += -lpng -ljpeg
+}
+
+
 
 
 #INCLUDEPATH += "C:/Program Files/NVIDIA GPU Computing Toolkit/CUDA/v7.5/include"

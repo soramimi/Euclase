@@ -316,9 +316,9 @@ bool filter_antialias(euclase::Image *image)
 	}
 
 	if (image->format() == euclase::Image::Format_F_RGBA) {
-		*image = image->convert(euclase::Image::Format_8_RGBA);
+		*image = image->convertToFormat(euclase::Image::Format_8_RGBA);
 		if (filter_antialias(image)) {
-			*image = image->convert(euclase::Image::Format_F_RGBA);
+			*image = image->convertToFormat(euclase::Image::Format_F_RGBA);
 			return true;
 		}
 		return false;

@@ -374,6 +374,49 @@ euclase::Image euclase::Image::convertToFormat(Image::Format newformat) const
 			}
 			break;
 		}
+	} else if (newformat == Image::Format_8_GrayscaleA) {
+		switch (format()) {
+		case Format_F_RGBA:
+			newimg.make(w, h, newformat);
+			for (int y = 0; y < h; y++) {
+				FloatRGBA const *s = (FloatRGBA const *)scanLine(y);
+				OctetGrayA *d = (OctetGrayA *)newimg.scanLine(y);
+				for (int x = 0; x < w; x++) {
+					d[x] = OctetGrayA::convert(s[x].limit());
+				}
+			}
+			break;
+		case Format_8_RGBA:
+			newimg.make(w, h, newformat);
+			for (int y = 0; y < h; y++) {
+				OctetRGBA const *s = (OctetRGBA const *)scanLine(y);
+				OctetGrayA *d = (OctetGrayA *)newimg.scanLine(y);
+				for (int x = 0; x < w; x++) {
+					d[x] = OctetGrayA::convert(s[x]);
+				}
+			}
+			break;
+		case Format_8_RGB:
+			newimg.make(w, h, newformat);
+			for (int y = 0; y < h; y++) {
+				OctetRGB const *s = (OctetRGB const *)scanLine(y);
+				OctetGrayA *d = (OctetGrayA *)newimg.scanLine(y);
+				for (int x = 0; x < w; x++) {
+					d[x] = OctetGrayA::convert(s[x]);
+				}
+			}
+			break;
+		case Format_8_Grayscale:
+			newimg.make(w, h, newformat);
+			for (int y = 0; y < h; y++) {
+				OctetGray const *s = (OctetGray const *)scanLine(y);
+				OctetGrayA *d = (OctetGrayA *)newimg.scanLine(y);
+				for (int x = 0; x < w; x++) {
+					d[x] = OctetGrayA::convert(s[x]);
+				}
+			}
+			break;
+		}
 	} else if (newformat == Image::Format_8_Grayscale) {
 		switch (format()) {
 		case Format_F_RGBA:
@@ -400,6 +443,16 @@ euclase::Image euclase::Image::convertToFormat(Image::Format newformat) const
 			newimg.make(w, h, newformat);
 			for (int y = 0; y < h; y++) {
 				OctetRGB const *s = (OctetRGB const *)scanLine(y);
+				OctetGray *d = (OctetGray *)newimg.scanLine(y);
+				for (int x = 0; x < w; x++) {
+					d[x] = OctetGray::convert(s[x]);
+				}
+			}
+			break;
+		case Format_8_GrayscaleA:
+			newimg.make(w, h, newformat);
+			for (int y = 0; y < h; y++) {
+				OctetGrayA const *s = (OctetGrayA const *)scanLine(y);
 				OctetGray *d = (OctetGray *)newimg.scanLine(y);
 				for (int x = 0; x < w; x++) {
 					d[x] = OctetGray::convert(s[x]);
@@ -541,7 +594,7 @@ void euclase::Image::init(int w, int h, Image::Format format, MemoryType memtype
 {
 	const int datasize = w * h * euclase::bytesPerPixel(format);
 	Data *p = (Data *)malloc(sizeof(Data) + (memtype == Host ? datasize : 0));
-	Q_ASSERT(p);
+	assert(p);
 	new(p) Data();
 	assign(p);
 	p->memtype_ = memtype;
@@ -1441,12 +1494,25 @@ euclase::Image euclase::resizeImage(euclase::Image const &image, int dst_w, int 
 
 euclase::Image euclase::filter_blur(euclase::Image image, int radius, bool *cancel, std::function<void (float)> progress)
 {
-	if (image.format() == euclase::Image::Format_8_Grayscale) {
+	if (image.format() == Image::Format_F_RGBA) {
+		return BlurFilter<FloatRGBA, FloatRGBA>(image, radius, cancel, progress);
+	}
+
+	if (image.format() == Image::Format_8_Grayscale) {
 		return BlurFilter<FloatGrayA, FloatGrayA>(image, radius, cancel, progress);
 	}
-	return BlurFilter<FloatRGBA, FloatRGBA>(image, radius, cancel, progress);
+
+	auto format = image.format();
+	switch (format) {
+	case euclase::Image::Format_8_RGBA:
+	case euclase::Image::Format_8_GrayscaleA:
+		auto img = filter_blur(image.convertToFormat(Image::Format_F_RGBA), radius, cancel, progress);
+		return img.convertToFormat(format);
+	}
+	return {};
 }
 
+#ifdef USE_EUCLASE_IMAGE_READ_WRITE
 // image load/save
 
 #include "png.cpp.h"
@@ -1479,4 +1545,7 @@ bool euclase::save_png(Image const &image, char const *path)
 {
 	return write_png(image, path);
 }
+
+#endif
+
 
