@@ -599,8 +599,6 @@ void ImageViewWidget::paintEvent(QPaintEvent *)
 
 		if (m->offscreen_update) {
 			m->offscreen_update = false;
-			QElapsedTimer e;
-			e.start();
 			struct Item {
 				QRect dst_rect;
 				QImage image;
@@ -692,7 +690,6 @@ void ImageViewWidget::paintEvent(QPaintEvent *)
 					items[i] = {dst_rect, qimg};
 				}
 			}
-			qDebug() << e.elapsed();
 
 			QPainter pr1(&m->offscreen1);
 			for (Item const &item : items) {
