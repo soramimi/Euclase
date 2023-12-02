@@ -1157,7 +1157,7 @@ enum class EnlargeMethod {
 euclase::Image resizeImage(euclase::Image const &image, int dst_w, int dst_h, EnlargeMethod method/* = EnlargeMethod::Bilinear*/);
 euclase::Image filter_blur(euclase::Image image, int radius, bool *cancel, std::function<void (float)> progress);
 
-#if 0
+#ifdef USE_EUCLASE_IMAGE_READ_WRITE
 std::optional<Image> load_jpeg(char const *path);
 std::optional<Image> load_png(char const *path);
 bool save_jpeg(Image const &image, char const *path);
