@@ -97,6 +97,7 @@ void LayerComposer::run()
 						return Distance(ca, req.center) < Distance(cb, req.center);
 					});
 
+#pragma omp parallel for schedule(static, 8) num_threads(8)
 					for (int i = 0; i < pts.size(); i++) {
 						if (m->cancel) continue;
 						QPoint pt = pts[i];
@@ -115,9 +116,9 @@ void LayerComposer::run()
 							*panel.imagep() = panel.imagep()->scaled(rect.width() / m->div, rect.height() / m->div, false);
 						}
 						panel.setOffset(pt.x() / m->div, pt.y() / m->div);
-						panels.emplace_back(panel);
 						{
 							std::lock_guard lock(m->mutex);
+							panels.emplace_back(panel);
 							m->composed_panels.primary_panels = panels;
 							Canvas::Layer::sort(&m->composed_panels.primary_panels);
 						}

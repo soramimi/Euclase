@@ -956,10 +956,8 @@ public:
 	};
 	enum MemoryType {
 		Host,
-#ifdef USE_CUDA
 		CUDA,
-#endif
-		};
+	};
 private:
 	struct Data {
 		RefCounter ref;

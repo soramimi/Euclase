@@ -173,6 +173,7 @@ void Canvas::renderToSinglePanel(Panel *target_panel, QPoint const &target_offse
 
 		auto memtype = target_panel->imagep()->memtype();
 
+#ifdef USE_CUDA
 		if (input_image->memtype() == euclase::Image::CUDA || target_panel->imagep()->memtype() == euclase::Image::CUDA) {
 			if (target_panel->imagep()->format() == euclase::Image::Format_8_Grayscale) {
 				euclase::Image in = input_image->toCUDA();
@@ -192,6 +193,7 @@ void Canvas::renderToSinglePanel(Panel *target_panel, QPoint const &target_offse
 				return;
 			}
 		}
+#endif
 
 		target_panel->imagep()->memconvert(euclase::Image::Host);
 		if (target_panel->imagep()->format() == euclase::Image::Format_8_RGBA) {
@@ -354,6 +356,7 @@ void Canvas::renderToSinglePanel(Panel *target_panel, QPoint const &target_offse
 
 	if (target_panel->imagep()->format() == euclase::Image::Format_F_RGBA) {
 
+#ifdef USE_CUDA
 		if (input_image->format() == euclase::Image::Format_F_RGBA) {
 			if (target_panel->image().memtype() == euclase::Image::CUDA) {
 				auto memtype = target_panel->imagep()->memtype();
@@ -378,6 +381,7 @@ void Canvas::renderToSinglePanel(Panel *target_panel, QPoint const &target_offse
 				return;
 			}
 		}
+#endif
 
 		const int dstep = euclase::bytesPerPixel(target_panel->imagep()->format());
 		const int sstep = euclase::bytesPerPixel(input_image->format());
@@ -508,6 +512,7 @@ void Canvas::composePanel(Panel *target_panel, Panel const *alt_panel, Panel con
 	Q_ASSERT(target_panel->format() == euclase::Image::Format_F_RGBA);
 	Q_ASSERT(alt_mask->format() == euclase::Image::Format_8_Grayscale);
 
+#ifdef USE_CUDA
 	if (target_panel->imagep()->memtype() == euclase::Image::CUDA) {
 		Q_ASSERT(alt_panel->imagep()->memtype() == euclase::Image::CUDA);
 		euclase::Image *dst = target_panel->imagep();
@@ -516,6 +521,7 @@ void Canvas::composePanel(Panel *target_panel, Panel const *alt_panel, Panel con
 		global->cuda->compose_float_rgba(PANEL_SIZE, PANEL_SIZE, dst->data(), src->data(), mask.data());
 		return;
 	}
+#endif
 
 	euclase::FloatRGBA *dst = (euclase::FloatRGBA *)target_panel->imagep()->data();
 	euclase::FloatRGBA const *src = (euclase::FloatRGBA const *)alt_panel->imagep()->data();

@@ -51,6 +51,7 @@ int main(int argc, char *argv[])
 
 	MyApplication a(argc, argv);
 
+#ifdef USE_CUDA
 #ifdef Q_OS_WIN
 	if (1) {
 		QString path = a.applicationDirPath() / "libEuclaseCUDA.dll";
@@ -84,6 +85,7 @@ int main(int argc, char *argv[])
 	if (!global->cuda) {
 		qDebug() << "Could not use CUDA.";
 	}
+#endif
 
 	qRegisterMetaType<RenderedImage>("RenderedImage");
 	qRegisterMetaType<SelectionOutlineBitmap>("SelectionOutlineBitmap");

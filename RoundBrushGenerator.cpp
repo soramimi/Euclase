@@ -67,12 +67,14 @@ float RoundBrushGenerator::level(float x, float y)
 
 euclase::Image RoundBrushGenerator::image(int w, int h, float cx, float cy, QColor const &color) const
 {
+#ifdef USE_CUDA
 	if (global->cuda) {
 		euclase::Image image(w, h, euclase::Image::Format_F_RGBA, euclase::Image::CUDA);
 		image.fill(color);
 		global->cuda->round_brush(w, h, cx, cy, radius, blur, mul, image.data());
 		return image;
 	}
+#endif
 
 	euclase::FloatRGBA c = euclase::FloatRGBA::convert(euclase::OctetRGBA(
 		color.red(),

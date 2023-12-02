@@ -230,6 +230,7 @@ void ImageViewWidget::internalScrollImage(double x, double y, bool updateview)
 
 	if (updateview) {
 		paintViewLater(true);
+		update();
 	}
 }
 
@@ -351,6 +352,7 @@ void ImageViewWidget::paintViewLater(bool image)
 			div = (int)floorf(1.0f / m->d.image_scale);
 		}
 		m->renderer->request(r, focus_point.toPoint(), div);
+		update();
 	}
 }
 
@@ -531,14 +533,13 @@ SelectionOutlineBitmap ImageViewWidget::renderSelectionOutlineBitmap(bool *abort
 
 static QImage scale_float_to_uint8_rgba(euclase::Image const &src, int w, int h)
 {
-
 	QImage ret(w, h, QImage::Format_RGBA8888);
 	if (global->cuda && src.memtype() == euclase::Image::CUDA) {
 		int dstride = ret.bytesPerLine();
 		global->cuda->scale_float_to_uint8_rgba(w, h, dstride, ret.bits(), src.width(), src.height(), src.data());
 	} else {
 #if 1
-		return src.qimage().scaled(w, h);
+		return src.qimage().scaled(w, h, Qt::IgnoreAspectRatio, Qt::FastTransformation);
 #else
 		euclase::Image in = src.toHost();
 		int sw = in.width();
@@ -598,7 +599,8 @@ void ImageViewWidget::paintEvent(QPaintEvent *)
 
 		if (m->offscreen_update) {
 			m->offscreen_update = false;
-
+			QElapsedTimer e;
+			e.start();
 			struct Item {
 				QRect dst_rect;
 				QImage image;
@@ -690,6 +692,7 @@ void ImageViewWidget::paintEvent(QPaintEvent *)
 					items[i] = {dst_rect, qimg};
 				}
 			}
+			qDebug() << e.elapsed();
 
 			QPainter pr1(&m->offscreen1);
 			for (Item const &item : items) {
