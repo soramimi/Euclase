@@ -415,7 +415,6 @@ extern "C" CUDAIMAGE_API const *init_cudaplugin(int n)
 	API_FUNC(fill_uint8_rgba);
 	API_FUNC(fill_float_rgba);
 	API_FUNC(copy_uint8_rgba);
-	API_FUNC(copy_float_to_uint8_rgba);
 	API_FUNC(blend_float_rgba);
 	API_FUNC(blend_uint8_grayscale);
 	API_FUNC(outline_uint8_grayscale);

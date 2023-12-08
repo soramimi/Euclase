@@ -41,6 +41,10 @@ private:
 	void initBrushes();
 	QImage generateOutlineImage(const euclase::Image &selection, bool *abort);
 	void internalUpdateScroll();
+	void startRenderingThread();
+	void stopRenderingThread();
+	void runRendering();
+	void requestRendering();
 protected:
 	void resizeEvent(QResizeEvent *) override;
 	void paintEvent(QPaintEvent *) override;
@@ -81,6 +85,8 @@ public:
 	void setToolCursor(const QCursor &cursor);
 	void doHandScroll();
 	void updateToolCursor();
+
+	void clearRenderedPanels();
 private slots:
 	void onRenderingCompleted(const RenderedImage &image);
 	void onTimer();

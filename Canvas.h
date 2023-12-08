@@ -14,6 +14,7 @@ static const int PANEL_SIZE = 256;
 class Canvas {
 	friend class LayerComposer;
 	friend class MainWindow;//@todo
+	friend class ImageViewWidget;//@todo
 public:
 	class Panel {
 	private:
@@ -325,5 +326,7 @@ public:
 	static LayerPtr newLayer();
 	void setCurrentLayer(int index);
 };
+
+euclase::Image cropImage(euclase::Image const &srcimg, int sx, int sy, int sw, int sh);
 
 #endif // CANVAS_H

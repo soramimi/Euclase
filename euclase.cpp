@@ -247,7 +247,7 @@ QImage euclase::Image::qimage() const
 #ifdef USE_CUDA
 		if (memtype() == CUDA) {
 			euclase::Image tmpimg(w, h, Format_8_RGBA, CUDA);
-			global->cuda->copy_float_to_uint8_rgba(w, h, data(), w, h, 0, 0, tmpimg.data(), w, h, 0, 0);
+			global->cuda->blend_float_rgba(w, h, data(), w, h, 0, 0, nullptr, 0, 0, tmpimg.data(), w, h, 0, 0);
 			return tmpimg.qimage();
 		}
 #endif
@@ -607,6 +607,7 @@ void euclase::Image::init(int w, int h, Image::Format format, MemoryType memtype
 		ptr_->cudamem_ = global->cuda->malloc(datasize);
 	}
 #endif
+	fill(k::transparent);
 }
 
 euclase::Image euclase::Image::copy(MemoryType memtype) const

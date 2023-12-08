@@ -989,7 +989,6 @@ private:
 	Data *ptr_ = nullptr;
 	void assign(Data *p);
 	void init(int w, int h, Image::Format format, MemoryType memtype = Host);
-
 public:
 	Image() = default;
 	Image(Image const &r)

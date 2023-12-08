@@ -263,6 +263,7 @@ void MainWindow::setImage(euclase::Image image, bool fitview)
 	opt.mode = Canvas::RenderOption::DirectCopy;
 	canvas()->renderToLayer(canvas()->current_layer(), Canvas::Layer::Primary, layer, nullptr, opt, ui->widget_image_view->synchronizer(), nullptr);
 
+	ui->widget_image_view->clearRenderedPanels();
 	resetView(fitview);
 }
 
@@ -607,6 +608,7 @@ void MainWindow::on_action_trim_triggered()
 
 void MainWindow::updateImageView()
 {
+	ui->widget_image_view->clearRenderedPanels();
 	ui->widget_image_view->paintViewLater(true);
 }
 
@@ -624,7 +626,6 @@ void MainWindow::clearCanvas()
 {
 	ui->widget_image_view->stopRendering();
 	canvas()->clear(synchronizer());
-	canvas()->clearSelection(synchronizer());
 }
 
 void MainWindow::paintLayer(Operation op, Canvas::Layer const &layer)

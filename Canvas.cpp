@@ -686,7 +686,8 @@ void Canvas::clear(QMutex *sync)
 {
 	m->size = QSize();
 	clearSelection(sync);
-	current_layer()->clear(sync);
+	m->layers.clear();
+	m->layers.emplace_back(newLayer());
 }
 
 void Canvas::paintToCurrentLayer(Layer const &source, RenderOption const &opt, QMutex *sync, bool *abort)
@@ -921,4 +922,13 @@ int Canvas::addNewLayer()
 void Canvas::setCurrentLayer(int index)
 {
 	m->current_layer_index = index;
+}
+
+//
+euclase::Image cropImage(const euclase::Image &srcimg, int sx, int sy, int sw, int sh)
+{
+	Canvas::Panel tmp1(srcimg);
+	Canvas::Panel tmp2(euclase::Image(sw, sh, srcimg.format(), srcimg.memtype()));
+	Canvas::renderToSinglePanel(&tmp2, QPoint(0, 0), &tmp1, QPoint(-sx, -sy), nullptr, {}, {});
+	return tmp2.image();
 }

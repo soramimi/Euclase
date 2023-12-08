@@ -73,6 +73,13 @@ struct ImageViewWidget::Private {
 	QBrush vert_stripe_brush;
 
 	QCursor cursor;
+
+	std::thread rendering_thread;
+	std::mutex render_mutex;
+	volatile bool render_interrupted = false;
+	volatile bool render_requested = false;
+	QRect render_canvas_rect;
+	std::vector<Canvas::Panel> render_panels;
 };
 
 ImageViewWidget::ImageViewWidget(QWidget *parent)
@@ -92,12 +99,15 @@ ImageViewWidget::ImageViewWidget(QWidget *parent)
 
 	setMouseTracking(true);
 
+	startRenderingThread();
+
 	connect(&timer_, &QTimer::timeout, this, &ImageViewWidget::onTimer);
 	timer_.start(100);
 }
 
 ImageViewWidget::~ImageViewWidget()
 {
+	stopRenderingThread();
 	stopRendering();
 	delete m->renderer;
 	delete m;
@@ -148,6 +158,196 @@ void ImageViewWidget::init(MainWindow *mainwindow, QScrollBar *vsb, QScrollBar *
 	m->v_scroll_bar = vsb;
 	m->h_scroll_bar = hsb;
 	m->renderer->init(m->mainwindow);
+}
+
+static QImage scale_float_to_uint8_rgba(euclase::Image const &src, int w, int h)
+{
+	QImage ret(w, h, QImage::Format_RGBA8888);
+	if (global->cuda && src.memtype() == euclase::Image::CUDA) {
+		int dstride = ret.bytesPerLine();
+		global->cuda->scale_float_to_uint8_rgba(w, h, dstride, ret.bits(), src.width(), src.height(), src.data());
+	} else {
+#if 1
+		return src.qimage().scaled(w, h, Qt::IgnoreAspectRatio, Qt::FastTransformation);
+#else
+		euclase::Image in = src.toHost();
+		int sw = in.width();
+		int sh = in.height();
+		for (int y = 0; y < h; y++) {
+			uint8_t *d = ret.scanLine(y);
+			for (int x = 0; x < w; x++) {
+				int sx = x * sw / w;
+				int sy = y * sh / h;
+				float const *s = (float const *)in.scanLine(sy) + 4 * sx;
+				uint8_t R = std::max(0, std::min(255, int(euclase::gamma(s[0]) * 255 + 0.5f)));
+				uint8_t G = std::max(0, std::min(255, int(euclase::gamma(s[1]) * 255 + 0.5f)));
+				uint8_t B = std::max(0, std::min(255, int(euclase::gamma(s[2]) * 255 + 0.5f)));
+				uint8_t A = std::max(0, std::min(255, int(s[3] * 255 + 0.5f)));
+				d[0] = R;
+				d[1] = G;
+				d[2] = B;
+				d[3] = A;
+				d += 4;
+			}
+		}
+#endif
+	}
+	return ret;
+}
+
+void ImageViewWidget::clearRenderedPanels()
+{
+	std::lock_guard lock(m->render_mutex);
+	m->render_requested = false;
+	m->render_canvas_rect = {};
+	m->render_panels.clear();
+}
+
+void ImageViewWidget::runRendering()
+{
+	while (1) {
+		if (m->render_interrupted) return;
+		if (m->render_requested) {
+			m->render_requested = false;
+			const int view_w = width();
+			const int view_h = height();
+			const int canvas_w = mainwindow()->canvasWidth();
+			const int canvas_h = mainwindow()->canvasHeight();
+
+			std::vector<QRect> rects;
+
+			for (int panel_y = 0; panel_y < canvas_h; panel_y += PANEL_SIZE) {
+				for (int panel_x = 0; panel_x < canvas_w; panel_x += PANEL_SIZE) {
+					QRect rect(panel_x, panel_y, PANEL_SIZE + 1, PANEL_SIZE + 1);
+					if (m->render_canvas_rect.intersects(rect)) {
+						rects.push_back(rect);
+					}
+				}
+			}
+
+#if 0
+			QPoint center = mapToCanvasFromViewport(mapFromGlobal(QCursor::pos())).toPoint();
+			std::sort(rects.begin(), rects.end(), [&](QRect const &a, QRect const &b){
+				auto Center = [=](QRect const &r){
+					return r.center();
+				};
+				auto Distance = [](QPoint const &a, QPoint const &b){
+					auto dx = a.x() - b.x();
+					auto dy = a.y() - b.y();
+					return sqrt(dx * dx + dy * dy);
+				};
+				QPoint ca = Center(a);
+				QPoint cb = Center(b);
+				return Distance(ca, center) < Distance(cb, center);
+			});
+#endif
+
+#pragma omp parallel for
+//#pragma omp parallel for num_threads(8)
+//#pragma omp parallel for schedule(static, 8) num_threads(8)
+			for (int i = 0; i < rects.size(); i++) {
+				if (m->render_interrupted) continue;
+				if (m->render_requested) continue;
+				QRect const &rect = rects[i];
+
+				int x = rect.x();
+				int y = rect.y();
+				int w = rect.width();
+				int h = rect.height();
+
+				QPointF src_topleft(x, y);
+				QPointF src_bottomright(x + w, y + h);
+				QPointF dst_topleft = mapToViewportFromCanvas(src_topleft);
+				QPointF dst_bottomright = mapToViewportFromCanvas(src_bottomright);
+
+				if (dst_topleft.x() < 0) dst_topleft.rx() = 0;
+				if (dst_topleft.y() < 0) dst_topleft.ry() = 0;
+				if (dst_bottomright.x() > view_w) dst_bottomright.rx() = view_w;
+				if (dst_bottomright.y() > view_h) dst_bottomright.ry() = view_h;
+
+				src_topleft = mapToCanvasFromViewport(dst_topleft);
+				src_bottomright = mapToCanvasFromViewport(dst_bottomright);
+				int sx = std::max(x, (int)round(src_topleft.x()));
+				int sy = std::max(y, (int)round(src_topleft.y()));
+				int sw = std::min(x + w, (int)round(src_bottomright.x()));
+				int sh = std::min(y + h, (int)round(src_bottomright.y()));
+				sw = std::max(1, sw - sx);
+				sh = std::max(1, sh - sy);
+				sx -= x;
+				sy -= y;
+
+				int dx = (int)round(dst_topleft.x());
+				int dy = (int)round(dst_topleft.y());
+				int dw = (int)round(dst_bottomright.x()) - dx;
+				int dh = (int)round(dst_bottomright.y()) - dy;
+
+				euclase::Image image;
+				Canvas::Panel panel_tmp1;
+				Canvas::Panel *panel;
+				{
+					std::lock_guard lock(m->render_mutex);
+					panel = Canvas::findPanel(&m->render_panels, QPoint(x, y));
+				}
+				if (panel) {
+					image = cropImage(panel->image(), sx, sy, sw, sh);
+				}
+
+				if (m->render_requested) continue;
+
+				if (!panel) {
+					panel_tmp1 = m->mainwindow->renderToPanel(Canvas::AllLayers, euclase::Image::Format_F_RGBA, rect, {}, (bool *)&m->render_interrupted);
+					*panel_tmp1.imagep() = panel_tmp1.imagep()->toHost(); // CUDAよりCPUの方が速くて安定する
+					panel_tmp1.setOffset(x, y);
+					{
+						std::lock_guard lock(m->render_mutex);
+						m->render_panels.push_back(panel_tmp1);
+						Canvas::sortPanels(&m->render_panels);
+					}
+					if (m->render_requested) continue;
+
+					image = cropImage(panel_tmp1.image(), sx, sy, sw, sh);
+				}
+
+				if (m->render_requested) continue;
+
+				QImage qimg = scale_float_to_uint8_rgba(image, dw, dh); // mutexロックの中で実行しないと誤動作することがある...
+				{
+					std::lock_guard lock(m->render_mutex);
+					QPainter pr(&m->offscreen1);
+					pr.drawImage(dx, dy, qimg);
+				}
+			}
+		} else {
+			std::this_thread::yield();
+		}
+	}
+}
+
+void ImageViewWidget::requestRendering()
+{
+	auto topleft = mapToCanvasFromViewport(QPointF(0, 0));
+	auto bottomright = mapToCanvasFromViewport(QPointF(width(), height()));
+	int x0 = (int)floor(topleft.x()) - 1;
+	int y0 = (int)floor(topleft.y()) - 1;
+	int x1 = (int)ceil(bottomright.x()) + 1;
+	int y1 = (int)ceil(bottomright.y()) + 1;
+	m->render_canvas_rect = QRect(x0, y0, x1 - x0, y1 - y0);
+	m->render_requested = true;
+}
+
+void ImageViewWidget::startRenderingThread()
+{
+	m->rendering_thread = std::thread([&](){
+		runRendering();
+	});
+}
+
+void ImageViewWidget::stopRenderingThread()
+{
+	m->render_interrupted = true;
+	if (m->rendering_thread.joinable()) {
+		m->rendering_thread.join();
+	}
 }
 
 void ImageViewWidget::stopRendering()
@@ -229,6 +429,7 @@ void ImageViewWidget::internalScrollImage(double x, double y, bool updateview)
 	if (m->d.image_scroll_y > sz.height()) m->d.image_scroll_y = sz.height();
 
 	if (updateview) {
+		requestRendering();
 		paintViewLater(true);
 		update();
 	}
@@ -351,8 +552,8 @@ void ImageViewWidget::paintViewLater(bool image)
 			Q_ASSERT(m->d.image_scale > 0);
 			div = (int)floorf(1.0f / m->d.image_scale);
 		}
-		m->renderer->request(r, focus_point.toPoint(), div);
-		update();
+//		m->renderer->request(r, focus_point.toPoint(), div);
+//		update();
 	}
 }
 
@@ -376,7 +577,9 @@ bool ImageViewWidget::setImageScale(double scale, bool updateview)
 	emit scaleChanged(m->d.image_scale);
 
 	if (updateview) {
+		requestRendering();
 		paintViewLater(true);
+		update();
 	}
 
 	return true;
@@ -531,51 +734,19 @@ SelectionOutlineBitmap ImageViewWidget::renderSelectionOutlineBitmap(bool *abort
 	return data;
 }
 
-static QImage scale_float_to_uint8_rgba(euclase::Image const &src, int w, int h)
-{
-	QImage ret(w, h, QImage::Format_RGBA8888);
-	if (global->cuda && src.memtype() == euclase::Image::CUDA) {
-		int dstride = ret.bytesPerLine();
-		global->cuda->scale_float_to_uint8_rgba(w, h, dstride, ret.bits(), src.width(), src.height(), src.data());
-	} else {
-#if 1
-		return src.qimage().scaled(w, h, Qt::IgnoreAspectRatio, Qt::FastTransformation);
-#else
-		euclase::Image in = src.toHost();
-		int sw = in.width();
-		int sh = in.height();
-		for (int y = 0; y < h; y++) {
-			uint8_t *d = ret.scanLine(y);
-			for (int x = 0; x < w; x++) {
-				int sx = x * sw / w;
-				int sy = y * sh / h;
-				float const *s = (float const *)in.scanLine(sy) + 4 * sx;
-				uint8_t R = std::max(0, std::min(255, int(euclase::gamma(s[0]) * 255 + 0.5f)));
-				uint8_t G = std::max(0, std::min(255, int(euclase::gamma(s[1]) * 255 + 0.5f)));
-				uint8_t B = std::max(0, std::min(255, int(euclase::gamma(s[2]) * 255 + 0.5f)));
-				uint8_t A = std::max(0, std::min(255, int(s[3] * 255 + 0.5f)));
-				d[0] = R;
-				d[1] = G;
-				d[2] = B;
-				d[3] = A;
-				d += 4;
-			}
-		}
-#endif
-	}
-	return ret;
-}
-
 void ImageViewWidget::paintEvent(QPaintEvent *)
 {
 	QColor bgcolor(240, 240, 240); // 背景（枠の外側）の色
 
 	const int view_w = width();
 	const int view_h = height();
-	if (m->offscreen1.width() != view_w || m->offscreen1.height() != view_h) {
-		m->offscreen1 = QImage(view_w, view_h, QImage::Format_RGB32);
-		m->offscreen2 = QPixmap(view_w, view_h);
-		m->offscreen1.fill(bgcolor);
+	{
+		std::lock_guard lock(m->render_mutex);
+		if (m->offscreen1.width() != view_w || m->offscreen1.height() != view_h) {
+			m->offscreen1 = QImage(view_w, view_h, QImage::Format_RGB32);
+			m->offscreen2 = QPixmap(view_w, view_h);
+			m->offscreen1.fill(bgcolor);
+		}
 	}
 
 	const int doc_w = canvas()->width();
@@ -597,6 +768,7 @@ void ImageViewWidget::paintEvent(QPaintEvent *)
 			visible_h = (int)floor(pt1.y() + 0.5) - visible_y;
 		}
 
+#if 0
 		if (m->offscreen_update) {
 			m->offscreen_update = false;
 			struct Item {
@@ -696,6 +868,7 @@ void ImageViewWidget::paintEvent(QPaintEvent *)
 				pr1.drawImage(item.dst_rect, item.image);
 			}
 		}
+#endif
 	}
 
 	{
@@ -743,7 +916,10 @@ void ImageViewWidget::paintEvent(QPaintEvent *)
 	}
 
 	QPainter pr_view(this);
-	pr_view.drawImage(0, 0, m->offscreen1);
+	{
+		std::lock_guard lock(m->render_mutex);
+		pr_view.drawImage(0, 0, m->offscreen1);
+	}
 	pr_view.drawPixmap(0, 0, m->offscreen2);
 
 	if (visible_w > 0 && visible_h > 0) {
