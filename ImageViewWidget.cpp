@@ -163,7 +163,8 @@ void ImageViewWidget::init(MainWindow *mainwindow, QScrollBar *vsb, QScrollBar *
 static QImage scale_float_to_uint8_rgba(euclase::Image const &src, int w, int h)
 {
 	QImage ret(w, h, QImage::Format_RGBA8888);
-	if (global->cuda && src.memtype() == euclase::Image::CUDA) {
+	if (src.memtype() == euclase::Image::CUDA) {
+		Q_ASSERT(global->cuda);
 		int dstride = ret.bytesPerLine();
 		global->cuda->scale_float_to_uint8_rgba(w, h, dstride, ret.bits(), src.width(), src.height(), src.data());
 	} else {
@@ -373,11 +374,6 @@ QPointF ImageViewWidget::mapToViewportFromCanvas(QPointF const &pos)
 	double x = pos.x() * m->d.image_scale + cx - m->d.image_scroll_x;
 	double y = pos.y() * m->d.image_scale + cy - m->d.image_scroll_y;
 	return QPointF(x, y);
-}
-
-QMutex *ImageViewWidget::synchronizer()
-{
-	return &m->sync;
 }
 
 void ImageViewWidget::showRect(QPointF const &start, QPointF const &end)
@@ -712,7 +708,7 @@ SelectionOutlineBitmap ImageViewWidget::renderSelectionOutlineBitmap(bool *abort
 			int dy = int(dp0.y());
 			int dw = int(dp1.x()) - dx;
 			int dh = int(dp1.y()) - dy;
-			selection = canvas()->renderSelection(QRect(dx, dy, dw, dh), /*&m->sync*/nullptr, abort).image();
+			selection = canvas()->renderSelection(QRect(dx, dy, dw, dh), abort).image();
 			if (abort && *abort) return {};
 			if (selection.memtype() == euclase::Image::CUDA) {
 				euclase::Image sel(vw, vh, euclase::Image::Format_8_Grayscale, euclase::Image::CUDA);

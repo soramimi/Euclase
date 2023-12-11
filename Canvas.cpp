@@ -630,24 +630,14 @@ void Canvas::renderToEachPanels_internal_(Panel *target_panel, QPoint const &tar
 	}
 }
 
-void Canvas::renderToEachPanels(Panel *target_panel, QPoint const &target_offset, std::vector<Layer *> const &input_layers, Layer *mask_layer, QColor const &brush_color, int opacity, RenderOption const &opt, QMutex *sync, bool *abort)
+void Canvas::renderToEachPanels(Panel *target_panel, QPoint const &target_offset, std::vector<Layer *> const &input_layers, Layer *mask_layer, QColor const &brush_color, int opacity, RenderOption const &opt, bool *abort)
 {
-#if 0
-	if (sync) {
-		QMutexLocker lock(sync);
-		renderToEachPanels(target_panel, target_offset, input_layers, mask_layer, brush_color, opacity, opt, nullptr, abort);
-		return;
-	}
-#else
-	(void)sync;
-#endif
-
 	for (Layer *layer : input_layers) {
 		renderToEachPanels_internal_(target_panel, target_offset, *layer, mask_layer, brush_color, opacity, opt, abort);
 	}
 }
 
-void Canvas::renderToLayer(Layer *target_layer, Layer::ActivePanel activepanel, Layer const &input_layer, Layer *mask_layer, RenderOption const &opt, QMutex *sync, bool *abort)
+void Canvas::renderToLayer(Layer *target_layer, Layer::ActivePanel activepanel, Layer const &input_layer, Layer *mask_layer, RenderOption const &opt, bool *abort)
 {
 	Q_ASSERT(input_layer.format_ != euclase::Image::Format_Invalid);
 	std::vector<Panel> *targetpanels = target_layer->panels(activepanel);
@@ -662,54 +652,52 @@ void Canvas::renderToLayer(Layer *target_layer, Layer::ActivePanel activepanel, 
 			for (int y = (s0.y() & ~(PANEL_SIZE - 1)); y < s1.y(); y += PANEL_SIZE) {
 				for (int x = (s0.x() & ~(PANEL_SIZE - 1)); x < s1.x(); x += PANEL_SIZE) {
 					if (abort && *abort) return;
-					if (sync) sync->lock();
 					Panel *p = findPanel(targetpanels, QPoint(x, y));
 					if (!p) {
 						p = target_layer->addImagePanel(targetpanels, x, y, PANEL_SIZE, PANEL_SIZE, target_layer->format_, target_layer->memtype_);
 						p->imagep()->fill(euclase::k::transparent);
 					}
 					renderToSinglePanel(p, target_layer->offset(), &input_panel, input_layer.offset(), mask_layer, opt, opt.brush_color, 255, abort);
-					if (sync) sync->unlock();
 				}
 			}
 		}
 	}
 }
 
-void Canvas::clearSelection(QMutex *sync)
+void Canvas::clearSelection()
 {
-	selection_layer()->clear(sync);
+	selection_layer()->clear();
 	selection_layer()->memtype_ = global->cuda ? euclase::Image::CUDA : euclase::Image::Host;
 }
 
 void Canvas::clear(QMutex *sync)
 {
 	m->size = QSize();
-	clearSelection(sync);
+	clearSelection();
 	m->layers.clear();
 	m->layers.emplace_back(newLayer());
 }
 
-void Canvas::paintToCurrentLayer(Layer const &source, RenderOption const &opt, QMutex *sync, bool *abort)
+void Canvas::paintToCurrentLayer(Layer const &source, RenderOption const &opt, bool *abort)
 {
-	renderToLayer(current_layer(), Layer::Primary, source, selection_layer(), opt, sync, abort);
+	renderToLayer(current_layer(), Layer::Primary, source, selection_layer(), opt, abort);
 }
 
-void Canvas::addSelection(Layer const &source, RenderOption const &opt, QMutex *sync, bool *abort)
+void Canvas::addSelection(Layer const &source, RenderOption const &opt, bool *abort)
 {
 	RenderOption o = opt;
 	o.brush_color = Qt::white;
-	renderToLayer(selection_layer(), Layer::Primary, source, nullptr, o, sync, abort);
+	renderToLayer(selection_layer(), Layer::Primary, source, nullptr, o, abort);
 }
 
-void Canvas::subSelection(Layer const &source, RenderOption const &opt, QMutex *sync, bool *abort)
+void Canvas::subSelection(Layer const &source, RenderOption const &opt, bool *abort)
 {
 	RenderOption o = opt;
 	o.brush_color = Qt::black;
-	renderToLayer(selection_layer(), Layer::Primary, source, nullptr, o, sync, abort);
+	renderToLayer(selection_layer(), Layer::Primary, source, nullptr, o, abort);
 }
 
-Canvas::Panel Canvas::renderSelection(const QRect &r, QMutex *sync, bool *abort) const
+Canvas::Panel Canvas::renderSelection(const QRect &r, bool *abort) const
 {
 	Panel panel;
 	panel.imagep()->make(r.width(), r.height(), euclase::Image::Format_8_Grayscale, selection_layer()->memtype_);
@@ -717,12 +705,11 @@ Canvas::Panel Canvas::renderSelection(const QRect &r, QMutex *sync, bool *abort)
 	panel.setOffset(r.topLeft());
 	std::vector<Layer *> layers;
 	layers.push_back(selection_layer());
-sync = nullptr; //@
-	renderToEachPanels(&panel, QPoint(), layers, nullptr, QColor(), 255, {}, sync, abort);
+	renderToEachPanels(&panel, QPoint(), layers, nullptr, QColor(), 255, {}, abort);
 	return panel;
 }
 
-Canvas::Panel Canvas::renderToPanel(InputLayer inputlayer, euclase::Image::Format format, const QRect &r, QRect const &maskrect, Layer::ActivePanel activepanel, QMutex *sync, bool *abort) const
+Canvas::Panel Canvas::renderToPanel(InputLayer inputlayer, euclase::Image::Format format, const QRect &r, QRect const &maskrect, Layer::ActivePanel activepanel, bool *abort) const
 {
 	RenderOption opt;
 	opt.mask_rect = maskrect;
@@ -743,12 +730,11 @@ Canvas::Panel Canvas::renderToPanel(InputLayer inputlayer, euclase::Image::Forma
 		layers.push_back(current_layer());
 		break;
 	}
-sync = nullptr; //@
-	renderToEachPanels(&panel, QPoint(), layers, nullptr, QColor(), 255, opt, sync, abort);
+	renderToEachPanels(&panel, QPoint(), layers, nullptr, QColor(), 255, opt, abort);
 	return panel;
 }
 
-Canvas::Panel Canvas::crop(const QRect &r, QMutex *sync, bool *abort) const
+Canvas::Panel Canvas::crop(const QRect &r, bool *abort) const
 {
 	Panel panel;
 	panel.imagep()->make(r.width(), r.height(), euclase::Image::Format_8_RGBA);
@@ -756,8 +742,7 @@ Canvas::Panel Canvas::crop(const QRect &r, QMutex *sync, bool *abort) const
 	panel.setOffset(r.topLeft());
 	std::vector<Layer *> layers;
 	layers.push_back(current_layer());
-sync = nullptr; //@
-	renderToEachPanels(&panel, QPoint(), layers, selection_layer(), QColor(), 255, {}, sync, abort);
+	renderToEachPanels(&panel, QPoint(), layers, selection_layer(), QColor(), 255, {}, abort);
 	return panel;
 }
 
@@ -887,7 +872,7 @@ QRect Canvas::Layer::rect() const
 	return rect;
 }
 
-void Canvas::changeSelection(SelectionOperation op, const QRect &rect, QMutex *sync)
+void Canvas::changeSelection(SelectionOperation op, const QRect &rect)
 {
 	auto format = euclase::Image::Format_8_Grayscale;
 	Canvas::Layer layer;
@@ -900,14 +885,14 @@ void Canvas::changeSelection(SelectionOperation op, const QRect &rect, QMutex *s
 
 	switch (op) {
 	case SelectionOperation::SetSelection:
-		clearSelection(sync);
-		addSelection(layer, opt, sync, nullptr);
+		clearSelection();
+		addSelection(layer, opt, nullptr);
 		break;
 	case SelectionOperation::AddSelection:
-		addSelection(layer, opt, sync, nullptr);
+		addSelection(layer, opt, nullptr);
 		break;
 	case SelectionOperation::SubSelection:
-		subSelection(layer, opt, sync, nullptr);
+		subSelection(layer, opt, nullptr);
 		break;
 	}
 }

@@ -136,7 +136,8 @@ Canvas const *MainWindow::canvas() const
 
 QMutex *MainWindow::synchronizer() const
 {
-	return ui->widget_image_view->synchronizer();
+//	return ui->widget_image_view->synchronizer();
+	return nullptr;
 }
 
 int MainWindow::canvasWidth() const
@@ -239,7 +240,7 @@ euclase::Image::MemoryType MainWindow::preferredMemoryType() const
 
 void MainWindow::setupBasicLayer(Canvas::Layer *p)
 {
-	p->clear(nullptr);
+	p->clear();
 	p->format_ = euclase::Image::Format_F_RGBA;
 	p->memtype_ = preferredMemoryType();
 }
@@ -261,7 +262,7 @@ void MainWindow::setImage(euclase::Image image, bool fitview)
 	}
 	Canvas::RenderOption opt;
 	opt.mode = Canvas::RenderOption::DirectCopy;
-	canvas()->renderToLayer(canvas()->current_layer(), Canvas::Layer::Primary, layer, nullptr, opt, ui->widget_image_view->synchronizer(), nullptr);
+	canvas()->renderToLayer(canvas()->current_layer(), Canvas::Layer::Primary, layer, nullptr, opt, nullptr);
 
 	ui->widget_image_view->clearRenderedPanels();
 	resetView(fitview);
@@ -294,7 +295,7 @@ void MainWindow::setAlternateImage(euclase::Image const &image)
 //	QMutexLocker lock(synchronizer());
 	canvas()->current_layer()->alternate_panels.clear();
 //	canvas()->current_layer()->alternate_selection_panels = canvas()->selection_layer()->primary_panels;
-	canvas()->renderToLayer(canvas()->current_layer(), Canvas::Layer::Alternate, layer, nullptr, opt, /*ui->widget_image_view->synchronizer()*/nullptr, nullptr);
+	canvas()->renderToLayer(canvas()->current_layer(), Canvas::Layer::Alternate, layer, nullptr, opt, nullptr);
 }
 
 /**
@@ -318,7 +319,7 @@ bool MainWindow::isPreviewEnabled() const
 Canvas::Panel MainWindow::renderToPanel(Canvas::InputLayer inputlayer, euclase::Image::Format format, QRect const &r, QRect const &maskrect, bool *abort) const
 {
 	auto activepanel = isPreviewEnabled() ? Canvas::Layer::Alternate : Canvas::Layer::Primary;
-	return canvas()->renderToPanel(inputlayer, format, r, maskrect, activepanel, synchronizer(), abort).image();
+	return canvas()->renderToPanel(inputlayer, format, r, maskrect, activepanel, abort).image();
 }
 
 euclase::Image MainWindow::renderToImage(euclase::Image::Format format, QRect const &r, bool *abort) const
@@ -402,7 +403,7 @@ void MainWindow::on_action_file_save_as_triggered()
 	if (!path.isEmpty()) {
 		QSize sz = canvas()->size();
 		auto activepanel = isPreviewEnabled() ? Canvas::Layer::Alternate : Canvas::Layer::Primary;
-		euclase::Image img = canvas()->renderToPanel(Canvas::AllLayers, euclase::Image::Format_F_RGBA, QRect(0, 0, sz.width(), sz.height()), {}, activepanel, synchronizer(), nullptr).image();
+		euclase::Image img = canvas()->renderToPanel(Canvas::AllLayers, euclase::Image::Format_F_RGBA, QRect(0, 0, sz.width(), sz.height()), {}, activepanel, nullptr).image();
 		img.qimage().save(path);
 	}
 }
@@ -423,7 +424,7 @@ void MainWindow::filter(FilterContext *context, AbstractFilterForm *form, std::f
 			img = euclase::Image(r.width(), r.height(), euclase::Image::Format_8_Grayscale, canvas()->selection_layer()->memtype_);
 			img.fill(euclase::k::white);
 		} else {
-			Canvas::Panel panel = canvas()->renderSelection(r, nullptr, nullptr);
+			Canvas::Panel panel = canvas()->renderSelection(r, nullptr);
 			img = panel.image();
 		}
 		// フィルタ用選択領域を作成
@@ -431,7 +432,7 @@ void MainWindow::filter(FilterContext *context, AbstractFilterForm *form, std::f
 		layer.setImage({r.x(), r.y()}, img);
 		Canvas::RenderOption o;
 		o.brush_color = Qt::white;
-		Canvas::renderToLayer(canvas()->current_layer(), Canvas::Layer::AlternateSelection, layer, nullptr, o, nullptr, nullptr);
+		Canvas::renderToLayer(canvas()->current_layer(), Canvas::Layer::AlternateSelection, layer, nullptr, o, nullptr);
 
 	} else if (!canvas()->selection_layer()->primary_panels.empty()) {
 		canvas()->current_layer()->alternate_selection_panels = canvas()->selection_layer()->primary_panels;
@@ -591,7 +592,7 @@ euclase::Image MainWindow::selectedImage() const
 			r = { 0, 0, canvas()->width(), canvas()->height() };
 		}
 	}
-	return canvas()->crop(r, synchronizer(), nullptr).image();
+	return canvas()->crop(r, nullptr).image();
 }
 
 void MainWindow::on_action_trim_triggered()
@@ -633,7 +634,7 @@ void MainWindow::paintLayer(Operation op, Canvas::Layer const &layer)
 	if (op == Operation::PaintToCurrentLayer) {
 		Canvas::RenderOption opt;
 		opt.brush_color = foregroundColor();
-		canvas()->paintToCurrentLayer(layer, opt, ui->widget_image_view->synchronizer(), nullptr);
+		canvas()->paintToCurrentLayer(layer, opt, nullptr);
 	}
 }
 
@@ -1369,7 +1370,7 @@ void MainWindow::on_action_select_rectangle_triggered()
 		QRect r = boundsRect();
 		if (r.width() > 0 && r.height() > 0) {
 			Canvas::SelectionOperation op = Canvas::SelectionOperation::AddSelection;
-			canvas()->changeSelection(op, r, synchronizer());
+			canvas()->changeSelection(op, r);
 			onSelectionChanged();
 			updateImageView();
 		}

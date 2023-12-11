@@ -167,17 +167,13 @@ public:
 			return (*panels(alternate))[i];
 		}
 
-		void clear(QMutex *sync)
+		void clear()
 		{
-			if (sync) sync->lock();
-
 			active_panel_ = Primary;
 			offset_ = QPoint();
 			primary_panels.clear();
 			alternate_panels.clear();
 			alternate_selection_panels.clear();
-
-			if (sync) sync->unlock();
 		}
 
 		static void remove(std::vector<Panel> *panels, QPoint const &offset)
@@ -247,7 +243,7 @@ public:
 
 		void setImage(QPoint const &offset, euclase::Image const &image)
 		{
-			clear(nullptr);
+			clear();
 			format_ = image.format();
 			memtype_ = image.memtype();
 
@@ -291,19 +287,19 @@ public:
 	Layer *current_layer() const;
 	Layer *selection_layer() const;
 
-	void paintToCurrentLayer(const Layer &source, const RenderOption &opt, QMutex *sync, bool *abort);
+	void paintToCurrentLayer(const Layer &source, const RenderOption &opt, bool *abort);
 
 	enum InputLayer {
 		AllLayers,
 		CurrentLayerOnly,
 	};
-	Panel renderToPanel(InputLayer inputlayer, euclase::Image::Format format, QRect const &r, QRect const &maskrect, Layer::ActivePanel activepanel, QMutex *sync, bool *abort) const;
+	Panel renderToPanel(InputLayer inputlayer, euclase::Image::Format format, QRect const &r, QRect const &maskrect, Layer::ActivePanel activepanel, bool *abort) const;
 
 	static void renderToSinglePanel(Panel *target_panel, const QPoint &target_offset, const Panel *input_panel, const QPoint &input_offset, const Layer *mask_layer, RenderOption const &opt, const QColor &brush_color, int opacity = 255, bool *abort = nullptr);
-	static void renderToLayer(Layer *target_layer, Layer::ActivePanel activepanel, const Layer &input_layer, Layer *mask_layer, const RenderOption &opt, QMutex *sync, bool *abort);
+	static void renderToLayer(Layer *target_layer, Layer::ActivePanel activepanel, const Layer &input_layer, Layer *mask_layer, const RenderOption &opt, bool *abort);
 private:
 	static void renderToEachPanels_internal_(Panel *target_panel, const QPoint &target_offset, const Layer &input_layer, Layer *mask_layer, const QColor &brush_color, int opacity, RenderOption const &opt, bool *abort);
-	static void renderToEachPanels(Panel *target_panel, const QPoint &target_offset, const std::vector<Layer *> &input_layers, Layer *mask_layer, const QColor &brush_color, int opacity, const RenderOption &opt, QMutex *sync, bool *abort);
+	static void renderToEachPanels(Panel *target_panel, const QPoint &target_offset, const std::vector<Layer *> &input_layers, Layer *mask_layer, const QColor &brush_color, int opacity, const RenderOption &opt, bool *abort);
 	static void composePanel(Panel *target_panel, const Panel *alt_panel, const Panel *alt_mask);
 	static void composePanels(Panel *target_panel, std::vector<Panel> const *alternate_panels, std::vector<Panel> const *alternate_selection_panels);
 	static Panel *findPanel(const std::vector<Panel> *panels, const QPoint &offset);
@@ -314,12 +310,12 @@ public:
 		AddSelection,
 		SubSelection,
 	};
-	void clearSelection(QMutex *sync);
-	void addSelection(const Layer &source, const RenderOption &opt, QMutex *sync, bool *abort);
-	void subSelection(const Layer &source, const RenderOption &opt, QMutex *sync, bool *abort);
-	Panel renderSelection(const QRect &r, QMutex *sync, bool *abort) const;
-	void changeSelection(SelectionOperation op, QRect const &rect, QMutex *sync);
-	Panel crop(const QRect &r, QMutex *sync, bool *abort) const;
+	void clearSelection();
+	void addSelection(const Layer &source, const RenderOption &opt, bool *abort);
+	void subSelection(const Layer &source, const RenderOption &opt, bool *abort);
+	Panel renderSelection(const QRect &r, bool *abort) const;
+	void changeSelection(SelectionOperation op, QRect const &rect);
+	Panel crop(const QRect &r, bool *abort) const;
 	void trim(const QRect &r);
 	void clear(QMutex *sync);
 	int addNewLayer();

@@ -160,7 +160,7 @@ euclase::Image LayerComposer::render(int x, int y, int w, int h)
 		std::vector<Canvas::Layer *> layers;
 		layers.push_back(&m->composed_panels);
 		std::lock_guard lock(m->mutex);
-		Canvas::renderToEachPanels(&panel, QPoint(), layers, nullptr, QColor(), 255, {}, nullptr, &m->cancel);
+		Canvas::renderToEachPanels(&panel, QPoint(), layers, nullptr, QColor(), 255, {}, &m->cancel);
 	}
 	return panel.image();
 }

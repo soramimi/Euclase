@@ -61,8 +61,6 @@ public:
 	QPointF mapToCanvasFromViewport(const QPointF &pos);
 	QPointF mapToViewportFromCanvas(QPointF const &pos);
 
-	QMutex *synchronizer();
-
 	void showRect(const QPointF &start, const QPointF &end);
 	void hideRect(bool update);
 
