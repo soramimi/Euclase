@@ -20,7 +20,7 @@ static int COMP(QPoint const &a, QPoint const &b)
 	if (a.x() < b.x()) return -1;
 	if (a.x() > b.x()) return 1;
 	return 0;
-};
+}
 
 Canvas::Panel *Canvas::findPanel(std::vector<Panel> const *panels, QPoint const &offset)
 {
@@ -758,7 +758,7 @@ Canvas::Panel *Canvas::Layer::addImagePanel(std::vector<Panel> *panels, int x, i
 	auto NewPanel = [&](){
 		Panel panel;
 		if (w > 0 && h > 0) {
-			panel->make(w, h, format_, memtype_);
+			panel->make(w, h, format, memtype);
 			panel->fill(euclase::k::transparent);
 		}
 		panel.setOffset(x, y);

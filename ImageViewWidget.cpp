@@ -25,6 +25,145 @@ using SvgRendererPtr = std::shared_ptr<QSvgRenderer>;
 const int MAX_SCALE = 32;
 const int MIN_SCALE = 16;
 
+static inline int compareQPoint(QPoint const &a, QPoint const &b)
+{
+	if (a.y() < b.y()) return -1;
+	if (a.y() > b.y()) return 1;
+	if (a.x() < b.x()) return -1;
+	if (a.x() > b.x()) return 1;
+	return 0;
+}
+
+
+class PanelizedImage {
+public:
+	class Panel {
+	public:
+		QPoint offset;
+		QImage image;
+		Panel() = default;
+		Panel(QPoint const &offset, QImage const &image)
+			: offset(offset)
+			, image(image)
+		{
+		}
+		bool operator == (Panel const &t) const
+		{
+			return offset == t.offset;
+		}
+		bool operator < (Panel const &t) const
+		{
+			return compareQPoint(offset, t.offset) < 0;
+		}
+	};
+	QPoint offset_;
+	QImage::Format format_ = QImage::Format_RGBA8888;
+	std::vector<Panel> panels_;
+	static Panel *findPanel_(std::vector<Panel> const *panels, QPoint const &offset)
+	{
+		int lo = 0;
+		int hi = (int)panels->size(); // 上限の一つ後
+		while (lo < hi) {
+			int m = (lo + hi) / 2;
+			Panel const *p = &panels->at(m);
+			Q_ASSERT(p);
+			int i = compareQPoint(p->offset, offset);
+			if (i == 0) return const_cast<Panel *>(p);
+			if (i < 0) {
+				lo = m + 1;
+			} else {
+				hi = m;
+			}
+		}
+		return nullptr;
+	}
+	void setImageMode(QImage::Format format)
+	{
+		format_ = format;
+	}
+	void setOffset(QPoint const &offset)
+	{
+		offset_ = offset;
+	}
+	void paintImage(QPoint const &dstpos, QImage const &srcimg, QRect const &srcrect)
+	{
+		int panel_dx0 = dstpos.x() - offset_.x();
+		int panel_dy0 = dstpos.y() - offset_.y();
+		int panel_dx1 = panel_dx0 + srcimg.width() - 1;
+		int panel_dy1 = panel_dy0 + srcimg.height() - 1;
+		panel_dx0 = panel_dx0 - (panel_dx0 & (PANEL_SIZE - 1));
+		panel_dy0 = panel_dy0 - (panel_dy0 & (PANEL_SIZE - 1));
+		panel_dx1 = panel_dx1 - (panel_dx1 & (PANEL_SIZE - 1));
+		panel_dy1 = panel_dy1 - (panel_dy1 & (PANEL_SIZE - 1));
+		std::vector<Panel> newpanels;
+		for (int y = panel_dy0; y <= panel_dy1; y += PANEL_SIZE) {
+			for (int x = panel_dx0; x <= panel_dx1; x += PANEL_SIZE) {
+				int w = srcimg.width();
+				int h = srcimg.height();
+				int sx0 = srcrect.x();
+				int sy0 = srcrect.y();
+				int sx1 = sx0 + srcrect.width();
+				int sy1 = sy0 + srcrect.height();
+				int dx0 = dstpos.x() - (offset_.x() + x);
+				int dy0 = dstpos.y() - (offset_.y() + y);
+				int dx1 = dx0 + srcrect.width();
+				int dy1 = dy0 + srcrect.width();
+				if (sx0 < 0) { dx0 -= sx0; sx0 = 0; }
+				if (sy0 < 0) { dy0 -= sy0; sy0 = 0; }
+				if (dx0 < 0) { sx0 -= dx0; dx0 = 0; }
+				if (dy0 < 0) { sy0 -= dy0; dy0 = 0; }
+				if (sx1 > w) { dx1 -= sx1 - w; sx1 = w; }
+				if (sy1 > h) { dy1 -= sy1 - h; sy1 = h; }
+				w = sx1 - sx0;
+				h = sy1 - sy0;
+				if (w > 0 && h > 0) {
+					Panel *dst = findPanel_(&panels_, {x, y});
+					if (!dst) {
+						newpanels.push_back({{x, y}, QImage(PANEL_SIZE, PANEL_SIZE, format_)});
+						dst = &newpanels.back();
+						dst->image.fill(Qt::transparent);
+					}
+					QPainter pr(&dst->image);
+					pr.drawImage(dx0, dy0, srcimg, sx0, sy0, w, h);
+				}
+			}
+		}
+		panels_.insert(panels_.end(), newpanels.begin(), newpanels.end());
+		std::sort(panels_.begin(), panels_.end(), [&](Panel const &a, Panel const &b){
+			return compareQPoint(a.offset, b.offset) < 0;
+		});
+	}
+	void renderImage(QPainter *painter, QPoint const &offset, QRect const &srcrect) const
+	{
+		int panel_sx0 = srcrect.x() - offset_.x();
+		int panel_sy0 = srcrect.y() - offset_.y();
+		int panel_sx1 = panel_sx0 + srcrect.width() - 1;
+		int panel_sy1 = panel_sy0 + srcrect.height() - 1;
+		panel_sx0 = panel_sx0 - (panel_sx0 & (PANEL_SIZE - 1));
+		panel_sy0 = panel_sy0 - (panel_sy0 & (PANEL_SIZE - 1));
+		panel_sx1 = panel_sx1 - (panel_sx1 & (PANEL_SIZE - 1));
+		panel_sy1 = panel_sy1 - (panel_sy1 & (PANEL_SIZE - 1));
+		for (int y = panel_sy0; y <= panel_sy1; y += PANEL_SIZE) {
+			for (int x = panel_sx0; x <= panel_sx1; x += PANEL_SIZE) {
+				int dx0 = x - panel_sx0;
+				int dy0 = y - panel_sy0;
+				int dx1 = std::min(dx0 + PANEL_SIZE, srcrect.width());
+				int dy1 = std::min(dy0 + PANEL_SIZE, srcrect.height());
+				QRect r(x, y, PANEL_SIZE, PANEL_SIZE);
+				r = r.intersected({dx0, dy0, dx1 - dx0, dy1 - dy0});
+				if (r.width() > 0 && r.height() > 0) {
+					Panel *p = findPanel_(&panels_, {x, y});
+					if (p) {
+						r = r.translated(-x, -y);
+						painter->drawImage(offset.x() + dx0, offset.y() + dy0, p->image, r.x(), r.y(), r.width(), r.height());
+					}
+				}
+			}
+		}
+	}
+};
+
+
 struct ImageViewWidget::Private {
 	MainWindow *mainwindow = nullptr;
 	QScrollBar *v_scroll_bar = nullptr;
@@ -57,7 +196,7 @@ struct ImageViewWidget::Private {
 	QPixmap transparent_pixmap;
 
 	bool offscreen_update = false;
-	QImage offscreen1;
+//	QImage offscreen1;
 	QPixmap offscreen2;
 
 	bool scrolling = false;
@@ -77,9 +216,11 @@ struct ImageViewWidget::Private {
 	std::thread rendering_thread;
 	std::mutex render_mutex;
 	volatile bool render_interrupted = false;
+	volatile bool render_invalidate = false;
 	volatile bool render_requested = false;
 	QRect render_canvas_rect;
 	std::vector<Canvas::Panel> render_panels;
+	PanelizedImage offscreen3;
 };
 
 ImageViewWidget::ImageViewWidget(QWidget *parent)
@@ -210,6 +351,13 @@ void ImageViewWidget::runRendering()
 		if (m->render_interrupted) return;
 		if (m->render_requested) {
 			m->render_requested = false;
+
+			if (m->render_invalidate) {
+				std::lock_guard lock(m->render_mutex);
+				m->render_invalidate = false;
+				m->offscreen3.panels_.clear();
+			}
+
 			const int view_w = width();
 			const int view_h = height();
 			const int canvas_w = mainwindow()->canvasWidth();
@@ -243,14 +391,17 @@ void ImageViewWidget::runRendering()
 			});
 #endif
 
+			auto isCanceled = [&](){
+				return m->render_requested || m->render_invalidate || m->render_interrupted;
+			};
+
 #pragma omp parallel for
 //#pragma omp parallel for num_threads(8)
 //#pragma omp parallel for schedule(static, 8) num_threads(8)
 			for (int i = 0; i < rects.size(); i++) {
-				if (m->render_interrupted) continue;
-				if (m->render_requested) continue;
-				QRect const &rect = rects[i];
+				if (isCanceled()) continue;
 
+				QRect const &rect = rects[i];
 				int x = rect.x();
 				int y = rect.y();
 				int w = rect.width();
@@ -293,7 +444,7 @@ void ImageViewWidget::runRendering()
 					image = cropImage(panel->image(), sx, sy, sw, sh);
 				}
 
-				if (m->render_requested) continue;
+				if (isCanceled()) continue;
 
 				if (!panel) {
 					panel_tmp1 = m->mainwindow->renderToPanel(Canvas::AllLayers, euclase::Image::Format_F_RGBA, rect, {}, (bool *)&m->render_interrupted);
@@ -304,18 +455,22 @@ void ImageViewWidget::runRendering()
 						m->render_panels.push_back(panel_tmp1);
 						Canvas::sortPanels(&m->render_panels);
 					}
-					if (m->render_requested) continue;
+					if (isCanceled()) continue;
 
 					image = cropImage(panel_tmp1.image(), sx, sy, sw, sh);
 				}
 
-				if (m->render_requested) continue;
+				if (isCanceled()) continue;
 
 				QImage qimg = scale_float_to_uint8_rgba(image, dw, dh); // mutexロックの中で実行しないと誤動作することがある...
 				{
 					std::lock_guard lock(m->render_mutex);
+#if 0
 					QPainter pr(&m->offscreen1);
 					pr.drawImage(dx, dy, qimg);
+#else
+					m->offscreen3.paintImage({dx, dy}, qimg, qimg.rect());
+#endif
 				}
 			}
 		} else {
@@ -324,7 +479,7 @@ void ImageViewWidget::runRendering()
 	}
 }
 
-void ImageViewWidget::requestRendering()
+void ImageViewWidget::requestRendering(bool invalidate)
 {
 	auto topleft = mapToCanvasFromViewport(QPointF(0, 0));
 	auto bottomright = mapToCanvasFromViewport(QPointF(width(), height()));
@@ -332,6 +487,9 @@ void ImageViewWidget::requestRendering()
 	int y0 = (int)floor(topleft.y()) - 1;
 	int x1 = (int)ceil(bottomright.x()) + 1;
 	int y1 = (int)ceil(bottomright.y()) + 1;
+	if (invalidate) {
+		m->render_invalidate = true;
+	}
 	m->render_canvas_rect = QRect(x0, y0, x1 - x0, y1 - y0);
 	m->render_requested = true;
 }
@@ -414,6 +572,15 @@ QBrush ImageViewWidget::stripeBrush()
 	return QBrush(image);
 }
 
+void ImageViewWidget::geometryChanged()
+{
+	QPointF pt0(0, 0);
+	pt0 = mapToViewportFromCanvas(pt0);
+	int offset_x = (int)floor(pt0.x() + 0.5);
+	int offset_y = (int)floor(pt0.y() + 0.5);
+	m->offscreen3.setOffset({offset_x, offset_y});
+}
+
 void ImageViewWidget::internalScrollImage(double x, double y, bool updateview)
 {
 	m->d.image_scroll_x = x;
@@ -424,8 +591,10 @@ void ImageViewWidget::internalScrollImage(double x, double y, bool updateview)
 	if (m->d.image_scroll_x > sz.width()) m->d.image_scroll_x = sz.width();
 	if (m->d.image_scroll_y > sz.height()) m->d.image_scroll_y = sz.height();
 
+	geometryChanged();
+
 	if (updateview) {
-		requestRendering();
+		requestRendering(false);
 		paintViewLater(true);
 		update();
 	}
@@ -570,10 +739,13 @@ bool ImageViewWidget::setImageScale(double scale, bool updateview)
 	if (m->d.image_scale == scale) return false;
 
 	m->d.image_scale = scale;
+
+	geometryChanged();
+
 	emit scaleChanged(m->d.image_scale);
 
 	if (updateview) {
-		requestRendering();
+		requestRendering(true);
 		paintViewLater(true);
 		update();
 	}
@@ -738,134 +910,27 @@ void ImageViewWidget::paintEvent(QPaintEvent *)
 	const int view_h = height();
 	{
 		std::lock_guard lock(m->render_mutex);
-		if (m->offscreen1.width() != view_w || m->offscreen1.height() != view_h) {
-			m->offscreen1 = QImage(view_w, view_h, QImage::Format_RGB32);
+		if (m->offscreen2.width() != view_w || m->offscreen2.height() != view_h) {
 			m->offscreen2 = QPixmap(view_w, view_h);
-			m->offscreen1.fill(bgcolor);
 		}
 	}
 
 	const int doc_w = canvas()->width();
 	const int doc_h = canvas()->height();
-	int visible_x = 0;
-	int visible_y = 0;
-	int visible_w = 0;
-	int visible_h = 0;
-
-	if (doc_w > 0 && doc_h > 0) {
-		{
-			QPointF pt0(0, 0);
-			QPointF pt1(doc_w, doc_h);
-			pt0 = mapToViewportFromCanvas(pt0);
-			pt1 = mapToViewportFromCanvas(pt1);
-			visible_x = (int)floor(pt0.x() + 0.5);
-			visible_y = (int)floor(pt0.y() + 0.5);
-			visible_w = (int)floor(pt1.x() + 0.5) - visible_x;
-			visible_h = (int)floor(pt1.y() + 0.5) - visible_y;
-		}
-
+	QPointF pt0(0, 0);
+	QPointF pt1(doc_w, doc_h);
+	pt0 = mapToViewportFromCanvas(pt0);
+	pt1 = mapToViewportFromCanvas(pt1);
+	int visible_x = (int)floor(pt0.x() + 0.5);
+	int visible_y = (int)floor(pt0.y() + 0.5);
+	int visible_w = (int)floor(pt1.x() + 0.5) - visible_x;
+	int visible_h = (int)floor(pt1.y() + 0.5) - visible_y;
 #if 0
-		if (m->offscreen_update) {
-			m->offscreen_update = false;
-			struct Item {
-				QRect dst_rect;
-				QImage image;
-				Item() = default;
-				Item(QRect const &dst_rect, QImage const &image)
-					: dst_rect(dst_rect)
-					, image(image)
-				{
-				}
-			};
-			std::vector<Item> items;
-			QSize canvas_size = canvas()->size();
-			if (m->d.image_scale < 1) {
-				QPointF doc_topleft = mapToViewportFromCanvas({0, 0});
-				QPointF doc_bottomright = mapToViewportFromCanvas({(float)canvas_size.width(), (float)canvas_size.height()});
-				int dst_org_x = floor(doc_topleft.x());
-				int dst_org_y = floor(doc_topleft.y());
-				int dst_width = (int)ceil(doc_bottomright.x()) - dst_org_x;
-				int dst_height = (int)ceil(doc_bottomright.y()) - dst_org_y;
-				const int SIZE = 256;
-				int dw = dst_width / SIZE + 1;
-				int dh = dst_height / SIZE + 1;
-				const int N = dw * dh;
-				items.resize(N);
-#pragma omp parallel for schedule(static, 8) num_threads(8)
-				for (int i = 0; i < N; i++) {
-					int x = (i % dw) * SIZE;
-					int y = (i / dw) * SIZE;
-					int dx = dst_org_x + x - 1;
-					int dy = dst_org_y + y - 1;
-					QPointF src_topleft = mapToCanvasFromViewport({(float)dx, (float)dy});
-					QPointF src_bottomright = mapToCanvasFromViewport({dst_org_x + x + SIZE + 1.0f, dst_org_y + y + SIZE + 1.0f});
-					int src_org_x = (int)round(src_topleft.x());
-					int src_org_y = (int)round(src_topleft.y());
-					int src_width = (int)round(src_bottomright.x()) - src_org_x;
-					int src_height = (int)round(src_bottomright.y()) - src_org_y;
-					QPointF dst_topleft = mapToViewportFromCanvas(src_topleft);
-					QPointF dst_bottomright = mapToViewportFromCanvas(src_bottomright);
-					if (dst_topleft.x() >= view_w) continue;
-					if (dst_topleft.y() >= view_h) continue;
-					if (dst_bottomright.x() < 0) continue;
-					if (dst_bottomright.y() < 0) continue;
-					euclase::Image image = m->renderer->render(src_org_x, src_org_y, src_width, src_height);
-					QRect dst_rect(dst_topleft.x(), dst_topleft.y(), dst_bottomright.x() - dst_topleft.x(), dst_bottomright.y() - dst_topleft.y());
-					QImage qimg = scale_float_to_uint8_rgba(image, dst_rect.width(), dst_rect.height());
-					items[i] = {dst_rect, qimg};
-				}
-			} else {
-				int view_org_x;
-				int view_org_y;
-				int view_width;
-				int view_height;
-				{
-					QPointF topleft(0, 0);
-					QPointF bottomright(canvas_size.width(), canvas_size.height());
-					topleft = mapToViewportFromCanvas(topleft);
-					bottomright = mapToViewportFromCanvas(bottomright);
-					view_org_x = (int)std::max(0.0, floor(topleft.x()));
-					view_org_y = (int)std::max(0.0, floor(topleft.y()));
-					view_width = int(std::min((double)width(), ceil(bottomright.x())) - view_org_x);
-					view_height = int(std::min((double)height(), ceil(bottomright.y())) - view_org_y);
-				}
-				const int SIZE = 256;
-				const int N = (view_height / SIZE + 1) * (view_width / SIZE + 1);
-				items.resize(N);
-#pragma omp parallel for schedule(static, 8) num_threads(8)
-				for (int i = 0; i < N; i++) {
-					int x = (i % (view_width / SIZE + 1)) * SIZE + view_org_x;
-					int y = (i / (view_width / SIZE + 1)) * SIZE + view_org_y;
-					QPointF src_topleft = mapToCanvasFromViewport({(float)x, (float)y});
-					QPointF src_bottomright = mapToCanvasFromViewport({x + SIZE + 1.0f, y + SIZE + 1.0f});
-					src_topleft = {floor(src_topleft.x()), floor(src_topleft.y())};
-					src_bottomright = {ceil(src_bottomright.x()), ceil(src_bottomright.y())};
-					QPointF dst_topleft = mapToViewportFromCanvas(src_topleft);
-					QPointF dst_bottomright = mapToViewportFromCanvas(src_bottomright);
-					dst_topleft = {floor(dst_topleft.x()), floor(dst_topleft.y())};
-					dst_bottomright = {floor(dst_bottomright.x()), floor(dst_bottomright.y())};
-					if (src_topleft.x() >= canvas_size.width()) continue;
-					if (src_topleft.y() >= canvas_size.height()) continue;
-					if (src_bottomright.x() < 0) continue;
-					if (src_bottomright.y() < 0) continue;
-					int src_org_x = (int)src_topleft.x();
-					int src_org_y = (int)src_topleft.y();
-					int src_width = int(src_bottomright.x() - src_topleft.x());
-					int src_height = int(src_bottomright.y() - src_topleft.y());
-					euclase::Image image = m->renderer->render(src_org_x, src_org_y, src_width, src_height);
-					QRect dst_rect(dst_topleft.x(), dst_topleft.y(), dst_bottomright.x() - dst_topleft.x(), dst_bottomright.y() - dst_topleft.y());
-					QImage qimg = scale_float_to_uint8_rgba(image, dst_rect.width(), dst_rect.height());
-					items[i] = {dst_rect, qimg};
-				}
-			}
-
-			QPainter pr1(&m->offscreen1);
-			for (Item const &item : items) {
-				pr1.drawImage(item.dst_rect, item.image);
-			}
-		}
-#endif
+	if (m->offscreen1.width() != visible_w || m->offscreen1.height() != visible_h) {
+		m->offscreen1 = QImage(visible_w, visible_h, QImage::Format_RGBA8888);
+		m->offscreen1.fill(bgcolor);
 	}
+#endif
 
 	{
 		m->offscreen2.fill(Qt::transparent);
@@ -914,7 +979,7 @@ void ImageViewWidget::paintEvent(QPaintEvent *)
 	QPainter pr_view(this);
 	{
 		std::lock_guard lock(m->render_mutex);
-		pr_view.drawImage(0, 0, m->offscreen1);
+		m->offscreen3.renderImage(&pr_view, {visible_x, visible_y}, {visible_x, visible_y, visible_w, visible_h});
 	}
 	pr_view.drawPixmap(0, 0, m->offscreen2);
 
@@ -984,7 +1049,6 @@ void ImageViewWidget::paintEvent(QPaintEvent *)
 
 void ImageViewWidget::resizeEvent(QResizeEvent *)
 {
-	m->offscreen1 = {};
 	m->renderer->reset();
 
 	clearSelectionOutline();

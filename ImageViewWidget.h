@@ -44,7 +44,8 @@ private:
 	void startRenderingThread();
 	void stopRenderingThread();
 	void runRendering();
-	void requestRendering();
+	void requestRendering(bool invalidate);
+	void geometryChanged();
 protected:
 	void resizeEvent(QResizeEvent *) override;
 	void paintEvent(QPaintEvent *) override;

@@ -9,7 +9,7 @@
 #include <functional>
 #include <memory>
 
-static const int PANEL_SIZE = 256;
+static const int PANEL_SIZE = 256; // must be power of two
 
 class Canvas {
 	friend class LayerComposer;
@@ -220,7 +220,7 @@ public:
 			sort(panels);
 		}
 
-		Panel *addImagePanel(std::vector<Panel> *panels, int x, int y, int w, int h, euclase::Image::Format format, euclase::Image::MemoryType memtype);
+		static Panel *addImagePanel(std::vector<Panel> *panels, int x, int y, int w, int h, euclase::Image::Format format, euclase::Image::MemoryType memtype);
 
 		Layer() = default;
 
