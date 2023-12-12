@@ -173,8 +173,9 @@ void Canvas::renderToSinglePanel(Panel *target_panel, QPoint const &target_offse
 
 		auto memtype = target_panel->imagep()->memtype();
 
-#ifdef USE_CUDA
 		if (input_image->memtype() == euclase::Image::CUDA || target_panel->imagep()->memtype() == euclase::Image::CUDA) {
+			Q_ASSERT(global->cuda);
+#ifdef USE_CUDA
 			if (target_panel->imagep()->format() == euclase::Image::Format_8_Grayscale) {
 				euclase::Image in = input_image->toCUDA();
 				euclase::Image *out = target_panel->imagep();
@@ -192,8 +193,8 @@ void Canvas::renderToSinglePanel(Panel *target_panel, QPoint const &target_offse
 				out->memconvert(memtype);
 				return;
 			}
-		}
 #endif
+		}
 
 		target_panel->imagep()->memconvert(euclase::Image::Host);
 		if (target_panel->imagep()->format() == euclase::Image::Format_8_RGBA) {
@@ -356,9 +357,10 @@ void Canvas::renderToSinglePanel(Panel *target_panel, QPoint const &target_offse
 
 	if (target_panel->imagep()->format() == euclase::Image::Format_F_RGBA) {
 
-#ifdef USE_CUDA
 		if (input_image->format() == euclase::Image::Format_F_RGBA) {
 			if (target_panel->image().memtype() == euclase::Image::CUDA) {
+				Q_ASSERT(global->cuda);
+#ifdef USE_CUDA
 				auto memtype = target_panel->imagep()->memtype();
 				euclase::Image in = input_image->toCUDA();
 				euclase::Image *out = target_panel->imagep();
@@ -379,9 +381,9 @@ void Canvas::renderToSinglePanel(Panel *target_panel, QPoint const &target_offse
 				global->cuda->blend_float_rgba(w, h, src, src_w, src_h, sx, sy, mask, mask_w, mask_h, dst, dst_w, dst_h, dx, dy);
 				target_panel->imagep()->memconvert(memtype);
 				return;
+#endif
 			}
 		}
-#endif
 
 		const int dstep = euclase::bytesPerPixel(target_panel->imagep()->format());
 		const int sstep = euclase::bytesPerPixel(input_image->format());
@@ -670,7 +672,7 @@ void Canvas::clearSelection()
 	selection_layer()->memtype_ = global->cuda ? euclase::Image::CUDA : euclase::Image::Host;
 }
 
-void Canvas::clear(QMutex *sync)
+void Canvas::clear()
 {
 	m->size = QSize();
 	clearSelection();
@@ -793,10 +795,8 @@ Canvas::Panel *Canvas::Layer::addImagePanel(std::vector<Panel> *panels, int x, i
 	return &*it;
 }
 
-void Canvas::Layer::finishAlternatePanels(bool apply, QMutex *sync)
+void Canvas::Layer::finishAlternatePanels(bool apply)
 {
-	if (sync) sync->lock();
-
 	if (apply) {
 		auto const *sel = alternate_selection_panels.empty() ? nullptr : &alternate_selection_panels;
 		for (Panel &panel : primary_panels) {
@@ -807,8 +807,6 @@ void Canvas::Layer::finishAlternatePanels(bool apply, QMutex *sync)
 	active_panel_ = Primary;
 	alternate_panels.clear();
 	alternate_selection_panels.clear();
-
-	if (sync) sync->unlock();
 }
 
 QRect Canvas::Layer::rect() const

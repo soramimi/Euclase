@@ -254,7 +254,7 @@ public:
 			setOffset(offset);
 		}
 
-		void finishAlternatePanels(bool apply, QMutex *sync);
+		void finishAlternatePanels(bool apply);
 
 		QRect rect() const;
 	};
@@ -317,7 +317,7 @@ public:
 	void changeSelection(SelectionOperation op, QRect const &rect);
 	Panel crop(const QRect &r, bool *abort) const;
 	void trim(const QRect &r);
-	void clear(QMutex *sync);
+	void clear();
 	int addNewLayer();
 	static LayerPtr newLayer();
 	void setCurrentLayer(int index);

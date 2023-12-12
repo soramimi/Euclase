@@ -21,6 +21,7 @@ public:
 	enum class Tool {
 		Scroll,
 		Brush,
+		EraserBrush,
 		Rect,
 	};
 	enum RectHandle {
@@ -88,8 +89,6 @@ public:
 	Canvas *canvas();
 	Canvas const *canvas() const;
 
-	QMutex *synchronizer() const;
-
 	void fitView();
 	Canvas::Panel renderToPanel(Canvas::InputLayer inputlayer, euclase::Image::Format format, QRect const &r, const QRect &maskrect, bool *abort) const;
 	euclase::Image renderToImage(euclase::Image::Format format, QRect const &r, bool *abort) const;
@@ -143,7 +142,8 @@ private slots:
 	void on_spinBox_hsv_s_valueChanged(int value);
 	void on_spinBox_hsv_v_valueChanged(int value);
 	void on_toolButton_scroll_clicked();
-	void on_toolButton_brush_clicked();
+	void on_toolButton_paint_brush_clicked();
+	void on_toolButton_eraser_brush_clicked();
 	void on_toolButton_rect_clicked();
 	void on_action_clear_bounds_triggered();
 	void on_action_edit_copy_triggered();
@@ -153,6 +153,7 @@ private slots:
 	void on_action_select_rectangle_triggered();
 	void on_action_settings_triggered();
 	void test();
+
 
 public:
 	bool eventFilter(QObject *watched, QEvent *event);

@@ -71,7 +71,8 @@ MainWindow::MainWindow(QWidget *parent)
 	ui->widget_image_view->setMouseTracking(true);
 
 	ui->toolButton_scroll->setCheckable(true);
-	ui->toolButton_brush->setCheckable(true);
+	ui->toolButton_paint_brush->setCheckable(true);
+	ui->toolButton_eraser_brush->setCheckable(true);
 	ui->toolButton_rect->setCheckable(true);
 	ui->toolButton_scroll->click();
 
@@ -132,12 +133,6 @@ Canvas *MainWindow::canvas()
 Canvas const *MainWindow::canvas() const
 {
 	return &m->doc;
-}
-
-QMutex *MainWindow::synchronizer() const
-{
-//	return ui->widget_image_view->synchronizer();
-	return nullptr;
 }
 
 int MainWindow::canvasWidth() const
@@ -443,9 +438,9 @@ void MainWindow::filter(FilterContext *context, AbstractFilterForm *form, std::f
 
 	FilterDialog dlg(this, context, form, fn);
 	if (dlg.exec() == QDialog::Accepted) {
-		canvas()->current_layer()->finishAlternatePanels(true, synchronizer());
+		canvas()->current_layer()->finishAlternatePanels(true);
 	} else {
-		canvas()->current_layer()->finishAlternatePanels(false, synchronizer());
+		canvas()->current_layer()->finishAlternatePanels(false);
 	}
 	updateImageView();
 }
@@ -626,7 +621,7 @@ void MainWindow::onSelectionChanged()
 void MainWindow::clearCanvas()
 {
 	ui->widget_image_view->stopRendering();
-	canvas()->clear(synchronizer());
+	canvas()->clear();
 }
 
 void MainWindow::paintLayer(Operation op, Canvas::Layer const &layer)
@@ -700,9 +695,7 @@ void MainWindow::drawBrush(bool one)
 
 void MainWindow::clearCurrentAlternate()
 {
-//	canvas()->current_layer()->alternate_panels.clear();
-//	canvas()->current_layer()->alternate_selection_panels.clear();
-	canvas()->current_layer()->finishAlternatePanels(false, nullptr);
+	canvas()->current_layer()->finishAlternatePanels(false);
 }
 
 void MainWindow::onPenDown(double x, double y)
@@ -1301,7 +1294,8 @@ void MainWindow::changeTool(Tool tool)
 
 	Button buttons[] = {
 		{Tool::Scroll, ui->toolButton_scroll},
-		{Tool::Brush, ui->toolButton_brush},
+		{Tool::Brush, ui->toolButton_paint_brush},
+		{Tool::EraserBrush, ui->toolButton_eraser_brush},
 		{Tool::Rect, ui->toolButton_rect},
 	};
 
@@ -1324,9 +1318,14 @@ void MainWindow::on_toolButton_scroll_clicked()
 	changeTool(Tool::Scroll);
 }
 
-void MainWindow::on_toolButton_brush_clicked()
+void MainWindow::on_toolButton_paint_brush_clicked()
 {
 	changeTool(Tool::Brush);
+}
+
+void MainWindow::on_toolButton_eraser_brush_clicked()
+{
+	changeTool(Tool::EraserBrush);
 }
 
 void MainWindow::on_toolButton_rect_clicked()
@@ -1527,4 +1526,7 @@ void MainWindow::colorCollection()
 void MainWindow::test()
 {
 }
+
+
+
 
