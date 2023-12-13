@@ -663,7 +663,7 @@ void Canvas::renderToLayer(Layer *target_layer, Layer::ActivePanel activepanel, 
 void Canvas::clearSelection()
 {
 	selection_layer()->clear();
-	selection_layer()->memtype_ = global->cuda ? euclase::Image::CUDA : euclase::Image::Host;
+	selection_layer()->memtype_ = euclase::Image::Host;//global->cuda ? euclase::Image::CUDA : euclase::Image::Host; //@ CUDA不安定(?)
 }
 
 void Canvas::clear()
@@ -696,8 +696,7 @@ void Canvas::subSelection(Layer const &source, RenderOption const &opt, bool *ab
 Canvas::Panel Canvas::renderSelection(const QRect &r, bool *abort) const
 {
 	Panel panel;
-	panel.imagep()->make(r.width(), r.height(), euclase::Image::Format_8_Grayscale, selection_layer()->memtype_);
-	panel.imagep()->fill(euclase::k::black);
+	panel.imagep()->make(r.width(), r.height(), euclase::Image::Format_8_Grayscale, /*selection_layer()->memtype_*/euclase::Image::Host, euclase::k::black);
 	panel.setOffset(r.topLeft());
 	std::vector<Layer *> layers;
 	layers.push_back(selection_layer());
@@ -713,7 +712,6 @@ Canvas::Panel Canvas::renderToPanel(InputLayer inputlayer, euclase::Image::Forma
 
 	Panel panel;
 	panel.imagep()->make(r.width(), r.height(), format, current_layer()->memtype_);
-	panel.imagep()->fill(euclase::k::transparent);
 	panel.setOffset(r.topLeft());
 	std::vector<Layer *> layers;
 	switch (inputlayer) {
@@ -734,7 +732,6 @@ Canvas::Panel Canvas::crop(const QRect &r, bool *abort) const
 {
 	Panel panel;
 	panel.imagep()->make(r.width(), r.height(), euclase::Image::Format_8_RGBA);
-	panel.imagep()->fill(euclase::k::transparent);
 	panel.setOffset(r.topLeft());
 	std::vector<Layer *> layers;
 	layers.push_back(current_layer());
@@ -755,7 +752,6 @@ Canvas::Panel *Canvas::Layer::addImagePanel(std::vector<Panel> *panels, int x, i
 		Panel panel;
 		if (w > 0 && h > 0) {
 			panel->make(w, h, format, memtype);
-			panel->fill(euclase::k::transparent);
 		}
 		panel.setOffset(x, y);
 		return panel;

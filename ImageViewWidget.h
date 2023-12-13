@@ -36,7 +36,6 @@ private:
 	void zoomToCenter(double scale);
 	void updateCursorAnchorPos();
 	void updateCenterAnchorPos();
-	void calcDestinationRect();
 	QBrush stripeBrush();
 	void initBrushes();
 	QImage generateOutlineImage(const euclase::Image &selection, bool *abort);

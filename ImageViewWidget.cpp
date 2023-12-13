@@ -162,30 +162,7 @@ static QImage scale_float_to_uint8_rgba(euclase::Image const &src, int w, int h)
 		int dstride = ret.bytesPerLine();
 		global->cuda->scale_float_to_uint8_rgba(w, h, dstride, ret.bits(), src.width(), src.height(), src.data());
 	} else {
-#if 1
 		return src.qimage().scaled(w, h, Qt::IgnoreAspectRatio, Qt::FastTransformation);
-#else
-		euclase::Image in = src.toHost();
-		int sw = in.width();
-		int sh = in.height();
-		for (int y = 0; y < h; y++) {
-			uint8_t *d = ret.scanLine(y);
-			for (int x = 0; x < w; x++) {
-				int sx = x * sw / w;
-				int sy = y * sh / h;
-				float const *s = (float const *)in.scanLine(sy) + 4 * sx;
-				uint8_t R = std::max(0, std::min(255, int(euclase::gamma(s[0]) * 255 + 0.5f)));
-				uint8_t G = std::max(0, std::min(255, int(euclase::gamma(s[1]) * 255 + 0.5f)));
-				uint8_t B = std::max(0, std::min(255, int(euclase::gamma(s[2]) * 255 + 0.5f)));
-				uint8_t A = std::max(0, std::min(255, int(s[3] * 255 + 0.5f)));
-				d[0] = R;
-				d[1] = G;
-				d[2] = B;
-				d[3] = A;
-				d += 4;
-			}
-		}
-#endif
 	}
 	return ret;
 }
@@ -226,23 +203,6 @@ void ImageViewWidget::runRendering()
 					}
 				}
 			}
-
-#if 0
-			QPoint center = mapToCanvasFromViewport(mapFromGlobal(QCursor::pos())).toPoint();
-			std::sort(rects.begin(), rects.end(), [&](QRect const &a, QRect const &b){
-				auto Center = [=](QRect const &r){
-					return r.center();
-				};
-				auto Distance = [](QPoint const &a, QPoint const &b){
-					auto dx = a.x() - b.x();
-					auto dy = a.y() - b.y();
-					return sqrt(dx * dx + dy * dy);
-				};
-				QPoint ca = Center(a);
-				QPoint cb = Center(b);
-				return Distance(ca, center) < Distance(cb, center);
-			});
-#endif
 
 			auto isCanceled = [&](){
 				return m->render_requested || m->render_invalidate || m->render_interrupted;
@@ -313,15 +273,10 @@ void ImageViewWidget::runRendering()
 
 				if (isCanceled()) continue;
 
-				QImage qimg = scale_float_to_uint8_rgba(image, dw, dh); // mutexロックの中で実行しないと誤動作することがある...
+				QImage qimg = scale_float_to_uint8_rgba(image, dw, dh);
 				{
 					std::lock_guard lock(m->render_mutex);
-#if 0
-					QPainter pr(&m->offscreen1);
-					pr.drawImage(dx, dy, qimg);
-#else
 					m->offscreen3.paintImage({dx, dy}, qimg, qimg.rect());
-#endif
 				}
 			}
 		} else {
@@ -354,6 +309,7 @@ void ImageViewWidget::startRenderingThread()
 
 void ImageViewWidget::stopRenderingThread()
 {
+	m->render_interrupted = true;
 	if (m->image_rendering_thread.joinable()) {
 		m->image_rendering_thread.join();
 	}
@@ -508,25 +464,8 @@ QSize ImageViewWidget::imageSize() const
 	return canvas()->size();
 }
 
-
-
-
-
-
-
-void ImageViewWidget::calcDestinationRect()
-{
-//	double cx = width() / 2.0;
-//	double cy = height() / 2.0;
-//	double x = cx - m->d.image_scroll_x;
-//	double y = cy - m->d.image_scroll_y;
-//	QSizeF sz = imageScrollRange();
-}
-
 void ImageViewWidget::paintViewLater(bool image)
 {
-	calcDestinationRect();
-
 	if (image) {
 		QPointF pt0 = mapToCanvasFromViewport(QPointF(0, 0));
 		QPointF pt1 = mapToCanvasFromViewport(QPointF(width(), height()));
@@ -718,7 +657,6 @@ SelectionOutline ImageViewWidget::renderSelectionOutline(bool *abort)
 			int dh = int(dp1.y()) - dy;
 			selection = canvas()->renderSelection(QRect(dx, dy, dw, dh), abort).image();
 			if (abort && *abort) return {};
-//			selection = selection.toHost(); //@ CUDA不安定
 			if (selection.memtype() == euclase::Image::CUDA) {
 				euclase::Image sel(vw, vh, euclase::Image::Format_8_Grayscale, euclase::Image::CUDA);
 				int sw = selection.width();
@@ -763,12 +701,6 @@ void ImageViewWidget::paintEvent(QPaintEvent *)
 	int visible_y = (int)floor(pt0.y() + 0.5);
 	int visible_w = (int)floor(pt1.x() + 0.5) - visible_x;
 	int visible_h = (int)floor(pt1.y() + 0.5) - visible_y;
-#if 0
-	if (m->offscreen1.width() != visible_w || m->offscreen1.height() != visible_h) {
-		m->offscreen1 = QImage(visible_w, visible_h, QImage::Format_RGBA8888);
-		m->offscreen1.fill(bgcolor);
-	}
-#endif
 
 	{
 		m->offscreen2.fill(Qt::transparent);
@@ -804,7 +736,6 @@ void ImageViewWidget::paintEvent(QPaintEvent *)
 
 		// 選択領域点線
 		if (!m->selection_outline.bitmap.isNull()) {
-			qDebug() << m->selection_outline.bitmap;
 			QBrush brush = stripeBrush();
 			pr2.save();
 			pr2.setClipRegion(QRegion(m->selection_outline.bitmap).translated(m->selection_outline.point));
@@ -887,8 +818,6 @@ void ImageViewWidget::paintEvent(QPaintEvent *)
 
 void ImageViewWidget::resizeEvent(QResizeEvent *)
 {
-//	m->renderer->reset();
-
 	clearSelectionOutline();
 	updateScrollBarRange();
 	paintViewLater(true);

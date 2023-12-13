@@ -988,7 +988,7 @@ private:
 private:
 	Data *ptr_ = nullptr;
 	void assign(Data *p);
-	void init(int w, int h, Image::Format format, MemoryType memtype = Host);
+	void init(int w, int h, Image::Format format, MemoryType memtype = Host, Color const &color = k::transparent);
 public:
 	Image() = default;
 	Image(Image const &r)
@@ -1055,10 +1055,10 @@ public:
 		return ptr_ ? ptr_->format_ : Image::Format_Invalid;
 	}
 
-	void make(int width, int height, Image::Format format, MemoryType memtype = Host)
+	void make(int width, int height, Image::Format format, MemoryType memtype = Host, euclase::Color const &color = k::transparent)
 	{
 		assign(nullptr);
-		init(width, height, format, memtype);
+		init(width, height, format, memtype, color);
 	}
 
 	uint8_t *data()

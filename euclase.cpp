@@ -590,7 +590,7 @@ int euclase::bytesPerPixel(Image::Format format)
 	return 0;
 }
 
-void euclase::Image::init(int w, int h, Image::Format format, MemoryType memtype)
+void euclase::Image::init(int w, int h, Image::Format format, MemoryType memtype, const Color &color)
 {
 	const int datasize = w * h * euclase::bytesPerPixel(format);
 	Data *p = (Data *)malloc(sizeof(Data) + (memtype == Host ? datasize : 0));
@@ -607,7 +607,7 @@ void euclase::Image::init(int w, int h, Image::Format format, MemoryType memtype
 		ptr_->cudamem_ = global->cuda->malloc(datasize);
 	}
 #endif
-	fill(k::transparent);
+	fill(color);
 }
 
 euclase::Image euclase::Image::copy(MemoryType memtype) const
