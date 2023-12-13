@@ -55,7 +55,6 @@ SOURCES += main.cpp\
 	FilterFormMedian.cpp \
 	FilterStatus.cpp \
 	HueWidget.cpp \
-	ImageViewRenderingThread.cpp \
 	ImageViewWidget.cpp \
 	MainWindow.cpp \
 	MemoryReader.cpp \
@@ -98,7 +97,6 @@ HEADERS += \
 	FilterFormMedian.h \
 	FilterStatus.h \
 	HueWidget.h \
-	ImageViewRenderingThread.h \
 	ImageViewWidget.h \
 	MainWindow.h \
 	MemoryReader.h \

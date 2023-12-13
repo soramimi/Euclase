@@ -40,6 +40,10 @@ public:
 	{
 		offset_ = offset;
 	}
+	QPoint offset() const
+	{
+		return offset_;
+	}
 	void clear()
 	{
 		panels_.clear();

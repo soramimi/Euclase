@@ -14,5 +14,6 @@ public:
 	QPoint point;
 	QBitmap bitmap;
 };
+Q_DECLARE_METATYPE(SelectionOutline)
 
 #endif // SELECTIONOUTLINE_H

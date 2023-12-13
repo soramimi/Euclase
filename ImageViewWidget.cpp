@@ -1,9 +1,7 @@
 
+#include "ImageViewWidget.h"
 #include "ApplicationGlobal.h"
 #include "Canvas.h"
-#include "ImageViewRenderingThread.h"
-#include "ImageViewWidget.h"
-#include "ImageViewWidget.h"
 #include "MainWindow.h"
 #include "PanelizedImage.h"
 #include "SelectionOutline.h"
@@ -20,8 +18,8 @@
 #include <cmath>
 #include <functional>
 #include <memory>
-#include <thread>
 #include <mutex>
+#include <thread>
 
 using SvgRendererPtr = std::shared_ptr<QSvgRenderer>;
 
@@ -80,8 +78,9 @@ struct ImageViewWidget::Private {
 	std::vector<Canvas::Panel> render_panels;
 	PanelizedImage offscreen3;
 
-	ImageViewRenderingThread selection_outline_rendering_thread;
+	std::thread selection_outline_thread;
 	SelectionOutline selection_outline;
+	bool selection_outline_requested = false;
 };
 
 ImageViewWidget::ImageViewWidget(QWidget *parent)
@@ -95,6 +94,8 @@ ImageViewWidget::ImageViewWidget(QWidget *parent)
 	setMouseTracking(true);
 
 	startRenderingThread();
+
+	connect(this, &ImageViewWidget::notifySelectionOutlineReady, this, &ImageViewWidget::onSelectionOutlineReady);
 
 	connect(&timer_, &QTimer::timeout, this, &ImageViewWidget::onTimer);
 	timer_.start(100);
@@ -150,9 +151,6 @@ void ImageViewWidget::init(MainWindow *mainwindow, QScrollBar *vsb, QScrollBar *
 	m->mainwindow = mainwindow;
 	m->v_scroll_bar = vsb;
 	m->h_scroll_bar = hsb;
-
-	m->selection_outline_rendering_thread.init(m->mainwindow);
-	connect(&m->selection_outline_rendering_thread, &ImageViewRenderingThread::done, this, &ImageViewWidget::onSelectionOutlineReady);
 }
 
 static QImage scale_float_to_uint8_rgba(euclase::Image const &src, int w, int h)
@@ -175,7 +173,7 @@ void ImageViewWidget::clearRenderedPanels()
 	m->render_panels.clear();
 }
 
-void ImageViewWidget::runRendering()
+void ImageViewWidget::runImageRendering()
 {
 	while (1) {
 		if (m->render_interrupted) return;
@@ -188,10 +186,21 @@ void ImageViewWidget::runRendering()
 				m->offscreen3.clear();
 			}
 
-			const int view_w = width();
-			const int view_h = height();
 			const int canvas_w = mainwindow()->canvasWidth();
 			const int canvas_h = mainwindow()->canvasHeight();
+
+			int view_left;
+			int view_top;
+			int view_right;
+			int view_bottom;
+			{
+				QPointF topleft = mapToViewportFromCanvas(QPointF(0, 0));
+				QPointF bottomright = mapToViewportFromCanvas(QPointF(canvas_w, canvas_h));
+				view_left = std::max((int)floor(topleft.x()), 0);
+				view_top = std::max((int)floor(topleft.y()), 0);
+				view_right = std::min((int)ceil(bottomright.x()), width());
+				view_bottom = std::min((int)ceil(bottomright.y()), height());
+			}
 
 			std::vector<QRect> rects;
 
@@ -204,60 +213,92 @@ void ImageViewWidget::runRendering()
 				}
 			}
 
+			// マウスカーソルから近い順にソート
+			QPoint center = mapToCanvasFromViewport(mapFromGlobal(QCursor::pos())).toPoint();
+			std::sort(rects.begin(), rects.end(), [&](QRect const &a, QRect const &b){
+				auto Center = [=](QRect const &r){
+					return r.center();
+				};
+				auto Distance = [](QPoint const &a, QPoint const &b){
+					auto dx = a.x() - b.x();
+					auto dy = a.y() - b.y();
+					return sqrt(dx * dx + dy * dy);
+				};
+				QPoint ca = Center(a);
+				QPoint cb = Center(b);
+				return Distance(ca, center) < Distance(cb, center);
+			});
+
 			auto isCanceled = [&](){
 				return m->render_requested || m->render_invalidate || m->render_interrupted;
 			};
 
-#pragma omp parallel for
+			std::atomic_int j = 0;
+
+#pragma omp parallel for num_threads(16)
 			for (int i = 0; i < rects.size(); i++) {
 				if (isCanceled()) continue;
 
-				QRect const &rect = rects[i];
+				// パネル矩形
+				QRect const &rect = rects[j++];
 				int x = rect.x();
 				int y = rect.y();
 				int w = rect.width();
 				int h = rect.height();
 
+				// 描画先座標
 				QPointF src_topleft(x, y);
 				QPointF src_bottomright(x + w, y + h);
+
+				// 描画元座標
 				QPointF dst_topleft = mapToViewportFromCanvas(src_topleft);
 				QPointF dst_bottomright = mapToViewportFromCanvas(src_bottomright);
 
-				if (dst_topleft.x() < 0) dst_topleft.rx() = 0;
-				if (dst_topleft.y() < 0) dst_topleft.ry() = 0;
-				if (dst_bottomright.x() > view_w) dst_bottomright.rx() = view_w;
-				if (dst_bottomright.y() > view_h) dst_bottomright.ry() = view_h;
+				// 描画範囲でクリップ
+				if (dst_topleft.x() < view_left) dst_topleft.rx() = view_left;
+				if (dst_topleft.y() < view_top) dst_topleft.ry() = view_top;
+				if (dst_bottomright.x() > view_right) dst_bottomright.rx() = view_right;
+				if (dst_bottomright.y() > view_bottom) dst_bottomright.ry() = view_bottom;
 
+				// 整数化
 				src_topleft = mapToCanvasFromViewport(dst_topleft);
 				src_bottomright = mapToCanvasFromViewport(dst_bottomright);
-				int sx = std::max(x, (int)round(src_topleft.x()));
-				int sy = std::max(y, (int)round(src_topleft.y()));
-				int sw = std::min(x + w, (int)round(src_bottomright.x()));
-				int sh = std::min(y + h, (int)round(src_bottomright.y()));
-				sw = std::max(1, sw - sx);
-				sh = std::max(1, sh - sy);
+				src_topleft.rx() = floor(src_topleft.x());
+				src_topleft.ry() = floor(src_topleft.y());
+				src_bottomright.rx() = ceil(src_bottomright.x());
+				src_bottomright.ry() = ceil(src_bottomright.y());
+
+				// 描画先を再計算
+				dst_topleft = mapToViewportFromCanvas(src_topleft);
+				dst_bottomright = mapToViewportFromCanvas(src_bottomright);
+				int dx = (int)floor(dst_topleft.x());
+				int dy = (int)floor(dst_topleft.y());
+				int dw = (int)ceil(dst_bottomright.x()) - dx;
+				int dh = (int)ceil(dst_bottomright.y()) - dy;
+
+				// 描画元座標を確定
+				int sx = (int)src_topleft.x();
+				int sy = (int)src_topleft.y();
+				int sw = (int)src_bottomright.x() - sx;
+				int sh = (int)src_bottomright.y() - sy;
+				if (sw <= 0 || sh <= 0) continue;
+
+				// パネル原点座標分ずらす
 				sx -= x;
 				sy -= y;
 
-				int dx = (int)round(dst_topleft.x());
-				int dy = (int)round(dst_topleft.y());
-				int dw = (int)round(dst_bottomright.x()) - dx;
-				int dh = (int)round(dst_bottomright.y()) - dy;
-
 				euclase::Image image;
-				Canvas::Panel panel_tmp1;
 				Canvas::Panel *panel;
 				{
 					std::lock_guard lock(m->render_mutex);
 					panel = Canvas::findPanel(&m->render_panels, QPoint(x, y));
 				}
 				if (panel) {
+					// 既存パネルから画像を切り出す
 					image = cropImage(panel->image(), sx, sy, sw, sh);
-				}
-
-				if (isCanceled()) continue;
-
-				if (!panel) {
+				} else {
+					// 新規パネルを作成
+					Canvas::Panel panel_tmp1;
 					panel_tmp1 = m->mainwindow->renderToPanel(Canvas::AllLayers, euclase::Image::Format_F_RGBA, rect, {}, (bool *)&m->render_interrupted);
 					*panel_tmp1.imagep() = panel_tmp1.imagep()->toHost(); // CUDAよりCPUの方が速くて安定する
 					panel_tmp1.setOffset(x, y);
@@ -266,19 +307,34 @@ void ImageViewWidget::runRendering()
 						m->render_panels.push_back(panel_tmp1);
 						Canvas::sortPanels(&m->render_panels);
 					}
-					if (isCanceled()) continue;
-
+					// 画像を切り出す
 					image = cropImage(panel_tmp1.image(), sx, sy, sw, sh);
 				}
 
-				if (isCanceled()) continue;
-
+				// 拡大縮小
 				QImage qimg = scale_float_to_uint8_rgba(image, dw, dh);
+
 				{
 					std::lock_guard lock(m->render_mutex);
-					m->offscreen3.paintImage({dx, dy}, qimg, qimg.rect());
+					if (!isCanceled()) {
+						m->offscreen3.paintImage({dx, dy}, qimg, qimg.rect());
+					}
 				}
 			}
+		} else {
+			std::this_thread::yield();
+		}
+	}
+}
+
+void ImageViewWidget::runSelectionRendering()
+{
+	while (1) {
+		if (m->render_interrupted) break;
+		if (m->selection_outline_requested) {
+			m->selection_outline_requested = false;
+			SelectionOutline selection_outline = renderSelectionOutline(&m->selection_outline_requested);
+			emit notifySelectionOutlineReady(selection_outline);
 		} else {
 			std::this_thread::yield();
 		}
@@ -303,7 +359,10 @@ void ImageViewWidget::requestRendering(bool invalidate)
 void ImageViewWidget::startRenderingThread()
 {
 	m->image_rendering_thread = std::thread([&](){
-		runRendering();
+		runImageRendering();
+	});
+	m->selection_outline_thread = std::thread([&](){
+		runSelectionRendering();
 	});
 }
 
@@ -312,6 +371,9 @@ void ImageViewWidget::stopRenderingThread()
 	m->render_interrupted = true;
 	if (m->image_rendering_thread.joinable()) {
 		m->image_rendering_thread.join();
+	}
+	if (m->selection_outline_thread.joinable()) {
+		m->selection_outline_thread.join();
 	}
 }
 
@@ -377,7 +439,11 @@ void ImageViewWidget::geometryChanged()
 	pt0 = mapToViewportFromCanvas(pt0);
 	int offset_x = (int)floor(pt0.x() + 0.5);
 	int offset_y = (int)floor(pt0.y() + 0.5);
-	m->offscreen3.setOffset({offset_x, offset_y});
+	{
+		std::lock_guard lock(m->render_mutex);
+		m->offscreen3.setOffset({offset_x, offset_y});
+		m->render_requested = true;
+	}
 }
 
 void ImageViewWidget::internalScrollImage(double x, double y, bool updateview)
@@ -489,7 +555,7 @@ void ImageViewWidget::paintViewLater(bool image)
 		}
 	}
 
-	m->selection_outline_rendering_thread.request({}, {}, 0);
+	m->selection_outline_requested = true;
 }
 
 void ImageViewWidget::updateCursorAnchorPos()
@@ -684,12 +750,6 @@ void ImageViewWidget::paintEvent(QPaintEvent *)
 
 	const int view_w = width();
 	const int view_h = height();
-	{
-		std::lock_guard lock(m->render_mutex);
-		if (m->offscreen2.width() != view_w || m->offscreen2.height() != view_h) {
-			m->offscreen2 = QPixmap(view_w, view_h);
-		}
-	}
 
 	const int doc_w = canvas()->width();
 	const int doc_h = canvas()->height();
@@ -702,8 +762,11 @@ void ImageViewWidget::paintEvent(QPaintEvent *)
 	int visible_w = (int)floor(pt1.x() + 0.5) - visible_x;
 	int visible_h = (int)floor(pt1.y() + 0.5) - visible_y;
 
+	if (m->offscreen2.width() != view_w || m->offscreen2.height() != view_h) {
+		m->offscreen2 = QPixmap(view_w, view_h);
+	}
+	m->offscreen2.fill(Qt::transparent);
 	{
-		m->offscreen2.fill(Qt::transparent);
 		QPainter pr2(&m->offscreen2);
 
 		// 最大拡大時のグリッド
@@ -905,9 +968,9 @@ void ImageViewWidget::wheelEvent(QWheelEvent *e)
 	zoomToCursor(m->d.image_scale * scale);
 }
 
-void ImageViewWidget::onSelectionOutlineReady(const RenderedData &data)
+void ImageViewWidget::onSelectionOutlineReady(const SelectionOutline &data)
 {
-	m->selection_outline = data.selection_outline;
+	m->selection_outline = data;
 	update();
 }
 

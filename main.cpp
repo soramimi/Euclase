@@ -1,6 +1,5 @@
 
 #include "ApplicationGlobal.h"
-#include "ImageViewRenderingThread.h"
 #include "MainWindow.h"
 #include "MyApplication.h"
 #include "SelectionOutline.h"
@@ -51,7 +50,7 @@ int main(int argc, char *argv[])
 
 	MyApplication a(argc, argv);
 
-#if 0//def USE_CUDA
+#ifdef USE_CUDA
 #ifdef Q_OS_WIN
 	if (1) {
 		QString path = a.applicationDirPath() / "libEuclaseCUDA.dll";
@@ -87,7 +86,7 @@ int main(int argc, char *argv[])
 	}
 #endif
 
-	qRegisterMetaType<RenderedData>("RenderedData");
+	qRegisterMetaType<SelectionOutline>("SelectionOutline");
 
 	MainWindow w;
 	w.setWindowIcon(QIcon(":/image/icon.png"));

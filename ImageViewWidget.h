@@ -8,7 +8,6 @@
 #include "SelectionOutline.h"
 
 class Canvas;
-class RenderedData;
 
 class ImageViewWidget : public QWidget {
 	Q_OBJECT
@@ -42,10 +41,11 @@ private:
 	void internalUpdateScroll();
 	void startRenderingThread();
 	void stopRenderingThread();
-	void runRendering();
+	void runImageRendering();
 	void requestRendering(bool invalidate);
 	void geometryChanged();
 	void clearSelectionOutline();
+	void runSelectionRendering();
 protected:
 	void resizeEvent(QResizeEvent *) override;
 	void paintEvent(QPaintEvent *) override;
@@ -84,9 +84,10 @@ public:
 
 	void clearRenderedPanels();
 private slots:
-	void onSelectionOutlineReady(RenderedData const &data);
+	void onSelectionOutlineReady(SelectionOutline const &data);
 	void onTimer();
 signals:
+	void notifySelectionOutlineReady(SelectionOutline const &data);
 	void scaleChanged(double scale);
 };
 
