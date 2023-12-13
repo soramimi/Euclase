@@ -5,10 +5,10 @@
 #include <QTimer>
 #include <QWidget>
 #include "MainWindow.h"
-#include "SelectionOutlineRenderer.h"
+#include "SelectionOutline.h"
 
 class Canvas;
-class RenderedImage;
+class RenderedData;
 
 class ImageViewWidget : public QWidget {
 	Q_OBJECT
@@ -75,10 +75,10 @@ public:
 
 	void paintViewLater(bool image);
 
-	void setSelectionOutline(SelectionOutlineBitmap const &data);
+	void setSelectionOutline(SelectionOutline const &data);
 	void clearSelectionOutline();
 	QBitmap updateSelection_();
-	SelectionOutlineBitmap renderSelectionOutlineBitmap(bool *abort);
+	SelectionOutline renderSelectionOutline(bool *abort);
 	void stopRendering();
 	bool isRectVisible() const;
 	void setToolCursor(const QCursor &cursor);
@@ -87,7 +87,7 @@ public:
 
 	void clearRenderedPanels();
 private slots:
-	void onRenderingCompleted(const RenderedImage &image);
+	void onRenderingCompleted(const RenderedData &image);
 	void onTimer();
 signals:
 	void scaleChanged(double scale);

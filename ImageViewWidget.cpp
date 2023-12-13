@@ -1,11 +1,12 @@
 
 #include "ApplicationGlobal.h"
 #include "Canvas.h"
-#include "LayerComposer.h"
+#include "ImageViewRenderingThread.h"
 #include "ImageViewWidget.h"
 #include "ImageViewWidget.h"
 #include "MainWindow.h"
-#include "SelectionOutlineRenderer.h"
+#include "PanelizedImage.h"
+#include "SelectionOutline.h"
 #include "misc.h"
 #include <QBitmap>
 #include <QBuffer>
@@ -24,145 +25,6 @@ using SvgRendererPtr = std::shared_ptr<QSvgRenderer>;
 
 const int MAX_SCALE = 32;
 const int MIN_SCALE = 16;
-
-static inline int compareQPoint(QPoint const &a, QPoint const &b)
-{
-	if (a.y() < b.y()) return -1;
-	if (a.y() > b.y()) return 1;
-	if (a.x() < b.x()) return -1;
-	if (a.x() > b.x()) return 1;
-	return 0;
-}
-
-
-class PanelizedImage {
-public:
-	class Panel {
-	public:
-		QPoint offset;
-		QImage image;
-		Panel() = default;
-		Panel(QPoint const &offset, QImage const &image)
-			: offset(offset)
-			, image(image)
-		{
-		}
-		bool operator == (Panel const &t) const
-		{
-			return offset == t.offset;
-		}
-		bool operator < (Panel const &t) const
-		{
-			return compareQPoint(offset, t.offset) < 0;
-		}
-	};
-	QPoint offset_;
-	QImage::Format format_ = QImage::Format_RGBA8888;
-	std::vector<Panel> panels_;
-	static Panel *findPanel_(std::vector<Panel> const *panels, QPoint const &offset)
-	{
-		int lo = 0;
-		int hi = (int)panels->size(); // 上限の一つ後
-		while (lo < hi) {
-			int m = (lo + hi) / 2;
-			Panel const *p = &panels->at(m);
-			Q_ASSERT(p);
-			int i = compareQPoint(p->offset, offset);
-			if (i == 0) return const_cast<Panel *>(p);
-			if (i < 0) {
-				lo = m + 1;
-			} else {
-				hi = m;
-			}
-		}
-		return nullptr;
-	}
-	void setImageMode(QImage::Format format)
-	{
-		format_ = format;
-	}
-	void setOffset(QPoint const &offset)
-	{
-		offset_ = offset;
-	}
-	void paintImage(QPoint const &dstpos, QImage const &srcimg, QRect const &srcrect)
-	{
-		int panel_dx0 = dstpos.x() - offset_.x();
-		int panel_dy0 = dstpos.y() - offset_.y();
-		int panel_dx1 = panel_dx0 + srcimg.width() - 1;
-		int panel_dy1 = panel_dy0 + srcimg.height() - 1;
-		panel_dx0 = panel_dx0 - (panel_dx0 & (PANEL_SIZE - 1));
-		panel_dy0 = panel_dy0 - (panel_dy0 & (PANEL_SIZE - 1));
-		panel_dx1 = panel_dx1 - (panel_dx1 & (PANEL_SIZE - 1));
-		panel_dy1 = panel_dy1 - (panel_dy1 & (PANEL_SIZE - 1));
-		std::vector<Panel> newpanels;
-		for (int y = panel_dy0; y <= panel_dy1; y += PANEL_SIZE) {
-			for (int x = panel_dx0; x <= panel_dx1; x += PANEL_SIZE) {
-				int w = srcimg.width();
-				int h = srcimg.height();
-				int sx0 = srcrect.x();
-				int sy0 = srcrect.y();
-				int sx1 = sx0 + srcrect.width();
-				int sy1 = sy0 + srcrect.height();
-				int dx0 = dstpos.x() - (offset_.x() + x);
-				int dy0 = dstpos.y() - (offset_.y() + y);
-				int dx1 = dx0 + srcrect.width();
-				int dy1 = dy0 + srcrect.width();
-				if (sx0 < 0) { dx0 -= sx0; sx0 = 0; }
-				if (sy0 < 0) { dy0 -= sy0; sy0 = 0; }
-				if (dx0 < 0) { sx0 -= dx0; dx0 = 0; }
-				if (dy0 < 0) { sy0 -= dy0; dy0 = 0; }
-				if (sx1 > w) { dx1 -= sx1 - w; sx1 = w; }
-				if (sy1 > h) { dy1 -= sy1 - h; sy1 = h; }
-				w = sx1 - sx0;
-				h = sy1 - sy0;
-				if (w > 0 && h > 0) {
-					Panel *dst = findPanel_(&panels_, {x, y});
-					if (!dst) {
-						newpanels.push_back({{x, y}, QImage(PANEL_SIZE, PANEL_SIZE, format_)});
-						dst = &newpanels.back();
-						dst->image.fill(Qt::transparent);
-					}
-					QPainter pr(&dst->image);
-					pr.drawImage(dx0, dy0, srcimg, sx0, sy0, w, h);
-				}
-			}
-		}
-		panels_.insert(panels_.end(), newpanels.begin(), newpanels.end());
-		std::sort(panels_.begin(), panels_.end(), [&](Panel const &a, Panel const &b){
-			return compareQPoint(a.offset, b.offset) < 0;
-		});
-	}
-	void renderImage(QPainter *painter, QPoint const &offset, QRect const &srcrect) const
-	{
-		int panel_sx0 = srcrect.x() - offset_.x();
-		int panel_sy0 = srcrect.y() - offset_.y();
-		int panel_sx1 = panel_sx0 + srcrect.width() - 1;
-		int panel_sy1 = panel_sy0 + srcrect.height() - 1;
-		panel_sx0 = panel_sx0 - (panel_sx0 & (PANEL_SIZE - 1));
-		panel_sy0 = panel_sy0 - (panel_sy0 & (PANEL_SIZE - 1));
-		panel_sx1 = panel_sx1 - (panel_sx1 & (PANEL_SIZE - 1));
-		panel_sy1 = panel_sy1 - (panel_sy1 & (PANEL_SIZE - 1));
-		for (int y = panel_sy0; y <= panel_sy1; y += PANEL_SIZE) {
-			for (int x = panel_sx0; x <= panel_sx1; x += PANEL_SIZE) {
-				int dx0 = x - panel_sx0;
-				int dy0 = y - panel_sy0;
-				int dx1 = std::min(dx0 + PANEL_SIZE, srcrect.width());
-				int dy1 = std::min(dy0 + PANEL_SIZE, srcrect.height());
-				QRect r(x, y, PANEL_SIZE, PANEL_SIZE);
-				r = r.intersected({dx0, dy0, dx1 - dx0, dy1 - dy0});
-				if (r.width() > 0 && r.height() > 0) {
-					Panel *p = findPanel_(&panels_, {x, y});
-					if (p) {
-						r = r.translated(-x, -y);
-						painter->drawImage(offset.x() + dx0, offset.y() + dy0, p->image, r.x(), r.y(), r.width(), r.height());
-					}
-				}
-			}
-		}
-	}
-};
-
 
 struct ImageViewWidget::Private {
 	MainWindow *mainwindow = nullptr;
@@ -189,14 +51,11 @@ struct ImageViewWidget::Private {
 
 	bool left_button = false;
 
-	LayerComposer *renderer = nullptr;
-	RenderedImage rendered_image;
-	QRect destination_rect;
+	ImageViewRenderingThread *selection_outline_rendering_thread = nullptr;
+	RenderedData rendered_image;
 
 	QPixmap transparent_pixmap;
 
-	bool offscreen_update = false;
-//	QImage offscreen1;
 	QPixmap offscreen2;
 
 	bool scrolling = false;
@@ -213,7 +72,7 @@ struct ImageViewWidget::Private {
 
 	QCursor cursor;
 
-	std::thread rendering_thread;
+	std::thread image_rendering_thread;
 	std::mutex render_mutex;
 	volatile bool render_interrupted = false;
 	volatile bool render_invalidate = false;
@@ -229,12 +88,8 @@ ImageViewWidget::ImageViewWidget(QWidget *parent)
 {
 	setContextMenuPolicy(Qt::DefaultContextMenu);
 
-	m->renderer = new LayerComposer(this);
-	connect(m->renderer, &LayerComposer::update, [&](){
-		m->offscreen_update = true;
-		update();
-	});
-	connect(m->renderer, &LayerComposer::done, this, &ImageViewWidget::onRenderingCompleted);
+	m->selection_outline_rendering_thread = new ImageViewRenderingThread(this);
+	connect(m->selection_outline_rendering_thread, &ImageViewRenderingThread::done, this, &ImageViewWidget::onRenderingCompleted);
 
 	initBrushes();
 
@@ -250,7 +105,7 @@ ImageViewWidget::~ImageViewWidget()
 {
 	stopRenderingThread();
 	stopRendering();
-	delete m->renderer;
+	delete m->selection_outline_rendering_thread;
 	delete m;
 }
 
@@ -298,7 +153,7 @@ void ImageViewWidget::init(MainWindow *mainwindow, QScrollBar *vsb, QScrollBar *
 	m->mainwindow = mainwindow;
 	m->v_scroll_bar = vsb;
 	m->h_scroll_bar = hsb;
-	m->renderer->init(m->mainwindow);
+	m->selection_outline_rendering_thread->init(m->mainwindow);
 }
 
 static QImage scale_float_to_uint8_rgba(euclase::Image const &src, int w, int h)
@@ -355,7 +210,7 @@ void ImageViewWidget::runRendering()
 			if (m->render_invalidate) {
 				std::lock_guard lock(m->render_mutex);
 				m->render_invalidate = false;
-				m->offscreen3.panels_.clear();
+				m->offscreen3.clear();
 			}
 
 			const int view_w = width();
@@ -396,8 +251,6 @@ void ImageViewWidget::runRendering()
 			};
 
 #pragma omp parallel for
-//#pragma omp parallel for num_threads(8)
-//#pragma omp parallel for schedule(static, 8) num_threads(8)
 			for (int i = 0; i < rects.size(); i++) {
 				if (isCanceled()) continue;
 
@@ -496,7 +349,7 @@ void ImageViewWidget::requestRendering(bool invalidate)
 
 void ImageViewWidget::startRenderingThread()
 {
-	m->rendering_thread = std::thread([&](){
+	m->image_rendering_thread = std::thread([&](){
 		runRendering();
 	});
 }
@@ -504,16 +357,16 @@ void ImageViewWidget::startRenderingThread()
 void ImageViewWidget::stopRenderingThread()
 {
 	m->render_interrupted = true;
-	if (m->rendering_thread.joinable()) {
-		m->rendering_thread.join();
+	if (m->image_rendering_thread.joinable()) {
+		m->image_rendering_thread.join();
 	}
 }
 
 void ImageViewWidget::stopRendering()
 {
-	m->renderer->cancel();
+	m->selection_outline_rendering_thread->cancel();
 	m->rendered_image = {};
-	m->destination_rect = {};
+//	m->destination_rect = {};
 }
 
 QPointF ImageViewWidget::mapToCanvasFromViewport(QPointF const &pos)
@@ -665,31 +518,29 @@ QSize ImageViewWidget::imageSize() const
 	return canvas()->size();
 }
 
-void ImageViewWidget::setSelectionOutline(const SelectionOutlineBitmap &data)
+void ImageViewWidget::setSelectionOutline(const SelectionOutline &data)
 {
-	m->rendered_image.selection_outline_data = data;
+	m->rendered_image.selection_outline = data;
 }
 
 void ImageViewWidget::clearSelectionOutline()
 {
-	m->rendered_image.selection_outline_data = {};
+	m->rendered_image.selection_outline = {};
 }
 
-void ImageViewWidget::onRenderingCompleted(RenderedImage const &image)
+void ImageViewWidget::onRenderingCompleted(RenderedData const &image)
 {
 	m->rendered_image = image;
-	m->offscreen_update = true;
 	update();
 }
 
 void ImageViewWidget::calcDestinationRect()
 {
-	double cx = width() / 2.0;
-	double cy = height() / 2.0;
-	double x = cx - m->d.image_scroll_x;
-	double y = cy - m->d.image_scroll_y;
-	QSizeF sz = imageScrollRange();
-	m->destination_rect = QRect((int)x, (int)y, (int)sz.width(), (int)sz.height());
+//	double cx = width() / 2.0;
+//	double cy = height() / 2.0;
+//	double x = cx - m->d.image_scroll_x;
+//	double y = cy - m->d.image_scroll_y;
+//	QSizeF sz = imageScrollRange();
 }
 
 void ImageViewWidget::paintViewLater(bool image)
@@ -717,7 +568,7 @@ void ImageViewWidget::paintViewLater(bool image)
 			Q_ASSERT(m->d.image_scale > 0);
 			div = (int)floorf(1.0f / m->d.image_scale);
 		}
-//		m->renderer->request(r, focus_point.toPoint(), div);
+		m->selection_outline_rendering_thread->request(r, focus_point.toPoint(), div);
 //		update();
 	}
 }
@@ -850,9 +701,9 @@ QImage ImageViewWidget::generateOutlineImage(euclase::Image const &selection, bo
 	return {};
 }
 
-SelectionOutlineBitmap ImageViewWidget::renderSelectionOutlineBitmap(bool *abort)
+SelectionOutline ImageViewWidget::renderSelectionOutline(bool *abort)
 {
-	SelectionOutlineBitmap data;
+	SelectionOutline data;
 	int dw = canvas()->width();
 	int dh = canvas()->height();
 	if (dw > 0 && dh > 0) {
@@ -965,9 +816,9 @@ void ImageViewWidget::paintEvent(QPaintEvent *)
 		}
 
 		// 選択領域点線
-		if (!m->rendered_image.selection_outline_data.bitmap.isNull()) {
+		if (!m->rendered_image.selection_outline.bitmap.isNull()) {
 			QBrush brush = stripeBrush();
-			auto &data = m->rendered_image.selection_outline_data;
+			auto &data = m->rendered_image.selection_outline;
 			pr2.save();
 			pr2.setClipRegion(QRegion(data.bitmap).translated(data.point));
 			pr2.setOpacity(0.5);
@@ -1049,7 +900,7 @@ void ImageViewWidget::paintEvent(QPaintEvent *)
 
 void ImageViewWidget::resizeEvent(QResizeEvent *)
 {
-	m->renderer->reset();
+//	m->renderer->reset();
 
 	clearSelectionOutline();
 	updateScrollBarRange();

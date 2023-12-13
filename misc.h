@@ -35,6 +35,15 @@ public:
 	static QPoint contextMenuPos(QWidget *w, QContextMenuEvent *e);
 	static bool isExecutable(QString const &cmd);
 
+	static inline int compareQPoint(QPoint const &a, QPoint const &b)
+	{
+		if (a.y() < b.y()) return -1;
+		if (a.y() > b.y()) return 1;
+		if (a.x() < b.x()) return -1;
+		if (a.x() > b.x()) return 1;
+		return 0;
+	}
+
 	template <typename T> static T clamp(T v, T min, T max)
 	{
 		return std::max(min, std::min(max, v));

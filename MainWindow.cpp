@@ -322,9 +322,9 @@ euclase::Image MainWindow::renderToImage(euclase::Image::Format format, QRect co
 	return renderToPanel(Canvas::CurrentLayerOnly, format, r, {}, abort).image();
 }
 
-SelectionOutlineBitmap MainWindow::renderSelectionOutlineBitmap(bool *abort)
+SelectionOutline MainWindow::renderSelectionOutline(bool *abort)
 {
-	return ui->widget_image_view->renderSelectionOutlineBitmap(abort);
+	return ui->widget_image_view->renderSelectionOutline(abort);
 }
 
 QRect MainWindow::selectionRect() const

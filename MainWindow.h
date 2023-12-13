@@ -3,7 +3,7 @@
 
 #include "AbstractFilterForm.h"
 #include "Canvas.h"
-#include "SelectionOutlineRenderer.h"
+#include "SelectionOutline.h"
 #include <QMainWindow>
 
 class Brush;
@@ -100,7 +100,7 @@ public:
 	const Brush &currentBrush() const;
 	void changeTool(Tool tool);
 	MainWindow::Tool currentTool() const;
-	SelectionOutlineBitmap renderSelectionOutlineBitmap(bool *abort);
+	SelectionOutline renderSelectionOutline(bool *abort);
 	void setColor(QColor primary_color, QColor secondary_color);
 	void updateToolCursor();
 public slots:

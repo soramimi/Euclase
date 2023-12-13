@@ -55,19 +55,20 @@ SOURCES += main.cpp\
 	FilterFormMedian.cpp \
 	FilterStatus.cpp \
 	HueWidget.cpp \
+	ImageViewRenderingThread.cpp \
 	ImageViewWidget.cpp \
-	LayerComposer.cpp \
 	MainWindow.cpp \
 	MemoryReader.cpp \
 	MyApplication.cpp \
 	MySettings.cpp \
 	NewDialog.cpp \
+	PanelizedImage.cpp \
 	Photoshop.cpp \
 	ResizeDialog.cpp \
 	RingSlider.cpp \
 	RoundBrushGenerator.cpp \
 	SaturationBrightnessWidget.cpp \
-	SelectionOutlineRenderer.cpp \
+	SelectionOutline.cpp \
 	SettingGeneralForm.cpp \
 	SettingsDialog.cpp \
 	TransparentCheckerBrush.cpp \
@@ -97,19 +98,20 @@ HEADERS += \
 	FilterFormMedian.h \
 	FilterStatus.h \
 	HueWidget.h \
+	ImageViewRenderingThread.h \
 	ImageViewWidget.h \
-	LayerComposer.h \
 	MainWindow.h \
 	MemoryReader.h \
 	MyApplication.h \
 	MySettings.h \
 	NewDialog.h \
+	PanelizedImage.h \
 	Photoshop.h \
 	ResizeDialog.h \
 	RingSlider.h \
 	RoundBrushGenerator.h \
 	SaturationBrightnessWidget.h \
-	SelectionOutlineRenderer.h \
+	SelectionOutline.h \
 	SettingGeneralForm.h \
 	SettingsDialog.h \
 	TestPlugin/src/TestInterface.h \
