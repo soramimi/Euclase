@@ -620,7 +620,6 @@ void MainWindow::onSelectionChanged()
 
 void MainWindow::clearCanvas()
 {
-	ui->widget_image_view->stopRendering();
 	canvas()->clear();
 }
 

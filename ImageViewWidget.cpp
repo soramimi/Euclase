@@ -20,6 +20,8 @@
 #include <cmath>
 #include <functional>
 #include <memory>
+#include <thread>
+#include <mutex>
 
 using SvgRendererPtr = std::shared_ptr<QSvgRenderer>;
 
@@ -51,9 +53,6 @@ struct ImageViewWidget::Private {
 
 	bool left_button = false;
 
-	ImageViewRenderingThread *selection_outline_rendering_thread = nullptr;
-	RenderedData rendered_image;
-
 	QPixmap transparent_pixmap;
 
 	QPixmap offscreen2;
@@ -74,12 +73,15 @@ struct ImageViewWidget::Private {
 
 	std::thread image_rendering_thread;
 	std::mutex render_mutex;
-	volatile bool render_interrupted = false;
-	volatile bool render_invalidate = false;
-	volatile bool render_requested = false;
+	bool render_interrupted = false;
+	bool render_invalidate = false;
+	bool render_requested = false;
 	QRect render_canvas_rect;
 	std::vector<Canvas::Panel> render_panels;
 	PanelizedImage offscreen3;
+
+	ImageViewRenderingThread selection_outline_rendering_thread;
+	SelectionOutline selection_outline;
 };
 
 ImageViewWidget::ImageViewWidget(QWidget *parent)
@@ -87,9 +89,6 @@ ImageViewWidget::ImageViewWidget(QWidget *parent)
 	, m(new Private)
 {
 	setContextMenuPolicy(Qt::DefaultContextMenu);
-
-	m->selection_outline_rendering_thread = new ImageViewRenderingThread(this);
-	connect(m->selection_outline_rendering_thread, &ImageViewRenderingThread::done, this, &ImageViewWidget::onRenderingCompleted);
 
 	initBrushes();
 
@@ -104,8 +103,6 @@ ImageViewWidget::ImageViewWidget(QWidget *parent)
 ImageViewWidget::~ImageViewWidget()
 {
 	stopRenderingThread();
-	stopRendering();
-	delete m->selection_outline_rendering_thread;
 	delete m;
 }
 
@@ -153,14 +150,15 @@ void ImageViewWidget::init(MainWindow *mainwindow, QScrollBar *vsb, QScrollBar *
 	m->mainwindow = mainwindow;
 	m->v_scroll_bar = vsb;
 	m->h_scroll_bar = hsb;
-	m->selection_outline_rendering_thread->init(m->mainwindow);
+
+	m->selection_outline_rendering_thread.init(m->mainwindow);
+	connect(&m->selection_outline_rendering_thread, &ImageViewRenderingThread::done, this, &ImageViewWidget::onSelectionOutlineReady);
 }
 
 static QImage scale_float_to_uint8_rgba(euclase::Image const &src, int w, int h)
 {
 	QImage ret(w, h, QImage::Format_RGBA8888);
 	if (src.memtype() == euclase::Image::CUDA) {
-		Q_ASSERT(global->cuda);
 		int dstride = ret.bytesPerLine();
 		global->cuda->scale_float_to_uint8_rgba(w, h, dstride, ret.bits(), src.width(), src.height(), src.data());
 	} else {
@@ -356,17 +354,9 @@ void ImageViewWidget::startRenderingThread()
 
 void ImageViewWidget::stopRenderingThread()
 {
-	m->render_interrupted = true;
 	if (m->image_rendering_thread.joinable()) {
 		m->image_rendering_thread.join();
 	}
-}
-
-void ImageViewWidget::stopRendering()
-{
-	m->selection_outline_rendering_thread->cancel();
-	m->rendered_image = {};
-//	m->destination_rect = {};
 }
 
 QPointF ImageViewWidget::mapToCanvasFromViewport(QPointF const &pos)
@@ -518,21 +508,11 @@ QSize ImageViewWidget::imageSize() const
 	return canvas()->size();
 }
 
-void ImageViewWidget::setSelectionOutline(const SelectionOutline &data)
-{
-	m->rendered_image.selection_outline = data;
-}
 
-void ImageViewWidget::clearSelectionOutline()
-{
-	m->rendered_image.selection_outline = {};
-}
 
-void ImageViewWidget::onRenderingCompleted(RenderedData const &image)
-{
-	m->rendered_image = image;
-	update();
-}
+
+
+
 
 void ImageViewWidget::calcDestinationRect()
 {
@@ -568,9 +548,9 @@ void ImageViewWidget::paintViewLater(bool image)
 			Q_ASSERT(m->d.image_scale > 0);
 			div = (int)floorf(1.0f / m->d.image_scale);
 		}
-		m->selection_outline_rendering_thread->request(r, focus_point.toPoint(), div);
-//		update();
 	}
+
+	m->selection_outline_rendering_thread.request({}, {}, 0);
 }
 
 void ImageViewWidget::updateCursorAnchorPos()
@@ -618,6 +598,11 @@ void ImageViewWidget::scaleFit(double ratio)
 
 	scrollImage(w * m->d.image_scale / 2.0, h * m->d.image_scale / 2.0, true);
 	updateCursorAnchorPos();
+}
+
+void ImageViewWidget::clearSelectionOutline()
+{
+
 }
 
 void ImageViewWidget::zoomToCursor(double scale)
@@ -733,6 +718,7 @@ SelectionOutline ImageViewWidget::renderSelectionOutline(bool *abort)
 			int dh = int(dp1.y()) - dy;
 			selection = canvas()->renderSelection(QRect(dx, dy, dw, dh), abort).image();
 			if (abort && *abort) return {};
+//			selection = selection.toHost(); //@ CUDA不安定
 			if (selection.memtype() == euclase::Image::CUDA) {
 				euclase::Image sel(vw, vh, euclase::Image::Format_8_Grayscale, euclase::Image::CUDA);
 				int sw = selection.width();
@@ -742,6 +728,7 @@ SelectionOutline ImageViewWidget::renderSelectionOutline(bool *abort)
 			} else {
 				selection = selection.scaled(vw, vh, false);
 			}
+			selection = selection.toHost();
 		}
 		if (selection.width() > 0 && selection.height() > 0) {
 			QImage image = generateOutlineImage(selection, abort);
@@ -816,11 +803,11 @@ void ImageViewWidget::paintEvent(QPaintEvent *)
 		}
 
 		// 選択領域点線
-		if (!m->rendered_image.selection_outline.bitmap.isNull()) {
+		if (!m->selection_outline.bitmap.isNull()) {
+			qDebug() << m->selection_outline.bitmap;
 			QBrush brush = stripeBrush();
-			auto &data = m->rendered_image.selection_outline;
 			pr2.save();
-			pr2.setClipRegion(QRegion(data.bitmap).translated(data.point));
+			pr2.setClipRegion(QRegion(m->selection_outline.bitmap).translated(m->selection_outline.point));
 			pr2.setOpacity(0.5);
 			pr2.fillRect(0, 0, width(), height(), brush);
 			pr2.restore();
@@ -987,6 +974,12 @@ void ImageViewWidget::wheelEvent(QWheelEvent *e)
 	double t = 1.001;
 	scale *= pow(t, d);
 	zoomToCursor(m->d.image_scale * scale);
+}
+
+void ImageViewWidget::onSelectionOutlineReady(const RenderedData &data)
+{
+	m->selection_outline = data.selection_outline;
+	update();
 }
 
 void ImageViewWidget::onTimer()

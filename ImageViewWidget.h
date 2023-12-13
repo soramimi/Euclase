@@ -46,6 +46,7 @@ private:
 	void runRendering();
 	void requestRendering(bool invalidate);
 	void geometryChanged();
+	void clearSelectionOutline();
 protected:
 	void resizeEvent(QResizeEvent *) override;
 	void paintEvent(QPaintEvent *) override;
@@ -75,11 +76,8 @@ public:
 
 	void paintViewLater(bool image);
 
-	void setSelectionOutline(SelectionOutline const &data);
-	void clearSelectionOutline();
 	QBitmap updateSelection_();
 	SelectionOutline renderSelectionOutline(bool *abort);
-	void stopRendering();
 	bool isRectVisible() const;
 	void setToolCursor(const QCursor &cursor);
 	void doHandScroll();
@@ -87,7 +85,7 @@ public:
 
 	void clearRenderedPanels();
 private slots:
-	void onRenderingCompleted(const RenderedData &image);
+	void onSelectionOutlineReady(RenderedData const &data);
 	void onTimer();
 signals:
 	void scaleChanged(double scale);
