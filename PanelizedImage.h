@@ -6,6 +6,7 @@
 
 
 class PanelizedImage {
+	friend class ImageViewWidget;
 private:
 	class Panel {
 	public:

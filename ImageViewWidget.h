@@ -82,7 +82,7 @@ public:
 	void doHandScroll();
 	void updateToolCursor();
 
-	void clearRenderedPanels();
+	void clearRenderCache();
 private slots:
 	void onSelectionOutlineReady(SelectionOutline const &data);
 	void onTimer();
