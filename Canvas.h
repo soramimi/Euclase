@@ -8,6 +8,7 @@
 #include <QPoint>
 #include <functional>
 #include <memory>
+#include <mutex>
 
 static const int PANEL_SIZE = 256; // must be power of two
 
@@ -90,6 +91,11 @@ public:
 			return data_.image.height();
 		}
 
+		QSize size() const
+		{
+			return {width(), height()};
+		}
+
 		uint8_t *scanLine(int y)
 		{
 			return data_.image.scanLine(y);
@@ -124,14 +130,29 @@ public:
 		}
 	};
 
+	enum ActivePanel {
+		PrimaryLayer,
+		AlternateLayer,
+		AlternateSelection,
+	};
+
+	enum class BlendMode {
+		Disable,
+		Normal,
+		Erase,
+	};
+
+	struct RenderOption {
+		BlendMode blend_mode = BlendMode::Normal;
+		ActivePanel active_panel = AlternateLayer;
+		QColor brush_color;
+		QRect mask_rect;
+		std::function<void (QRect const &rect)> notify_changed_rect;
+	};
+
 	class Layer {
 	public:
-		enum ActivePanel {
-			Primary,
-			Alternate,
-			AlternateSelection,
-		};
-		ActivePanel active_panel_ = Primary;
+		ActivePanel active_panel_ = PrimaryLayer;
 		QPoint offset_;
 		euclase::Image::MemoryType memtype_ = euclase::Image::Host;
 		euclase::Image::Format format_ = euclase::Image::Format_Invalid;
@@ -139,12 +160,14 @@ public:
 		std::vector<Panel> alternate_panels;
 		std::vector<Panel> alternate_selection_panels; // grayscale mask
 
-        std::vector<Panel> *panels(Layer::ActivePanel active = Primary)
+		BlendMode alternate_blend_mode = BlendMode::Normal;
+
+		std::vector<Panel> *panels(ActivePanel active = PrimaryLayer)
 		{
             switch (active) {
-			case Primary:
+			case PrimaryLayer:
 				return &primary_panels;
-			case Alternate:
+			case AlternateLayer:
 				return &alternate_panels;
 			case AlternateSelection:
 				return &alternate_selection_panels;
@@ -152,24 +175,24 @@ public:
 			Q_ASSERT(0);
 		}
 
-        std::vector<Panel> const *panels(Layer::ActivePanel active = Primary) const
+		std::vector<Panel> const *panels(ActivePanel active = PrimaryLayer) const
 		{
             return const_cast<Layer *>(this)->panels(active);
 		}
 
-		int panelCount(Layer::ActivePanel alternate = Primary) const
+		int panelCount(ActivePanel alternate = PrimaryLayer) const
 		{
 			return (int)panels(alternate)->size();
 		}
 
-		Panel const &panel(Layer::ActivePanel alternate, int i) const
+		Panel const &panel(ActivePanel alternate, int i) const
 		{
 			return (*panels(alternate))[i];
 		}
 
 		void clear()
 		{
-			active_panel_ = Primary;
+			active_panel_ = PrimaryLayer;
 			offset_ = QPoint();
 			primary_panels.clear();
 			alternate_panels.clear();
@@ -255,21 +278,11 @@ public:
 		}
 
 		void finishAlternatePanels(bool apply);
+		void setAlternateOption(BlendMode blendmode);
 
 		QRect rect() const;
 	};
 	using LayerPtr = std::shared_ptr<Layer>;
-
-	struct RenderOption {
-		enum Mode {
-			Default,
-			DirectCopy,
-		};
-		Mode mode = Default;
-		Layer::ActivePanel active_panel = Layer::Alternate;
-		QColor brush_color;
-		QRect mask_rect;
-	};
 
 	struct Private;
 	Private *m;
@@ -284,24 +297,23 @@ public:
 	Layer *layer(int index);
 	Layer *current_layer();
 	Layer *selection_layer();
-	Layer *current_layer() const;
-	Layer *selection_layer() const;
 
 	void paintToCurrentLayer(const Layer &source, const RenderOption &opt, bool *abort);
+	void paintToCurrentAlternate(const Layer &source, const RenderOption &opt, bool *abort);
 
 	enum InputLayer {
 		AllLayers,
 		CurrentLayerOnly,
 	};
-	Panel renderToPanel(InputLayer inputlayer, euclase::Image::Format format, QRect const &r, QRect const &maskrect, Layer::ActivePanel activepanel, bool *abort) const;
+	Panel renderToPanel(InputLayer inputlayer, euclase::Image::Format format, QRect const &r, QRect const &maskrect, ActivePanel activepanel, bool *abort) const;
 
 	static void renderToSinglePanel(Panel *target_panel, const QPoint &target_offset, const Panel *input_panel, const QPoint &input_offset, const Layer *mask_layer, RenderOption const &opt, const QColor &brush_color, int opacity = 255, bool *abort = nullptr);
-	static void renderToLayer(Layer *target_layer, Layer::ActivePanel activepanel, const Layer &input_layer, Layer *mask_layer, const RenderOption &opt, bool *abort);
+	static void renderToLayer(Layer *target_layer, ActivePanel activepanel, const Layer &input_layer, Layer *mask_layer, const RenderOption &opt, bool *abort);
 private:
 	static void renderToEachPanels_internal_(Panel *target_panel, const QPoint &target_offset, const Layer &input_layer, Layer *mask_layer, const QColor &brush_color, int opacity, RenderOption const &opt, bool *abort);
 	static void renderToEachPanels(Panel *target_panel, const QPoint &target_offset, const std::vector<Layer *> &input_layers, Layer *mask_layer, const QColor &brush_color, int opacity, const RenderOption &opt, bool *abort);
-	static void composePanel(Panel *target_panel, const Panel *alt_panel, const Panel *alt_mask);
-	static void composePanels(Panel *target_panel, std::vector<Panel> const *alternate_panels, std::vector<Panel> const *alternate_selection_panels);
+	static void composePanel(Panel *target_panel, const Panel *alt_panel, const Panel *alt_mask, const RenderOption &opt);
+	static void composePanels(Panel *target_panel, std::vector<Panel> const *alternate_panels, std::vector<Panel> const *alternate_selection_panels, const RenderOption &opt);
 	static Panel *findPanel(const std::vector<Panel> *panels, const QPoint &offset);
 	static void sortPanels(std::vector<Panel> *panels);
 public:

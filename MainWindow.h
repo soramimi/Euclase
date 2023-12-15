@@ -48,6 +48,7 @@ private:
 
 	enum class Operation {
 		PaintToCurrentLayer,
+		PaintToCurrentAlternate,
 	};
 	void paintLayer(Operation op, const Canvas::Layer &layer);
 
@@ -75,7 +76,7 @@ private:
 	void resetView(bool fitview);
 	void filter(FilterContext *context, AbstractFilterForm *form, const std::function<euclase::Image (FilterContext *)> &fn);
 	void filter_xBRZ(int factor);
-	void clearCurrentAlternate();
+	void resetCurrentAlternateOption(Canvas::BlendMode blendmode = Canvas::BlendMode::Normal);
 	int addNewLayer();
 	void setupBasicLayer(Canvas::Layer *p);
 	void colorCollection();
@@ -162,6 +163,7 @@ public:
 	bool isPreviewEnabled() const;
 	void setCurrentLayer(int index);
 	euclase::Image::MemoryType preferredMemoryType() const;
+	void needToUpdateView(const QRect &rect);
 protected:
 	void dragEnterEvent(QDragEnterEvent *event);
 	void dropEvent(QDropEvent *event);

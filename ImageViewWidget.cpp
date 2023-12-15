@@ -6,6 +6,7 @@
 #include "PanelizedImage.h"
 #include "SelectionOutline.h"
 #include "misc.h"
+#include "AlphaBlend.h"
 #include <QBitmap>
 #include <QBuffer>
 #include <QDebug>
@@ -74,7 +75,8 @@ struct ImageViewWidget::Private {
 	bool render_interrupted = false;
 	bool render_invalidate = false;
 	bool render_requested = false;
-	QRect render_canvas_rect;
+	bool render_canceled = false;
+	std::vector<QRect> render_canvas_rects;
 	std::vector<Canvas::Panel> composed_panels_cache;
 	PanelizedImage offscreen1;
 
@@ -169,9 +171,10 @@ static QImage scale_float_to_uint8_rgba(euclase::Image const &src, int w, int h)
 void ImageViewWidget::clearRenderCache()
 {
 	std::lock_guard lock(m->render_mutex);
-	m->render_requested = false;
-	m->render_canvas_rect = {};
 	m->composed_panels_cache.clear();
+	m->render_canvas_rects.clear();
+	m->render_requested = true;
+	m->render_canceled = true;
 }
 
 void ImageViewWidget::runImageRendering()
@@ -180,9 +183,11 @@ void ImageViewWidget::runImageRendering()
 		if (m->render_interrupted) return;
 		if (m->render_requested) {
 			m->render_requested = false;
+			m->render_canceled = false;
 
 			const int canvas_w = mainwindow()->canvasWidth();
 			const int canvas_h = mainwindow()->canvasHeight();
+			const QRect canvas_rect(0, 0, canvas_w, canvas_h);
 
 			int view_left;
 			int view_top;
@@ -199,7 +204,6 @@ void ImageViewWidget::runImageRendering()
 
 			{
 				std::lock_guard lock(m->render_mutex);
-
 				if (m->render_invalidate) {
 					m->render_invalidate = false;
 					m->offscreen1.clear();
@@ -208,13 +212,23 @@ void ImageViewWidget::runImageRendering()
 
 			std::vector<QRect> rects;
 
-			for (int panel_y = 0; panel_y < canvas_h; panel_y += PANEL_SIZE) {
-				for (int panel_x = 0; panel_x < canvas_w; panel_x += PANEL_SIZE) {
-					QRect rect(panel_x, panel_y, PANEL_SIZE + 1, PANEL_SIZE + 1);
-					if (m->render_canvas_rect.intersects(rect)) {
-						rects.push_back(rect);
+			{
+				std::lock_guard lock(m->render_mutex);
+				for (int panel_y = 0; panel_y < canvas_h; panel_y += PANEL_SIZE) {
+					for (int panel_x = 0; panel_x < canvas_w; panel_x += PANEL_SIZE) {
+						QRect rect(panel_x, panel_y, PANEL_SIZE + 1, PANEL_SIZE + 1);
+						if (rect.intersects(canvas_rect)) {
+							for (int i = 0; i < m->render_canvas_rects.size(); i++) {
+								QRect const &r = m->render_canvas_rects[i];
+								if (r.intersects(rect)) {
+									rects.push_back(rect);
+									break;
+								}
+							}
+						}
 					}
 				}
+				m->render_canvas_rects.clear();
 			}
 
 			// マウスカーソルから近い順にソート
@@ -234,7 +248,7 @@ void ImageViewWidget::runImageRendering()
 			});
 
 			auto isCanceled = [&](){
-				return m->render_requested || m->render_invalidate || m->render_interrupted;
+				return m->render_requested || m->render_canceled || m->render_invalidate || m->render_interrupted;
 			};
 
 			int panelindex = 0;
@@ -298,10 +312,11 @@ void ImageViewWidget::runImageRendering()
 					// パネルキャッシュから検索
 					std::lock_guard lock(m->render_mutex);
 					QPoint pos(x, y);
-					for (int k = panelindex; k < m->composed_panels_cache.size(); k++) {
-						if (m->composed_panels_cache[k].offset() == pos) {
-							std::swap(m->composed_panels_cache[panelindex], m->composed_panels_cache[k]);
+					for (int j = panelindex; j < m->composed_panels_cache.size(); j++) {
+						if (m->composed_panels_cache[j].offset() == pos) {
+							std::swap(m->composed_panels_cache[panelindex], m->composed_panels_cache[j]);
 							panel = &m->composed_panels_cache[panelindex];
+							image = cropImage(panel->image(), sx, sy, sw, sh); // 画像を切り出す
 							panelindex++;
 							break;
 						}
@@ -315,21 +330,41 @@ void ImageViewWidget::runImageRendering()
 					{
 						// パネルキャッシュに追加
 						std::lock_guard lock(m->render_mutex);
-						m->composed_panels_cache.insert(m->composed_panels_cache.begin() + panelindex, newpanel);
-						panel = &m->composed_panels_cache[panelindex];
+						if (panelindex <= m->composed_panels_cache.size()) { // 別スレッドがcomposed_panels_cacheをclearすることがある
+							m->composed_panels_cache.insert(m->composed_panels_cache.begin() + panelindex, newpanel);
+							panel = &m->composed_panels_cache[panelindex];
+							image = cropImage(panel->image(), sx, sy, sw, sh); // 画像を切り出す
+						}
 						panelindex++;
 					}
 				}
 
 				if (isCanceled()) continue;
 
-				// 画像を切り出す
-				image = cropImage(panel->image(), sx, sy, sw, sh);
+				// 拡大縮小
+				QImage qimg = scale_float_to_uint8_rgba(image, dw, dh);
 
 				if (isCanceled()) continue;
 
-				// 拡大縮小
-				QImage qimg = scale_float_to_uint8_rgba(image, dw, dh);
+				// 透明部分の市松模様
+				for (int iy = 0; iy < qimg.height(); iy++) {
+					uint8_t *p = qimg.scanLine(iy);
+					for (int ix = 0; ix < qimg.width(); ix++) {
+						euclase::OctetRGBA a, b;
+						b.r = b.g = b.b = (((dx + ix) ^ (dy + iy)) & 8) ? 255 : 192;
+						b.a = 255;
+						a.r = p[0];
+						a.g = p[1];
+						a.b = p[2];
+						a.a = p[3];
+						a = AlphaBlend::blend(b, a);
+						p[0] = a.r;
+						p[1] = a.g;
+						p[2] = a.b;
+						p[3] = a.a;
+						p += 4;
+					}
+				}
 
 				if (isCanceled()) continue;
 
@@ -342,8 +377,13 @@ void ImageViewWidget::runImageRendering()
 				}
 			}
 			{
-				// 多すぎるパネルを削除
 				std::lock_guard lock(m->render_mutex);
+
+				if (!isCanceled()) {
+					update();
+				}
+
+				// 多すぎるパネルを削除
 				int n = panelindex * 2;
 				if (m->composed_panels_cache.size() > n) {
 					m->composed_panels_cache.resize(n);
@@ -369,19 +409,47 @@ void ImageViewWidget::runSelectionRendering()
 	}
 }
 
-void ImageViewWidget::requestRendering(bool invalidate)
+void ImageViewWidget::invalidateComposedPanels(QRect const &rect)
 {
-	auto topleft = mapToCanvasFromViewport(QPointF(0, 0));
-	auto bottomright = mapToCanvasFromViewport(QPointF(width(), height()));
-	int x0 = (int)floor(topleft.x()) - 1;
-	int y0 = (int)floor(topleft.y()) - 1;
-	int x1 = (int)ceil(bottomright.x()) + 1;
-	int y1 = (int)ceil(bottomright.y()) + 1;
+	std::lock_guard lock(m->render_mutex);
+	if (rect.isEmpty()) {
+		m->composed_panels_cache.clear();
+	} else {
+		size_t i = m->composed_panels_cache.size();
+		while (i > 0) {
+			i--;
+			QRect r(m->composed_panels_cache[i].offset(), m->composed_panels_cache[i].image().size());
+			if (r.intersects(rect)) {
+				m->composed_panels_cache.erase(m->composed_panels_cache.begin() + i);
+			}
+		}
+	}
+}
+
+void ImageViewWidget::requestRendering(bool invalidate, QRect const &rect)
+{
+	QRect r = rect;
 	if (invalidate) {
 		m->render_invalidate = true;
+		r = {};
 	}
-	m->render_canvas_rect = QRect(x0, y0, x1 - x0, y1 - y0);
-	m->render_requested = true;
+
+	invalidateComposedPanels(r);
+
+	if (r.isEmpty()) {
+		auto topleft = mapToCanvasFromViewport(QPointF(0, 0));
+		auto bottomright = mapToCanvasFromViewport(QPointF(width(), height()));
+		int x0 = (int)floor(topleft.x()) - 1;
+		int y0 = (int)floor(topleft.y()) - 1;
+		int x1 = (int)ceil(bottomright.x()) + 1;
+		int y1 = (int)ceil(bottomright.y()) + 1;
+		r = {x0, y0, x1 - x0, y1 - y0};
+	}
+	{
+		std::lock_guard lock(m->render_mutex);
+		m->render_canvas_rects.push_back(r);
+		m->render_requested = true;
+	}
 }
 
 void ImageViewWidget::startRenderingThread()
@@ -468,9 +536,8 @@ void ImageViewWidget::geometryChanged()
 	int offset_x = (int)floor(pt0.x() + 0.5);
 	int offset_y = (int)floor(pt0.y() + 0.5);
 	{
-		std::lock_guard lock(m->render_mutex);
 		m->offscreen1.setOffset({offset_x, offset_y});
-		m->render_requested = true;
+		requestRendering(false, {});
 	}
 }
 
@@ -487,7 +554,7 @@ void ImageViewWidget::internalScrollImage(double x, double y, bool updateview)
 	geometryChanged();
 
 	if (updateview) {
-		requestRendering(false);
+		requestRendering(false, {});
 		paintViewLater(true);
 		update();
 	}
@@ -609,7 +676,7 @@ bool ImageViewWidget::setImageScale(double scale, bool updateview)
 	emit scaleChanged(m->d.image_scale);
 
 	if (updateview) {
-		requestRendering(true);
+		requestRendering(true, {});
 		paintViewLater(true);
 		update();
 	}

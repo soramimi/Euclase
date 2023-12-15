@@ -102,17 +102,7 @@ Canvas::Layer *Canvas::current_layer()
 	return layer(m->current_layer_index);
 }
 
-Canvas::Layer *Canvas::current_layer() const
-{
-	return const_cast<Canvas *>(this)->current_layer();
-}
-
 Canvas::Layer *Canvas::selection_layer()
-{
-	return &m->selection_layer;
-}
-
-Canvas::Layer *Canvas::selection_layer() const
 {
 	return &m->selection_layer;
 }
@@ -292,14 +282,10 @@ void Canvas::renderToSinglePanel(Panel *target_panel, QPoint const &target_offse
 	if (target_panel->imagep()->format() == euclase::Image::Format_8_RGBA) {
 
 		auto RenderRGBA8888 = [](uint8_t *dst, uint8_t const *src, uint8_t const *msk, int w, RenderOption const &opt){
-			if (opt.mode == RenderOption::DirectCopy) {
-				memcpy(dst, src, sizeof(euclase::OctetRGBA) * w);
-			} else {
-				for (int j = 0; j < w; j++) {
-					euclase::OctetRGBA color = ((euclase::OctetRGBA const *)src)[j];
-					color.a = color.a * msk[j] / 255;
-					((euclase::OctetRGBA *)dst)[j] = AlphaBlend::blend(((euclase::OctetRGBA *)dst)[j], color);
-				}
+			for (int j = 0; j < w; j++) {
+				euclase::OctetRGBA color = ((euclase::OctetRGBA const *)src)[j];
+				color.a = color.a * msk[j] / 255;
+				((euclase::OctetRGBA *)dst)[j] = AlphaBlend::blend(((euclase::OctetRGBA *)dst)[j], color);
 			}
 		};
 
@@ -410,55 +396,57 @@ void Canvas::renderToSinglePanel(Panel *target_panel, QPoint const &target_offse
 			for (int y = 0; y < h; y++) {
 				float const *s = src + 4 * (src_stride * (sy + y) + sx);
 				float *d = dst + 4 * (dst_stride * (dy + y) + dx);
-				for (int x = 0; x < w; x++) {
-#if 0
-					uint8_t m = mask ? *(mask + mask_stride * y + x) : 255;
-					float baseR = d[0];
-					float baseG = d[1];
-					float baseB = d[2];
-					float baseA = d[3];
-					float overR = s[0];
-					float overG = s[1];
-					float overB = s[2];
-					float overA = s[3];
-					overA = overA * m / 255;
-					float r = overR * overA + baseR * baseA * (1 - overA);
-					float g = overG * overA + baseG * baseA * (1 - overA);
-					float b = overB * overA + baseB * baseA * (1 - overA);
-					float a = overA + baseA * (1 - overA);
-					if (a > 0) {
-						float t = 1 / a;
-						r *= t;
-						g *= t;
-						b *= t;
-					}
-					d[0] = std::min(std::max(r, 0.0f), 1.0f);
-					d[1] = std::min(std::max(g, 0.0f), 1.0f);
-					d[2] = std::min(std::max(b, 0.0f), 1.0f);
-					d[3] = std::min(std::max(a, 0.0f), 1.0f);
+				switch (opt.blend_mode) {
+				case BlendMode::Normal:
+					for (int x = 0; x < w; x++) {
+#if 1
+						uint8_t m = mask ? *(mask + mask_stride * y + x) : 255;
+						euclase::FloatRGBA t = *(euclase::FloatRGBA *)d;
+						euclase::FloatRGBA u = *(euclase::FloatRGBA *)s;
+						u.a = u.a * m / 255;
+						t = AlphaBlend::blend(t, u);
+						d[0] = std::min(std::max(t.r, 0.0f), 1.0f);
+						d[1] = std::min(std::max(t.g, 0.0f), 1.0f);
+						d[2] = std::min(std::max(t.b, 0.0f), 1.0f);
+						d[3] = std::min(std::max(t.a, 0.0f), 1.0f);
 #else
-					float m = mask ? mask[mask_stride * y + x] / 255.0f : 1.0f;
-					if (m > 0) {
-						float a = s[3] + d[3] * (1 - s[3]);
-						__m128 base = _mm_load_ps(d);
-						__m128 over = _mm_load_ps(s);
-						__m128 base_a = _mm_load1_ps(d + 3);
-						__m128 over_a = _mm_set1_ps(s[3] * m);
-						__m128 rgb = _mm_add_ps(_mm_mul_ps(over, over_a), _mm_mul_ps(_mm_mul_ps(base, base_a), _mm_sub_ps(_mm_set1_ps(1.0f), over_a)));
-						__m128 A = _mm_set1_ps(a);
-						if (a > 0) {
-							rgb = _mm_mul_ps(rgb, A);
+						float m = mask ? mask[mask_stride * y + x] / 255.0f : 1.0f;
+						if (m > 0) {
+							float a = s[3] + d[3] * (1 - s[3]);
+							__m128 base = _mm_load_ps(d);
+							__m128 over = _mm_load_ps(s);
+							__m128 base_a = _mm_load1_ps(d + 3);
+							__m128 over_a = _mm_set1_ps(s[3] * m);
+							__m128 rgb = _mm_add_ps(_mm_mul_ps(over, over_a), _mm_mul_ps(_mm_mul_ps(base, base_a), _mm_sub_ps(_mm_set1_ps(1.0f), over_a)));
+							__m128 A = _mm_set1_ps(a);
+							if (a > 0) {
+								rgb = _mm_mul_ps(rgb, A);
+							}
+							__m128 zero = _mm_set1_ps(0.0f);
+							__m128 one = _mm_set1_ps(1.0f);
+							rgb = _mm_max_ps(rgb, zero);
+							rgb = _mm_min_ps(rgb, one);
+							__m128 v = _mm_insert_ps(rgb, A, 0xf0);
+							_mm_store_ps(d, v);
 						}
-						__m128 zero = _mm_set1_ps(0.0f);
-						__m128 one = _mm_set1_ps(1.0f);
-						rgb = _mm_max_ps(rgb, zero);
-						rgb = _mm_min_ps(rgb, one);
-						__m128 v = _mm_insert_ps(rgb, A, 0xf0);
-						_mm_store_ps(d, v);
-					}
 #endif
-					s += 4;
-					d += 4;
+						s += 4;
+						d += 4;
+					}
+					break;
+				case BlendMode::Erase:
+					for (int x = 0; x < w; x++) {
+						uint8_t m = mask ? *(mask + mask_stride * y + x) : 255;
+						float overR = s[0];
+						float overG = s[1];
+						float overB = s[2];
+						float overA = s[3];
+						float v = euclase::grayf(overR, overG, overB) * overA * m / 255;
+						d[3] *= 1 - euclase::clamp_f01(v);
+						s += 4;
+						d += 4;
+					}
+					break;
 				}
 			}
 			in = in.toHost();
@@ -500,54 +488,75 @@ void Canvas::renderToSinglePanel(Panel *target_panel, QPoint const &target_offse
 	}
 }
 
-void Canvas::composePanel(Panel *target_panel, Panel const *alt_panel, Panel const *alt_mask)
+void Canvas::composePanel(Panel *target_panel, Panel const *alt_panel, Panel const *alt_mask, RenderOption const &opt)
 {
-	if (!alt_panel) return;
+	//	if (!alt_panel) return;
 	Q_ASSERT(target_panel);
 	Q_ASSERT(target_panel->format() == euclase::Image::Format_F_RGBA);
 	Q_ASSERT(target_panel->format() == euclase::Image::Format_F_RGBA);
-	Q_ASSERT(alt_mask->format() == euclase::Image::Format_8_Grayscale);
+	//	Q_ASSERT(alt_mask->format() == euclase::Image::Format_8_Grayscale);
+
+	if (opt.blend_mode == BlendMode::Normal) {
 
 #ifdef USE_CUDA
-	if (target_panel->imagep()->memtype() == euclase::Image::CUDA) {
-		Q_ASSERT(alt_panel->imagep()->memtype() == euclase::Image::CUDA);
-		euclase::Image *dst = target_panel->imagep();
-		euclase::Image const *src = alt_panel->imagep();
-		euclase::Image mask = alt_mask->imagep()->toCUDA();
-		global->cuda->compose_float_rgba(PANEL_SIZE, PANEL_SIZE, dst->data(), src->data(), mask.data());
-		return;
-	}
+		if (target_panel->imagep()->memtype() == euclase::Image::CUDA) {
+			Q_ASSERT(alt_panel->imagep()->memtype() == euclase::Image::CUDA);
+			euclase::Image *dst = target_panel->imagep();
+			euclase::Image const *src = alt_panel->imagep();
+			euclase::Image mask;
+			if (alt_mask) {
+				mask = alt_mask->imagep()->toCUDA();
+			}
+			global->cuda->compose_float_rgba(PANEL_SIZE, PANEL_SIZE, dst->data(), src->data(), alt_mask ? mask.data() : nullptr);
+			return;
+		}
 #endif
 
-	euclase::FloatRGBA *dst = (euclase::FloatRGBA *)target_panel->imagep()->data();
-	euclase::FloatRGBA const *src = (euclase::FloatRGBA const *)alt_panel->imagep()->data();
-	uint8_t const *mask = alt_mask ? (uint8_t const *)(*alt_mask).imagep()->data() : nullptr;
-	for (int i = 0; i < PANEL_SIZE * PANEL_SIZE; i++) {
-		uint8_t m = mask ? mask[i] : 255;
-		if (m == 0) {
-			// nop
-		} else if (m == 255) {
-			dst[i] = src[i];
-		} else {
-			auto t = dst[i];
-			auto u = src[i];
-			if (t.a == 0) {
-				t = u;
-				t.a = 0;
-			} else if (u.a == 0) {
-				u = t;
-				u.a = 0;
+		euclase::FloatRGBA *dst = (euclase::FloatRGBA *)target_panel->imagep()->data();
+		euclase::FloatRGBA const *src = (euclase::FloatRGBA const *)alt_panel->imagep()->data();
+		uint8_t const *mask = alt_mask ? (uint8_t const *)(*alt_mask).imagep()->data() : nullptr;
+
+		for (int i = 0; i < PANEL_SIZE * PANEL_SIZE; i++) {
+			uint8_t m = mask ? mask[i] : 255;
+			if (m == 0) {
+				// nop
+			} else if (m == 255) {
+				dst[i] = src[i];
+			} else {
+				auto t = dst[i];
+				auto u = src[i];
+				if (t.a == 0) {
+					t = u;
+					t.a = 0;
+				} else if (u.a == 0) {
+					u = t;
+					u.a = 0;
+				}
+				float n = m / 255.0f;
+				dst[i].r = (dst[i].r * (1.0f - n) + src[i].r * n);
+				dst[i].g = (dst[i].g * (1.0f - n) + src[i].g * n);
+				dst[i].b = (dst[i].b * (1.0f - n) + src[i].b * n);
+				dst[i].a = (dst[i].a * (1.0f - n) + src[i].a * n);
 			}
-			float n = m / 255.0f;
-			dst[i].r = (dst[i].r * (1.0f - n) + src[i].r * n);
-			dst[i].g = (dst[i].g * (1.0f - n) + src[i].g * n);
-			dst[i].b = (dst[i].b * (1.0f - n) + src[i].b * n);
-			dst[i].a = (dst[i].a * (1.0f - n) + src[i].a * n);
+		}
+	} else if (opt.blend_mode == BlendMode::Erase) {
+		euclase::FloatRGBA *dst = (euclase::FloatRGBA *)target_panel->imagep()->data();
+		euclase::FloatRGBA const *src = (euclase::FloatRGBA const *)alt_panel->imagep()->data();
+		uint8_t const *mask = alt_mask ? (uint8_t const *)(*alt_mask).imagep()->data() : nullptr;
+
+		for (int i = 0; i < PANEL_SIZE * PANEL_SIZE; i++) {
+			float v = euclase::grayf(src[i].r, src[i].g, src[i].b) * src[i].a;
+			if (mask) {
+				v = v * mask[i] / 255;
+			}
+			v = 1 - euclase::clamp_f01(v);
+			dst[i].a *= v;
 		}
 	}
 }
 
-void Canvas::composePanels(Panel *target_panel, std::vector<Panel> const *alternate_panels, std::vector<Panel> const *alternate_selection_panels)
+
+void Canvas::composePanels(Panel *target_panel, std::vector<Panel> const *alternate_panels, std::vector<Panel> const *alternate_selection_panels, RenderOption const &opt)
 {
 	Q_ASSERT(target_panel);
 	Q_ASSERT(alternate_panels);
@@ -560,7 +569,7 @@ void Canvas::composePanels(Panel *target_panel, std::vector<Panel> const *altern
 	} else if (alternate_selection_panels) { // 選択領域があるとき
 		Panel *alt_mask = findPanel(alternate_selection_panels, offset);
 		if (alt_mask) {
-			composePanel(target_panel, alt_panel, alt_mask);
+			composePanel(target_panel, alt_panel, alt_mask, opt);
 		}
 	} else { // 選択領域がないときは全選択と同義
 		*target_panel = *alt_panel;
@@ -603,21 +612,33 @@ void Canvas::renderToEachPanels_internal_(Panel *target_panel, QPoint const &tar
 		QPoint offset = input_panel->offset();
 
 		Panel composed_panel;
-		if (opt.active_panel == Layer::Alternate) { // プレビュー有効
-			if (input_layer.alternate_selection_panels.empty()) { // 選択が全く無いなら全選択として処理
-				Panel *alt_panel = findPanel(&input_layer.alternate_panels, offset);
-				if (alt_panel) {
-					input_panel = alt_panel;
-				}
-			} else {
-				Panel *alt_mask = findPanel(&input_layer.alternate_selection_panels, offset);
-				if (alt_mask) {
+		if (opt.active_panel == Canvas::AlternateLayer) { // プレビュー有効
+			if (input_layer.alternate_blend_mode == BlendMode::Normal) {
+				if (input_layer.alternate_selection_panels.empty()) { // 選択が全く無いなら全選択として処理
 					Panel *alt_panel = findPanel(&input_layer.alternate_panels, offset);
 					if (alt_panel) {
-						composed_panel = input_panel->copy();
-						composePanel(&composed_panel, alt_panel, alt_mask);
-						input_panel = &composed_panel;
+						input_panel = alt_panel;
 					}
+				} else {
+					Panel *alt_mask = findPanel(&input_layer.alternate_selection_panels, offset);
+					if (alt_mask) {
+						Panel *alt_panel = findPanel(&input_layer.alternate_panels, offset);
+						if (alt_panel) {
+							RenderOption opt2;
+							composed_panel = input_panel->copy();
+							composePanel(&composed_panel, alt_panel, alt_mask, opt2);
+							input_panel = &composed_panel;
+						}
+					}
+				}
+			} else if (input_layer.alternate_blend_mode == BlendMode::Erase) {
+				Panel *alt_panel = findPanel(&input_layer.alternate_panels, offset);
+				if (alt_panel) {
+					RenderOption opt2;
+					opt2.blend_mode = input_layer.alternate_blend_mode;
+					composed_panel = input_panel->copy();
+					composePanel(&composed_panel, alt_panel, nullptr, opt2);
+					input_panel = &composed_panel;
 				}
 			}
 		}
@@ -633,11 +654,11 @@ void Canvas::renderToEachPanels(Panel *target_panel, QPoint const &target_offset
 	}
 }
 
-void Canvas::renderToLayer(Layer *target_layer, Layer::ActivePanel activepanel, Layer const &input_layer, Layer *mask_layer, RenderOption const &opt, bool *abort)
+void Canvas::renderToLayer(Layer *target_layer, ActivePanel activepanel, Layer const &input_layer, Layer *mask_layer, RenderOption const &opt, bool *abort)
 {
 	Q_ASSERT(input_layer.format_ != euclase::Image::Format_Invalid);
 	std::vector<Panel> *targetpanels = target_layer->panels(activepanel);
-	if (activepanel != Layer::AlternateSelection) {
+	if (activepanel != Canvas::AlternateSelection) {
 		target_layer->active_panel_ = activepanel;
 	}
 	target_layer->format_ = input_layer.format_;
@@ -648,12 +669,18 @@ void Canvas::renderToLayer(Layer *target_layer, Layer::ActivePanel activepanel, 
 			for (int y = (s0.y() & ~(PANEL_SIZE - 1)); y < s1.y(); y += PANEL_SIZE) {
 				for (int x = (s0.x() & ~(PANEL_SIZE - 1)); x < s1.x(); x += PANEL_SIZE) {
 					if (abort && *abort) return;
-					Panel *p = findPanel(targetpanels, QPoint(x, y));
-					if (!p) {
-						p = target_layer->addImagePanel(targetpanels, x, y, PANEL_SIZE, PANEL_SIZE, target_layer->format_, target_layer->memtype_);
-						p->imagep()->fill(euclase::k::transparent);
+					{
+						Panel *p = findPanel(targetpanels, QPoint(x, y));
+						if (!p) {
+							p = target_layer->addImagePanel(targetpanels, x, y, PANEL_SIZE, PANEL_SIZE, target_layer->format_, target_layer->memtype_);
+							p->imagep()->fill(euclase::k::transparent);
+						}
+						renderToSinglePanel(p, target_layer->offset(), &input_panel, input_layer.offset(), mask_layer, opt, opt.brush_color, 255, abort);
 					}
-					renderToSinglePanel(p, target_layer->offset(), &input_panel, input_layer.offset(), mask_layer, opt, opt.brush_color, 255, abort);
+					if (opt.notify_changed_rect){
+						QRect rect(input_layer.offset() + input_panel.offset(), input_panel.size());
+						opt.notify_changed_rect(rect);
+					}
 				}
 			}
 		}
@@ -676,21 +703,26 @@ void Canvas::clear()
 
 void Canvas::paintToCurrentLayer(Layer const &source, RenderOption const &opt, bool *abort)
 {
-	renderToLayer(current_layer(), Layer::Primary, source, selection_layer(), opt, abort);
+	renderToLayer(current_layer(), Canvas::PrimaryLayer, source, selection_layer(), opt, abort);
+}
+
+void Canvas::paintToCurrentAlternate(Layer const &source, RenderOption const &opt, bool *abort)
+{
+	renderToLayer(current_layer(), Canvas::AlternateLayer, source, selection_layer(), opt, abort);
 }
 
 void Canvas::addSelection(Layer const &source, RenderOption const &opt, bool *abort)
 {
 	RenderOption o = opt;
 	o.brush_color = Qt::white;
-	renderToLayer(selection_layer(), Layer::Primary, source, nullptr, o, abort);
+	renderToLayer(selection_layer(), Canvas::PrimaryLayer, source, nullptr, o, abort);
 }
 
 void Canvas::subSelection(Layer const &source, RenderOption const &opt, bool *abort)
 {
 	RenderOption o = opt;
 	o.brush_color = Qt::black;
-	renderToLayer(selection_layer(), Layer::Primary, source, nullptr, o, abort);
+	renderToLayer(selection_layer(), Canvas::PrimaryLayer, source, nullptr, o, abort);
 }
 
 Canvas::Panel Canvas::renderSelection(const QRect &r, bool *abort) const
@@ -699,19 +731,19 @@ Canvas::Panel Canvas::renderSelection(const QRect &r, bool *abort) const
 	panel.imagep()->make(r.width(), r.height(), euclase::Image::Format_8_Grayscale, /*selection_layer()->memtype_*/euclase::Image::Host, euclase::k::black);
 	panel.setOffset(r.topLeft());
 	std::vector<Layer *> layers;
-	layers.push_back(selection_layer());
+	layers.push_back(const_cast<Canvas *>(this)->selection_layer());
 	renderToEachPanels(&panel, QPoint(), layers, nullptr, QColor(), 255, {}, abort);
 	return panel;
 }
 
-Canvas::Panel Canvas::renderToPanel(InputLayer inputlayer, euclase::Image::Format format, const QRect &r, QRect const &maskrect, Layer::ActivePanel activepanel, bool *abort) const
+Canvas::Panel Canvas::renderToPanel(InputLayer inputlayer, euclase::Image::Format format, const QRect &r, QRect const &maskrect, ActivePanel activepanel, bool *abort) const
 {
 	RenderOption opt;
 	opt.mask_rect = maskrect;
 	opt.active_panel = activepanel;
 
 	Panel panel;
-	panel.imagep()->make(r.width(), r.height(), format, current_layer()->memtype_);
+	panel.imagep()->make(r.width(), r.height(), format, const_cast<Canvas *>(this)->current_layer()->memtype_);
 	panel.setOffset(r.topLeft());
 	std::vector<Layer *> layers;
 	switch (inputlayer) {
@@ -721,7 +753,7 @@ Canvas::Panel Canvas::renderToPanel(InputLayer inputlayer, euclase::Image::Forma
 		}
 		break;
 	case Canvas::CurrentLayerOnly:
-		layers.push_back(current_layer());
+		layers.push_back(const_cast<Canvas *>(this)->current_layer());
 		break;
 	}
 	renderToEachPanels(&panel, QPoint(), layers, nullptr, QColor(), 255, opt, abort);
@@ -734,8 +766,8 @@ Canvas::Panel Canvas::crop(const QRect &r, bool *abort) const
 	panel.imagep()->make(r.width(), r.height(), euclase::Image::Format_8_RGBA);
 	panel.setOffset(r.topLeft());
 	std::vector<Layer *> layers;
-	layers.push_back(current_layer());
-	renderToEachPanels(&panel, QPoint(), layers, selection_layer(), QColor(), 255, {}, abort);
+	layers.push_back(const_cast<Canvas *>(this)->current_layer());
+	renderToEachPanels(&panel, QPoint(), layers, const_cast<Canvas *>(this)->selection_layer(), QColor(), 255, {}, abort);
 	return panel;
 }
 
@@ -785,16 +817,21 @@ Canvas::Panel *Canvas::Layer::addImagePanel(std::vector<Panel> *panels, int x, i
 	return &*it;
 }
 
+void Canvas::Layer::setAlternateOption(BlendMode blendmode)
+{
+	alternate_blend_mode = blendmode;
+}
+
 void Canvas::Layer::finishAlternatePanels(bool apply)
 {
 	if (apply) {
 		auto const *sel = alternate_selection_panels.empty() ? nullptr : &alternate_selection_panels;
 		for (Panel &panel : primary_panels) {
-			composePanels(&panel, &alternate_panels, sel);
+			composePanels(&panel, &alternate_panels, sel, {});
 		}
 	}
 
-	active_panel_ = Primary;
+	active_panel_ = PrimaryLayer;
 	alternate_panels.clear();
 	alternate_selection_panels.clear();
 }

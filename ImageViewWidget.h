@@ -42,10 +42,11 @@ private:
 	void startRenderingThread();
 	void stopRenderingThread();
 	void runImageRendering();
-	void requestRendering(bool invalidate);
 	void geometryChanged();
 	void clearSelectionOutline();
 	void runSelectionRendering();
+	void invalidateComposedPanels(const QRect &rect);
+	void setRenderRequested(bool f);
 protected:
 	void resizeEvent(QResizeEvent *) override;
 	void paintEvent(QPaintEvent *) override;
@@ -83,6 +84,7 @@ public:
 	void updateToolCursor();
 
 	void clearRenderCache();
+	void requestRendering(bool invalidate, const QRect &rect);
 private slots:
 	void onSelectionOutlineReady(SelectionOutline const &data);
 	void onTimer();

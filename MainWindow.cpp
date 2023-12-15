@@ -14,7 +14,6 @@
 #include "SettingsDialog.h"
 #include "antialias.h"
 #include "median.h"
-// #include "resize.h"
 #include "ui_MainWindow.h"
 #include "xbrz/xbrz.h"
 #include <QBitmap>
@@ -256,11 +255,12 @@ void MainWindow::setImage(euclase::Image image, bool fitview)
 		layer.setImage(QPoint(0, 0), image);
 	}
 	Canvas::RenderOption opt;
-	opt.mode = Canvas::RenderOption::DirectCopy;
-	canvas()->renderToLayer(canvas()->current_layer(), Canvas::Layer::Primary, layer, nullptr, opt, nullptr);
+	opt.blend_mode = Canvas::BlendMode::Normal;
+	canvas()->renderToLayer(canvas()->current_layer(), Canvas::Canvas::PrimaryLayer, layer, nullptr, opt, nullptr);
 
-	ui->widget_image_view->clearRenderCache();
 	resetView(fitview);
+	ui->widget_image_view->clearRenderCache();
+	ui->widget_image_view->requestRendering(true, {});
 }
 
 void MainWindow::setImageFromBytes(QByteArray const &ba, bool fitview)
@@ -285,12 +285,10 @@ void MainWindow::setAlternateImage(euclase::Image const &image)
 	Canvas::Layer layer;
 	layer.setImage(QPoint(0, 0), image);
 	Canvas::RenderOption opt;
-	opt.mode = Canvas::RenderOption::DirectCopy;
+	opt.blend_mode = Canvas::BlendMode::Normal;
 
-//	QMutexLocker lock(synchronizer());
 	canvas()->current_layer()->alternate_panels.clear();
-//	canvas()->current_layer()->alternate_selection_panels = canvas()->selection_layer()->primary_panels;
-	canvas()->renderToLayer(canvas()->current_layer(), Canvas::Layer::Alternate, layer, nullptr, opt, nullptr);
+	canvas()->renderToLayer(canvas()->current_layer(), Canvas::AlternateLayer, layer, nullptr, opt, nullptr);
 }
 
 /**
@@ -313,7 +311,7 @@ bool MainWindow::isPreviewEnabled() const
 
 Canvas::Panel MainWindow::renderToPanel(Canvas::InputLayer inputlayer, euclase::Image::Format format, QRect const &r, QRect const &maskrect, bool *abort) const
 {
-	auto activepanel = isPreviewEnabled() ? Canvas::Layer::Alternate : Canvas::Layer::Primary;
+	auto activepanel = isPreviewEnabled() ? Canvas::AlternateLayer : Canvas::PrimaryLayer;
 	return canvas()->renderToPanel(inputlayer, format, r, maskrect, activepanel, abort).image();
 }
 
@@ -329,7 +327,7 @@ SelectionOutline MainWindow::renderSelectionOutline(bool *abort)
 
 QRect MainWindow::selectionRect() const
 {
-	return canvas()->selection_layer()->rect();
+	return const_cast<MainWindow *>(this)->canvas()->selection_layer()->rect();
 }
 
 void MainWindow::fitView()
@@ -397,7 +395,7 @@ void MainWindow::on_action_file_save_as_triggered()
 	QString path = QFileDialog::getSaveFileName(this);
 	if (!path.isEmpty()) {
 		QSize sz = canvas()->size();
-		auto activepanel = isPreviewEnabled() ? Canvas::Layer::Alternate : Canvas::Layer::Primary;
+		auto activepanel = isPreviewEnabled() ? Canvas::AlternateLayer : Canvas::PrimaryLayer;
 		euclase::Image img = canvas()->renderToPanel(Canvas::AllLayers, euclase::Image::Format_F_RGBA, QRect(0, 0, sz.width(), sz.height()), {}, activepanel, nullptr).image();
 		img.qimage().save(path);
 	}
@@ -427,7 +425,7 @@ void MainWindow::filter(FilterContext *context, AbstractFilterForm *form, std::f
 		layer.setImage({r.x(), r.y()}, img);
 		Canvas::RenderOption o;
 		o.brush_color = Qt::white;
-		Canvas::renderToLayer(canvas()->current_layer(), Canvas::Layer::AlternateSelection, layer, nullptr, o, nullptr);
+		Canvas::renderToLayer(canvas()->current_layer(), Canvas::Canvas::AlternateSelection, layer, nullptr, o, nullptr);
 
 	} else if (!canvas()->selection_layer()->primary_panels.empty()) {
 		canvas()->current_layer()->alternate_selection_panels = canvas()->selection_layer()->primary_panels;
@@ -623,12 +621,24 @@ void MainWindow::clearCanvas()
 	canvas()->clear();
 }
 
+
+
+void MainWindow::needToUpdateView(QRect const &rect)
+{
+	ui->widget_image_view->requestRendering(false, rect);
+}
+
 void MainWindow::paintLayer(Operation op, Canvas::Layer const &layer)
 {
+	Canvas::RenderOption opt;
+	opt.notify_changed_rect = [&](QRect const &rect){
+		needToUpdateView(rect);
+	};
+	opt.brush_color = foregroundColor();
 	if (op == Operation::PaintToCurrentLayer) {
-		Canvas::RenderOption opt;
-		opt.brush_color = foregroundColor();
 		canvas()->paintToCurrentLayer(layer, opt, nullptr);
+	} else if (op == Operation::PaintToCurrentAlternate) {
+		canvas()->paintToCurrentAlternate(layer, opt, nullptr);
 	}
 }
 
@@ -652,7 +662,7 @@ void MainWindow::drawBrush(bool one)
 			RoundBrushGenerator shape(brush.size, brush.softness);
 			layer.setImage(QPoint(x0, y0), shape.image(w, h, x - x0, y - y0, m->primary_color));
 		}
-		paintLayer(Operation::PaintToCurrentLayer, layer);
+		paintLayer(Operation::PaintToCurrentAlternate, layer);
 	};
 
 
@@ -689,17 +699,24 @@ void MainWindow::drawBrush(bool one)
 	}
 
 	m->brush_t = 0;
-	updateImageView();
 }
 
-void MainWindow::clearCurrentAlternate()
+void MainWindow::resetCurrentAlternateOption(Canvas::BlendMode blendmode)
 {
 	canvas()->current_layer()->finishAlternatePanels(false);
+	canvas()->current_layer()->setAlternateOption(blendmode);
 }
 
 void MainWindow::onPenDown(double x, double y)
 {
-	clearCurrentAlternate();
+	Canvas::BlendMode blendmode = Canvas::BlendMode::Normal;
+	switch (currentTool()) {
+	case MainWindow::Tool::EraserBrush:
+		blendmode = Canvas::BlendMode::Erase;
+		break;
+	}
+
+	resetCurrentAlternateOption(blendmode);
 	m->brush_bezier[0] = m->brush_bezier[1] = m->brush_bezier[2] = m->brush_bezier[3] = QPointF(x, y);
 	m->brush_next_distance = 0;
 	m->brush_t = 0;
@@ -726,7 +743,7 @@ void MainWindow::onPenUp(double x, double y)
 	(void)y;
 	updateImageView();
 	m->brush_next_distance = 0;
-	clearCurrentAlternate();
+	resetCurrentAlternateOption();
 }
 
 QPointF MainWindow::pointOnCanvas(int x, int y) const
@@ -853,7 +870,7 @@ bool MainWindow::onMouseLeftButtonPress(int x, int y)
 	Tool tool = currentTool();
 	if (tool == Tool::Scroll) return false;
 
-	if (tool == Tool::Brush) {
+	if (tool == Tool::Brush || tool == Tool::EraserBrush) {
 		QPointF pos = pointOnCanvas(x, y);
 		onPenDown(pos.x(), pos.y());
 		return true;
@@ -999,7 +1016,7 @@ bool MainWindow::mouseMove_internal(int x, int y, bool leftbutton, bool set_curs
 		return true;
 	}
 
-	if (tool == Tool::Brush) {
+	if (tool == Tool::Brush || tool == Tool::EraserBrush) {
 		setToolCursor(Qt::ArrowCursor);
 		if (!set_cursor_only) {
 			if (leftbutton) {
@@ -1076,7 +1093,7 @@ bool MainWindow::onMouseLeftButtonRelase(int x, int y, bool leftbutton)
 	Tool tool = currentTool();
 	if (tool == Tool::Scroll) return false;
 
-	if (tool == Tool::Brush) {
+	if (tool == Tool::Brush || tool == Tool::EraserBrush) {
 		if (leftbutton) {
 			QPointF pos = pointOnCanvas(x, y);
 			onPenUp(pos.x(), pos.y());
@@ -1524,6 +1541,7 @@ void MainWindow::colorCollection()
 
 void MainWindow::test()
 {
+	openFile("Z:/pictures/favolite/white.png");
 }
 
 
