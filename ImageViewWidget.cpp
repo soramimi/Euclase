@@ -216,7 +216,7 @@ void ImageViewWidget::runImageRendering()
 				std::lock_guard lock(m->render_mutex);
 				for (int panel_y = 0; panel_y < canvas_h; panel_y += PANEL_SIZE) {
 					for (int panel_x = 0; panel_x < canvas_w; panel_x += PANEL_SIZE) {
-						QRect rect(panel_x, panel_y, PANEL_SIZE + 1, PANEL_SIZE + 1);
+						QRect rect(panel_x, panel_y, PANEL_SIZE, PANEL_SIZE);
 						if (rect.intersects(canvas_rect)) {
 							for (int i = 0; i < m->render_canvas_rects.size(); i++) {
 								QRect const &r = m->render_canvas_rects[i];
@@ -260,10 +260,10 @@ void ImageViewWidget::runImageRendering()
 
 				// パネル矩形
 				QRect const &rect = rects[rectindex++];
-				int x = rect.x();
-				int y = rect.y();
-				int w = rect.width();
-				int h = rect.height();
+				const int x = rect.x();
+				const int y = rect.y();
+				const int w = rect.width();
+				const int h = rect.height();
 
 				// 描画先座標
 				QPointF src_topleft(x, y);
@@ -282,18 +282,18 @@ void ImageViewWidget::runImageRendering()
 				// 整数化
 				src_topleft = mapToCanvasFromViewport(dst_topleft);
 				src_bottomright = mapToCanvasFromViewport(dst_bottomright);
-				src_topleft.rx() = floor(src_topleft.x());
-				src_topleft.ry() = floor(src_topleft.y());
-				src_bottomright.rx() = ceil(src_bottomright.x());
-				src_bottomright.ry() = ceil(src_bottomright.y());
+				src_topleft.rx() = std::max((int)floor(src_topleft.x()), x);
+				src_topleft.ry() = std::max((int)floor(src_topleft.y()), y);
+				src_bottomright.rx() = std::min((int)ceil(src_bottomright.x()), x + w);
+				src_bottomright.ry() = std::min((int)ceil(src_bottomright.y()), y + h);
 
 				// 描画先を再計算
 				dst_topleft = mapToViewportFromCanvas(src_topleft);
 				dst_bottomright = mapToViewportFromCanvas(src_bottomright);
-				int dx = (int)floor(dst_topleft.x());
-				int dy = (int)floor(dst_topleft.y());
-				int dw = (int)ceil(dst_bottomright.x()) - dx;
-				int dh = (int)ceil(dst_bottomright.y()) - dy;
+				int dx = (int)round(dst_topleft.x());
+				int dy = (int)round(dst_topleft.y());
+				int dw = (int)round(dst_bottomright.x()) - dx;
+				int dh = (int)round(dst_bottomright.y()) - dy;
 
 				// 描画元座標を確定
 				int sx = (int)src_topleft.x();
@@ -302,7 +302,7 @@ void ImageViewWidget::runImageRendering()
 				int sh = (int)src_bottomright.y() - sy;
 				if (sw <= 0 || sh <= 0) continue;
 
-				// パネル原点座標分ずらす
+				// パネル原点を引く
 				sx -= x;
 				sy -= y;
 
@@ -351,7 +351,7 @@ void ImageViewWidget::runImageRendering()
 					uint8_t *p = qimg.scanLine(iy);
 					for (int ix = 0; ix < qimg.width(); ix++) {
 						euclase::OctetRGBA a, b;
-						b.r = b.g = b.b = (((dx + ix) ^ (dy + iy)) & 8) ? 255 : 192;
+						b.r = b.g = b.b = (((dx + ix) ^ (dy + iy)) & 8) ? 255 : 192; // 市松模様パターン
 						b.a = 255;
 						a.r = p[0];
 						a.g = p[1];
@@ -446,7 +446,6 @@ void ImageViewWidget::requestRendering(bool invalidate, QRect const &rect)
 		r = {x0, y0, x1 - x0, y1 - y0};
 	}
 	{
-		qDebug() << "!";
 		std::lock_guard lock(m->render_mutex);
 		m->render_canvas_rects.push_back(r);
 		m->render_requested = true;
@@ -542,7 +541,7 @@ void ImageViewWidget::geometryChanged(bool render)
 	}
 }
 
-void ImageViewWidget::internalScrollImage(double x, double y, bool updateview)
+void ImageViewWidget::internalScrollImage(double x, double y, bool render)
 {
 	m->d.image_scroll_x = x;
 	m->d.image_scroll_y = y;
@@ -554,11 +553,12 @@ void ImageViewWidget::internalScrollImage(double x, double y, bool updateview)
 
 	geometryChanged(false);
 
-	if (updateview) {
+	if (render) {
 		requestRendering(false, {});
 		paintViewLater(true);
-		update();
 	}
+
+	update();
 }
 
 void ImageViewWidget::scrollImage(double x, double y, bool updateview)

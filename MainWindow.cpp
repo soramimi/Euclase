@@ -1541,7 +1541,7 @@ void MainWindow::colorCollection()
 
 void MainWindow::test()
 {
-	openFile("Z:/pictures/favolite/white.png");
+	ui->widget_image_view->geometryChanged(true);
 }
 
 

@@ -11,6 +11,7 @@ class Canvas;
 
 class ImageViewWidget : public QWidget {
 	Q_OBJECT
+	friend class MainWindow; //@todo remove
 private:
 	struct Private;
 	Private *m;
@@ -25,7 +26,7 @@ private:
 	QSize imageSize() const;
 
 	QSizeF imageScrollRange() const;
-	void internalScrollImage(double x, double y, bool updateview);
+	void internalScrollImage(double x, double y, bool render);
 	void scrollImage(double x, double y, bool updateview);
 	bool setImageScale(double scale, bool updateview);
 	QBrush getTransparentBackgroundBrush();
