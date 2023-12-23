@@ -42,7 +42,7 @@ private:
 	void startRenderingThread();
 	void stopRenderingThread();
 	void runImageRendering();
-	void geometryChanged();
+	void geometryChanged(bool render);
 	void clearSelectionOutline();
 	void runSelectionRendering();
 	void invalidateComposedPanels(const QRect &rect);

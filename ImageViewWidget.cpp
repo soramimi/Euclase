@@ -446,6 +446,7 @@ void ImageViewWidget::requestRendering(bool invalidate, QRect const &rect)
 		r = {x0, y0, x1 - x0, y1 - y0};
 	}
 	{
+		qDebug() << "!";
 		std::lock_guard lock(m->render_mutex);
 		m->render_canvas_rects.push_back(r);
 		m->render_requested = true;
@@ -529,14 +530,14 @@ QBrush ImageViewWidget::stripeBrush()
 	return QBrush(image);
 }
 
-void ImageViewWidget::geometryChanged()
+void ImageViewWidget::geometryChanged(bool render)
 {
 	QPointF pt0(0, 0);
 	pt0 = mapToViewportFromCanvas(pt0);
 	int offset_x = (int)floor(pt0.x() + 0.5);
 	int offset_y = (int)floor(pt0.y() + 0.5);
-	{
-		m->offscreen1.setOffset({offset_x, offset_y});
+	m->offscreen1.setOffset({offset_x, offset_y});
+	if (render) {
 		requestRendering(false, {});
 	}
 }
@@ -551,7 +552,7 @@ void ImageViewWidget::internalScrollImage(double x, double y, bool updateview)
 	if (m->d.image_scroll_x > sz.width()) m->d.image_scroll_x = sz.width();
 	if (m->d.image_scroll_y > sz.height()) m->d.image_scroll_y = sz.height();
 
-	geometryChanged();
+	geometryChanged(false);
 
 	if (updateview) {
 		requestRendering(false, {});
@@ -671,7 +672,7 @@ bool ImageViewWidget::setImageScale(double scale, bool updateview)
 
 	m->d.image_scale = scale;
 
-	geometryChanged();
+	geometryChanged(true);
 
 	emit scaleChanged(m->d.image_scale);
 
@@ -1012,7 +1013,7 @@ void ImageViewWidget::internalUpdateScroll()
 	clearSelectionOutline();
 	int delta_x = pos.x() - m->d.mouse_press_pos.x();
 	int delta_y = pos.y() - m->d.mouse_press_pos.y();
-	scrollImage(m->d.scroll_origin_x - delta_x, m->d.scroll_origin_y - delta_y, m->left_button);
+	scrollImage(m->d.scroll_origin_x - delta_x, m->d.scroll_origin_y - delta_y, false);
 }
 
 void ImageViewWidget::doHandScroll()
