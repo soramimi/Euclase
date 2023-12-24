@@ -77,7 +77,10 @@ struct ImageViewWidget::Private {
 	bool render_canceled = false;
 	std::vector<QRect> render_canvas_rects;
 	std::vector<Canvas::Panel> composed_panels_cache;
-	double composed_panels_scale = 1;
+	struct {
+		std::vector<Canvas::Panel> panels;
+		CoordinateMapper mapper;
+	} composed_panels_cache_alternate;
 
 	PanelizedImage offscreen1;
 
@@ -429,8 +432,6 @@ void ImageViewWidget::invalidateComposedPanels(QRect const &rect)
 
 void ImageViewWidget::requestRendering(bool invalidate, QRect const &rect)
 {
-	m->composed_panels_scale = m->d.view_scale;
-
 	QRect r = rect;
 	if (invalidate) {
 		m->render_invalidate = true;
@@ -669,12 +670,12 @@ bool ImageViewWidget::setImageScale(double scale, bool updateview)
 
 	m->d.view_scale = scale;
 
-	geometryChanged(true);
+	geometryChanged(false);
 
 	emit scaleChanged(m->d.view_scale);
 
 	if (updateview) {
-		requestRendering(true, {});
+		// requestRendering(true, {});
 		paintViewLater(true);
 		update();
 	}
