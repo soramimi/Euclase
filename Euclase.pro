@@ -49,6 +49,7 @@ SOURCES += main.cpp\
 	ColorEditWidget.cpp \
 	ColorPreviewWidget.cpp \
 	ColorSlider.cpp \
+	CoordinateMapper.cpp \
 	FilterDialog.cpp \
 	FilterFormBlur.cpp \
 	FilterFormColorCorrection.cpp \
@@ -91,6 +92,7 @@ HEADERS += \
 	ColorEditWidget.h \
 	ColorPreviewWidget.h \
 	ColorSlider.h \
+	CoordinateMapper.h \
 	FilterDialog.h \
 	FilterFormBlur.h \
 	FilterFormColorCorrection.h \

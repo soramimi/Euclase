@@ -7,6 +7,7 @@
 #include "SelectionOutline.h"
 #include "misc.h"
 #include "AlphaBlend.h"
+#include "CoordinateMapper.h"
 #include <QBitmap>
 #include <QBuffer>
 #include <QDebug>
@@ -18,7 +19,7 @@
 #include <QSvgRenderer>
 #include <QWheelEvent>
 #include <cmath>
-#include <functional>
+// #include <functional>
 #include <memory>
 #include <mutex>
 #include <thread>
@@ -36,11 +37,9 @@ struct ImageViewWidget::Private {
 	QMutex sync;
 
 	struct Data {
-		double image_scroll_x = 0;
-		double image_scroll_y = 0;
-		double image_scale = 1;
-		double scroll_origin_x = 0;
-		double scroll_origin_y = 0;
+		QPointF view_scroll_offset;
+		double view_scale = 1;
+		QPointF scroll_starting_offset;
 		QPoint mouse_pos;
 		QPoint mouse_press_pos;
 		int wheel_delta = 0;
@@ -78,6 +77,8 @@ struct ImageViewWidget::Private {
 	bool render_canceled = false;
 	std::vector<QRect> render_canvas_rects;
 	std::vector<Canvas::Panel> composed_panels_cache;
+	double composed_panels_scale = 1;
+
 	PanelizedImage offscreen1;
 
 	std::thread selection_outline_thread;
@@ -428,6 +429,8 @@ void ImageViewWidget::invalidateComposedPanels(QRect const &rect)
 
 void ImageViewWidget::requestRendering(bool invalidate, QRect const &rect)
 {
+	m->composed_panels_scale = m->d.view_scale;
+
 	QRect r = rect;
 	if (invalidate) {
 		m->render_invalidate = true;
@@ -475,20 +478,14 @@ void ImageViewWidget::stopRenderingThread()
 
 QPointF ImageViewWidget::mapToCanvasFromViewport(QPointF const &pos)
 {
-	double cx = width() / 2.0;
-	double cy = height() / 2.0;
-	double x = (pos.x() - cx + m->d.image_scroll_x) / m->d.image_scale;
-	double y = (pos.y() - cy + m->d.image_scroll_y) / m->d.image_scale;
-	return QPointF(x, y);
+	CoordinateMapper mapper(size(), m->d.view_scroll_offset, m->d.view_scale);
+	return mapper.mapToCanvasFromViewport(pos);
 }
 
 QPointF ImageViewWidget::mapToViewportFromCanvas(QPointF const &pos)
 {
-	double cx = width() / 2.0;
-	double cy = height() / 2.0;
-	double x = pos.x() * m->d.image_scale + cx - m->d.image_scroll_x;
-	double y = pos.y() * m->d.image_scale + cy - m->d.image_scroll_y;
-	return QPointF(x, y);
+	CoordinateMapper mapper(size(), m->d.view_scroll_offset, m->d.view_scale);
+	return mapper.mapToViewportFromCanvas(pos);
 }
 
 void ImageViewWidget::showRect(QPointF const &start, QPointF const &end)
@@ -531,6 +528,7 @@ QBrush ImageViewWidget::stripeBrush()
 
 void ImageViewWidget::geometryChanged(bool render)
 {
+
 	QPointF pt0(0, 0);
 	pt0 = mapToViewportFromCanvas(pt0);
 	int offset_x = (int)floor(pt0.x() + 0.5);
@@ -543,13 +541,12 @@ void ImageViewWidget::geometryChanged(bool render)
 
 void ImageViewWidget::internalScrollImage(double x, double y, bool render)
 {
-	m->d.image_scroll_x = x;
-	m->d.image_scroll_y = y;
+	m->d.view_scroll_offset = QPointF(x, y);
 	QSizeF sz = imageScrollRange();
-	if (m->d.image_scroll_x < 0) m->d.image_scroll_x = 0;
-	if (m->d.image_scroll_y < 0) m->d.image_scroll_y = 0;
-	if (m->d.image_scroll_x > sz.width()) m->d.image_scroll_x = sz.width();
-	if (m->d.image_scroll_y > sz.height()) m->d.image_scroll_y = sz.height();
+	if (m->d.view_scroll_offset.x() < 0) m->d.view_scroll_offset.rx() = 0;
+	if (m->d.view_scroll_offset.y() < 0) m->d.view_scroll_offset.ry() = 0;
+	if (m->d.view_scroll_offset.x() > sz.width()) m->d.view_scroll_offset.rx() = sz.width();
+	if (m->d.view_scroll_offset.y() > sz.height()) m->d.view_scroll_offset.ry() = sz.height();
 
 	geometryChanged(false);
 
@@ -567,12 +564,12 @@ void ImageViewWidget::scrollImage(double x, double y, bool updateview)
 
 	if (m->h_scroll_bar) {
 		auto b = m->h_scroll_bar->blockSignals(true);
-		m->h_scroll_bar->setValue((int)m->d.image_scroll_x);
+		m->h_scroll_bar->setValue((int)m->d.view_scroll_offset.x());
 		m->h_scroll_bar->blockSignals(b);
 	}
 	if (m->v_scroll_bar) {
 		auto b = m->v_scroll_bar->blockSignals(true);
-		m->v_scroll_bar->setValue((int)m->d.image_scroll_y);
+		m->v_scroll_bar->setValue((int)m->d.view_scroll_offset.y());
 		m->v_scroll_bar->blockSignals(b);
 	}
 }
@@ -582,16 +579,16 @@ void ImageViewWidget::refrectScrollBar()
 	double e = 0.75;
 	double x = m->h_scroll_bar->value();
 	double y = m->v_scroll_bar->value();
-	if (fabs(x - m->d.image_scroll_x) < e) x = m->d.image_scroll_x; // 差が小さいときは値を維持する
-	if (fabs(y - m->d.image_scroll_y) < e) y = m->d.image_scroll_y;
+	if (fabs(x - m->d.view_scroll_offset.x()) < e) x = m->d.view_scroll_offset.x(); // 差が小さいときは値を維持する
+	if (fabs(y - m->d.view_scroll_offset.y()) < e) y = m->d.view_scroll_offset.y();
 	internalScrollImage(x, y, true);
 }
 
 QSizeF ImageViewWidget::imageScrollRange() const
 {
 	QSize sz = imageSize();
-	int w = int(sz.width() * m->d.image_scale);
-	int h = int(sz.height() * m->d.image_scale);
+	int w = int(sz.width() * m->d.view_scale);
+	int h = int(sz.height() * m->d.view_scale);
 	return QSize(w, h);
 }
 
@@ -645,9 +642,9 @@ void ImageViewWidget::paintViewLater(bool image)
 		QPointF focus_point = mapToCanvasFromViewport(mousepos);
 
 		int div = 1;
-		if (m->d.image_scale < 1) {
-			Q_ASSERT(m->d.image_scale > 0);
-			div = (int)floorf(1.0f / m->d.image_scale);
+		if (m->d.view_scale < 1) {
+			Q_ASSERT(m->d.view_scale > 0);
+			div = (int)floorf(1.0f / m->d.view_scale);
 		}
 	}
 
@@ -668,13 +665,13 @@ bool ImageViewWidget::setImageScale(double scale, bool updateview)
 {
 	if (scale < 1.0 / MIN_SCALE) scale = 1.0 / MIN_SCALE;
 	if (scale > MAX_SCALE) scale = MAX_SCALE;
-	if (m->d.image_scale == scale) return false;
+	if (m->d.view_scale == scale) return false;
 
-	m->d.image_scale = scale;
+	m->d.view_scale = scale;
 
 	geometryChanged(true);
 
-	emit scaleChanged(m->d.image_scale);
+	emit scaleChanged(m->d.view_scale);
 
 	if (updateview) {
 		requestRendering(true, {});
@@ -693,11 +690,11 @@ void ImageViewWidget::scaleFit(double ratio)
 	if (w > 0 && h > 0) {
 		double sx = width() / w;
 		double sy = height() / h;
-		m->d.image_scale = (sx < sy ? sx : sy) * ratio;
+		m->d.view_scale = (sx < sy ? sx : sy) * ratio;
 	}
 	updateScrollBarRange();
 
-	scrollImage(w * m->d.image_scale / 2.0, h * m->d.image_scale / 2.0, true);
+	scrollImage(w * m->d.view_scale / 2.0, h * m->d.view_scale / 2.0, true);
 	updateCursorAnchorPos();
 }
 
@@ -716,8 +713,8 @@ void ImageViewWidget::zoomToCursor(double scale)
 
 	updateScrollBarRange();
 
-	double x = m->d.cursor_anchor_pos.x() * m->d.image_scale + width() / 2.0 - (pos.x() + 0.5);
-	double y = m->d.cursor_anchor_pos.y() * m->d.image_scale + height() / 2.0 - (pos.y() + 0.5);
+	double x = m->d.cursor_anchor_pos.x() * m->d.view_scale + width() / 2.0 - (pos.x() + 0.5);
+	double y = m->d.cursor_anchor_pos.y() * m->d.view_scale + height() / 2.0 - (pos.y() + 0.5);
 	scrollImage(x, y, true);
 
 	updateCenterAnchorPos();
@@ -733,8 +730,8 @@ void ImageViewWidget::zoomToCenter(double scale)
 	setImageScale(scale, false);
 	updateScrollBarRange();
 
-	double x = m->d.cursor_anchor_pos.x() * m->d.image_scale + width() / 2.0 - pos.x();
-	double y = m->d.cursor_anchor_pos.y() * m->d.image_scale + height() / 2.0 - pos.y();
+	double x = m->d.cursor_anchor_pos.x() * m->d.view_scale + width() / 2.0 - pos.x();
+	double y = m->d.cursor_anchor_pos.y() * m->d.view_scale + height() / 2.0 - pos.y();
 	scrollImage(x, y, true);
 
 	updateCenterAnchorPos();
@@ -747,12 +744,12 @@ void ImageViewWidget::scale100()
 
 void ImageViewWidget::zoomIn()
 {
-	zoomToCenter(m->d.image_scale * 2);
+	zoomToCenter(m->d.view_scale * 2);
 }
 
 void ImageViewWidget::zoomOut()
 {
-	zoomToCenter(m->d.image_scale / 2);
+	zoomToCenter(m->d.view_scale / 2);
 }
 
 QImage ImageViewWidget::generateOutlineImage(euclase::Image const &selection, bool *abort)
@@ -873,7 +870,7 @@ void ImageViewWidget::paintEvent(QPaintEvent *)
 			QPainter pr2(&m->offscreen2);
 
 			// 最大拡大時のグリッド
-			if (m->d.image_scale == MAX_SCALE && !m->scrolling) { // スクロール中はグリッドを描画しない
+			if (m->d.view_scale == MAX_SCALE && !m->scrolling) { // スクロール中はグリッドを描画しない
 				QPoint org = mapToViewportFromCanvas(QPointF(0, 0)).toPoint();
 				QPointF topleft = mapToCanvasFromViewport(QPointF(0, 0));
 				int topleft_x = (int)floor(topleft.x());
@@ -1001,8 +998,7 @@ void ImageViewWidget::mousePressEvent(QMouseEvent *e)
 	if (m->left_button) {
 		QPoint pos = mapFromGlobal(QCursor::pos());
 		m->d.mouse_press_pos = pos;
-		m->d.scroll_origin_x = m->d.image_scroll_x;
-		m->d.scroll_origin_y = m->d.image_scroll_y;
+		m->d.scroll_starting_offset = m->d.view_scroll_offset;
 		mainwindow()->onMouseLeftButtonPress(pos.x(), pos.y());
 	}
 }
@@ -1013,7 +1009,7 @@ void ImageViewWidget::internalUpdateScroll()
 	clearSelectionOutline();
 	int delta_x = pos.x() - m->d.mouse_press_pos.x();
 	int delta_y = pos.y() - m->d.mouse_press_pos.y();
-	scrollImage(m->d.scroll_origin_x - delta_x, m->d.scroll_origin_y - delta_y, false);
+	scrollImage(m->d.scroll_starting_offset.x() - delta_x, m->d.scroll_starting_offset.y() - delta_y, false);
 }
 
 void ImageViewWidget::doHandScroll()
@@ -1074,7 +1070,7 @@ void ImageViewWidget::wheelEvent(QWheelEvent *e)
 	double d = e->angleDelta().y();
 	double t = 1.001;
 	scale *= pow(t, d);
-	zoomToCursor(m->d.image_scale * scale);
+	zoomToCursor(m->d.view_scale * scale);
 }
 
 void ImageViewWidget::onSelectionOutlineReady(const SelectionOutline &data)
