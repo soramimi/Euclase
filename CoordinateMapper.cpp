@@ -26,7 +26,7 @@ CoordinateMapper::CoordinateMapper(const QSize &viewport_size, const QPointF &sc
  *
  * @return
  */
-QPointF CoordinateMapper::mapToCanvasFromViewport(const QPointF &pos)
+QPointF CoordinateMapper::mapToCanvasFromViewport(const QPointF &pos) const
 {
 	double cx = viewport_size_.width() / 2.0;
 	double cy = viewport_size_.height() / 2.0;
@@ -44,7 +44,7 @@ QPointF CoordinateMapper::mapToCanvasFromViewport(const QPointF &pos)
  *
  * @return
  */
-QPointF CoordinateMapper::mapToViewportFromCanvas(const QPointF &pos)
+QPointF CoordinateMapper::mapToViewportFromCanvas(const QPointF &pos) const
 {
 	double cx = viewport_size_.width() / 2.0;
 	double cy = viewport_size_.height() / 2.0;

@@ -20,12 +20,16 @@ public:
 	{
 		return scroll_offset;
 	}
+	void setScrollOffset(QPointF const &offset)
+	{
+		scroll_offset = offset;
+	}
 	double scale() const
 	{
 		return scale_;
 	}
-	QPointF mapToCanvasFromViewport(QPointF const &pos);
-	QPointF mapToViewportFromCanvas(QPointF const &pos);
+	QPointF mapToCanvasFromViewport(QPointF const &pos) const;
+	QPointF mapToViewportFromCanvas(QPointF const &pos) const;
 };
 
 #endif // COORDINATEMAPPER_H

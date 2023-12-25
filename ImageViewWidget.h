@@ -48,6 +48,7 @@ private:
 	void runSelectionRendering();
 	void invalidateComposedPanels(const QRect &rect);
 	void setRenderRequested(bool f);
+	void setScrollOffset(double x, double y);
 protected:
 	void resizeEvent(QResizeEvent *) override;
 	void paintEvent(QPaintEvent *) override;

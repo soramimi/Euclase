@@ -1,13 +1,13 @@
 
 #include "ImageViewWidget.h"
+#include "AlphaBlend.h"
 #include "ApplicationGlobal.h"
 #include "Canvas.h"
+#include "CoordinateMapper.h"
 #include "MainWindow.h"
 #include "PanelizedImage.h"
 #include "SelectionOutline.h"
 #include "misc.h"
-#include "AlphaBlend.h"
-#include "CoordinateMapper.h"
 #include <QBitmap>
 #include <QBuffer>
 #include <QDebug>
@@ -19,7 +19,6 @@
 #include <QSvgRenderer>
 #include <QWheelEvent>
 #include <cmath>
-// #include <functional>
 #include <memory>
 #include <mutex>
 #include <thread>
@@ -77,11 +76,8 @@ struct ImageViewWidget::Private {
 	bool render_canceled = false;
 	std::vector<QRect> render_canvas_rects;
 	std::vector<Canvas::Panel> composed_panels_cache;
-	struct {
-		std::vector<Canvas::Panel> panels;
-		CoordinateMapper mapper;
-	} composed_panels_cache_alternate;
 
+	CoordinateMapper offscreen1_mapper;
 	PanelizedImage offscreen1;
 
 	std::thread selection_outline_thread;
@@ -167,7 +163,9 @@ static QImage scale_float_to_uint8_rgba(euclase::Image const &src, int w, int h)
 		int dstride = ret.bytesPerLine();
 		global->cuda->scale_float_to_uint8_rgba(w, h, dstride, ret.bits(), src.width(), src.height(), src.data());
 	} else {
-		return src.qimage().scaled(w, h, Qt::IgnoreAspectRatio, Qt::FastTransformation);
+		QImage qimg = src.qimage();
+		if (qimg.isNull()) return {};
+		return qimg.scaled(w, h, Qt::IgnoreAspectRatio, Qt::FastTransformation);
 	}
 	return ret;
 }
@@ -175,6 +173,7 @@ static QImage scale_float_to_uint8_rgba(euclase::Image const &src, int w, int h)
 void ImageViewWidget::clearRenderCache()
 {
 	std::lock_guard lock(m->render_mutex);
+	m->offscreen1_mapper = CoordinateMapper(size(), m->d.view_scroll_offset, m->d.view_scale);
 	m->composed_panels_cache.clear();
 	m->render_canvas_rects.clear();
 	m->render_requested = true;
@@ -189,6 +188,16 @@ void ImageViewWidget::runImageRendering()
 			m->render_requested = false;
 			m->render_canceled = false;
 
+			CoordinateMapper mapper;
+			{
+				std::lock_guard lock(m->render_mutex);
+				mapper = m->offscreen1_mapper;
+				if (m->render_invalidate) {
+					m->render_invalidate = false;
+					m->offscreen1.clear();
+				}
+			}
+
 			const int canvas_w = mainwindow()->canvasWidth();
 			const int canvas_h = mainwindow()->canvasHeight();
 			const QRect canvas_rect(0, 0, canvas_w, canvas_h);
@@ -198,29 +207,23 @@ void ImageViewWidget::runImageRendering()
 			int view_right;
 			int view_bottom;
 			{
-				QPointF topleft = mapToViewportFromCanvas(QPointF(0, 0));
-				QPointF bottomright = mapToViewportFromCanvas(QPointF(canvas_w, canvas_h));
+				QPointF topleft = mapper.mapToViewportFromCanvas(QPointF(0, 0));
+				QPointF bottomright = mapper.mapToViewportFromCanvas(QPointF(canvas_w, canvas_h));
 				view_left = std::max((int)floor(topleft.x()), 0);
 				view_top = std::max((int)floor(topleft.y()), 0);
 				view_right = std::min((int)ceil(bottomright.x()), width());
 				view_bottom = std::min((int)ceil(bottomright.y()), height());
 			}
 
-			{
-				std::lock_guard lock(m->render_mutex);
-				if (m->render_invalidate) {
-					m->render_invalidate = false;
-					m->offscreen1.clear();
-				}
-			}
-
 			std::vector<QRect> rects;
 
+			const int OFFSCREEN_PANEL_SIZE = 256;
+
 			{
 				std::lock_guard lock(m->render_mutex);
-				for (int panel_y = 0; panel_y < canvas_h; panel_y += PANEL_SIZE) {
-					for (int panel_x = 0; panel_x < canvas_w; panel_x += PANEL_SIZE) {
-						QRect rect(panel_x, panel_y, PANEL_SIZE, PANEL_SIZE);
+				for (int panel_y = 0; panel_y < canvas_h; panel_y += OFFSCREEN_PANEL_SIZE) {
+					for (int panel_x = 0; panel_x < canvas_w; panel_x += OFFSCREEN_PANEL_SIZE) {
+						QRect rect(panel_x, panel_y, OFFSCREEN_PANEL_SIZE, OFFSCREEN_PANEL_SIZE);
 						if (rect.intersects(canvas_rect)) {
 							for (int i = 0; i < m->render_canvas_rects.size(); i++) {
 								QRect const &r = m->render_canvas_rects[i];
@@ -236,7 +239,7 @@ void ImageViewWidget::runImageRendering()
 			}
 
 			// マウスカーソルから近い順にソート
-			QPoint center = mapToCanvasFromViewport(mapFromGlobal(QCursor::pos())).toPoint();
+			QPoint center = mapper.mapToCanvasFromViewport(mapFromGlobal(QCursor::pos())).toPoint();
 			std::sort(rects.begin(), rects.end(), [&](QRect const &a, QRect const &b){
 				auto Center = [=](QRect const &r){
 					return r.center();
@@ -252,7 +255,8 @@ void ImageViewWidget::runImageRendering()
 			});
 
 			auto isCanceled = [&](){
-				return m->render_requested || m->render_canceled || m->render_invalidate || m->render_interrupted;
+				bool f = /*m->render_requested ||*/ m->render_canceled || /*m->render_invalidate ||*/ m->render_interrupted;
+				return f;
 			};
 
 			int panelindex = 0;
@@ -274,8 +278,8 @@ void ImageViewWidget::runImageRendering()
 				QPointF src_bottomright(x + w, y + h);
 
 				// 描画元座標
-				QPointF dst_topleft = mapToViewportFromCanvas(src_topleft);
-				QPointF dst_bottomright = mapToViewportFromCanvas(src_bottomright);
+				QPointF dst_topleft = mapper.mapToViewportFromCanvas(src_topleft);
+				QPointF dst_bottomright = mapper.mapToViewportFromCanvas(src_bottomright);
 
 				// 描画範囲でクリップ
 				if (dst_topleft.x() < view_left) dst_topleft.rx() = view_left;
@@ -284,16 +288,16 @@ void ImageViewWidget::runImageRendering()
 				if (dst_bottomright.y() > view_bottom) dst_bottomright.ry() = view_bottom;
 
 				// 整数化
-				src_topleft = mapToCanvasFromViewport(dst_topleft);
-				src_bottomright = mapToCanvasFromViewport(dst_bottomright);
+				src_topleft = mapper.mapToCanvasFromViewport(dst_topleft);
+				src_bottomright = mapper.mapToCanvasFromViewport(dst_bottomright);
 				src_topleft.rx() = std::max((int)floor(src_topleft.x()), x);
 				src_topleft.ry() = std::max((int)floor(src_topleft.y()), y);
 				src_bottomright.rx() = std::min((int)ceil(src_bottomright.x()), x + w);
 				src_bottomright.ry() = std::min((int)ceil(src_bottomright.y()), y + h);
 
 				// 描画先を再計算
-				dst_topleft = mapToViewportFromCanvas(src_topleft);
-				dst_bottomright = mapToViewportFromCanvas(src_bottomright);
+				dst_topleft = mapper.mapToViewportFromCanvas(src_topleft);
+				dst_bottomright = mapper.mapToViewportFromCanvas(src_bottomright);
 				int dx = (int)round(dst_topleft.x());
 				int dy = (int)round(dst_topleft.y());
 				int dw = (int)round(dst_bottomright.x()) - dx;
@@ -347,6 +351,7 @@ void ImageViewWidget::runImageRendering()
 
 				// 拡大縮小
 				QImage qimg = scale_float_to_uint8_rgba(image, dw, dh);
+				if (qimg.isNull()) continue;
 
 				if (isCanceled()) continue;
 
@@ -428,6 +433,8 @@ void ImageViewWidget::invalidateComposedPanels(QRect const &rect)
 			}
 		}
 	}
+
+	qDebug() << m->composed_panels_cache.size();
 }
 
 void ImageViewWidget::requestRendering(bool invalidate, QRect const &rect)
@@ -451,6 +458,7 @@ void ImageViewWidget::requestRendering(bool invalidate, QRect const &rect)
 	}
 	{
 		std::lock_guard lock(m->render_mutex);
+		m->offscreen1_mapper = CoordinateMapper(size(), m->d.view_scroll_offset, m->d.view_scale);
 		m->render_canvas_rects.push_back(r);
 		m->render_requested = true;
 	}
@@ -527,7 +535,7 @@ QBrush ImageViewWidget::stripeBrush()
 	return QBrush(image);
 }
 
-void ImageViewWidget::geometryChanged(bool render)
+void ImageViewWidget::geometryChanged(bool force_render)
 {
 
 	QPointF pt0(0, 0);
@@ -535,24 +543,28 @@ void ImageViewWidget::geometryChanged(bool render)
 	int offset_x = (int)floor(pt0.x() + 0.5);
 	int offset_y = (int)floor(pt0.y() + 0.5);
 	m->offscreen1.setOffset({offset_x, offset_y});
-	if (render) {
-		requestRendering(false, {});
+	if (force_render) {
+		requestRendering(true, {});
 	}
+}
+
+void ImageViewWidget::setScrollOffset(double x, double y)
+{
+	QSizeF sz = imageScrollRange();
+	x = std::min(std::max(x, 0.0), sz.width());
+	y = std::min(std::max(y, 0.0), sz.height());
+	m->d.view_scroll_offset = QPointF(x, y);
+	m->offscreen1_mapper.setScrollOffset(m->d.view_scroll_offset);
 }
 
 void ImageViewWidget::internalScrollImage(double x, double y, bool render)
 {
-	m->d.view_scroll_offset = QPointF(x, y);
-	QSizeF sz = imageScrollRange();
-	if (m->d.view_scroll_offset.x() < 0) m->d.view_scroll_offset.rx() = 0;
-	if (m->d.view_scroll_offset.y() < 0) m->d.view_scroll_offset.ry() = 0;
-	if (m->d.view_scroll_offset.x() > sz.width()) m->d.view_scroll_offset.rx() = sz.width();
-	if (m->d.view_scroll_offset.y() > sz.height()) m->d.view_scroll_offset.ry() = sz.height();
+	setScrollOffset(x, y);
 
 	geometryChanged(false);
 
 	if (render) {
-		requestRendering(false, {});
+		// requestRendering(false, {});
 		paintViewLater(true);
 	}
 
@@ -847,14 +859,17 @@ void ImageViewWidget::paintEvent(QPaintEvent *)
 
 	const int doc_w = canvas()->width();
 	const int doc_h = canvas()->height();
+
+	const CoordinateMapper mapper(size(), m->d.view_scroll_offset, m->d.view_scale);
+
 	QPointF pt0(0, 0);
 	QPointF pt1(doc_w, doc_h);
-	pt0 = mapToViewportFromCanvas(pt0);
-	pt1 = mapToViewportFromCanvas(pt1);
-	int visible_x = (int)floor(pt0.x() + 0.5);
-	int visible_y = (int)floor(pt0.y() + 0.5);
-	int visible_w = (int)floor(pt1.x() + 0.5) - visible_x;
-	int visible_h = (int)floor(pt1.y() + 0.5) - visible_y;
+	pt0 = mapper.mapToViewportFromCanvas(pt0);
+	pt1 = mapper.mapToViewportFromCanvas(pt1);
+	int visible_x = (int)round(pt0.x());
+	int visible_y = (int)round(pt0.y());
+	int visible_w = (int)round(pt1.x()) - visible_x;
+	int visible_h = (int)round(pt1.y()) - visible_y;
 
 	QElapsedTimer t;
 	t.start();
@@ -872,8 +887,8 @@ void ImageViewWidget::paintEvent(QPaintEvent *)
 
 			// 最大拡大時のグリッド
 			if (m->d.view_scale == MAX_SCALE && !m->scrolling) { // スクロール中はグリッドを描画しない
-				QPoint org = mapToViewportFromCanvas(QPointF(0, 0)).toPoint();
-				QPointF topleft = mapToCanvasFromViewport(QPointF(0, 0));
+				QPoint org = mapper.mapToViewportFromCanvas(QPointF(0, 0)).toPoint();
+				QPointF topleft = mapper.mapToCanvasFromViewport(QPointF(0, 0));
 				int topleft_x = (int)floor(topleft.x());
 				int topleft_y = (int)floor(topleft.y());
 				pr2.save();
@@ -881,7 +896,7 @@ void ImageViewWidget::paintEvent(QPaintEvent *)
 				pr2.setBrushOrigin(org);
 				int x = topleft_x;
 				while (1) {
-					QPointF pt = mapToViewportFromCanvas(QPointF(x, topleft_y));
+					QPointF pt = mapper.mapToViewportFromCanvas(QPointF(x, topleft_y));
 					int z = (int)floor(pt.x());
 					if (z >= width()) break;
 					pr2.fillRect(z, 0, 1, height(), m->horz_stripe_brush);
@@ -889,7 +904,7 @@ void ImageViewWidget::paintEvent(QPaintEvent *)
 				}
 				int y = topleft_y;
 				while (1) {
-					QPointF pt = mapToViewportFromCanvas(QPointF(topleft_x, y));
+					QPointF pt = mapper.mapToViewportFromCanvas(QPointF(topleft_x, y));
 					int z = (int)floor(pt.y());
 					if (z >= height()) break;
 					pr2.fillRect(0, z, width(), 1, m->vert_stripe_brush);
@@ -913,8 +928,23 @@ void ImageViewWidget::paintEvent(QPaintEvent *)
 
 	// 画像のオフスクリーンを描画
 	{
+#if 0
 		std::lock_guard lock(m->render_mutex);
 		m->offscreen1.renderImage(&pr_view, {visible_x, visible_y}, {visible_x, visible_y, visible_w, visible_h});
+#else
+		std::lock_guard lock(m->render_mutex);
+		for (PanelizedImage::Panel const &panel : m->offscreen1.panels_) {
+			QPointF topleft(panel.offset);
+			QPointF bottomright(panel.offset.x() + panel.image.width(), panel.offset.y() + panel.image.height());
+			topleft += m->offscreen1.offset();
+			topleft = m->offscreen1_mapper.mapToCanvasFromViewport(topleft);
+			topleft = mapper.mapToViewportFromCanvas(topleft);
+			bottomright += m->offscreen1.offset();
+			bottomright = m->offscreen1_mapper.mapToCanvasFromViewport(bottomright);
+			bottomright = mapper.mapToViewportFromCanvas(bottomright);
+			pr_view.drawImage(QRectF(topleft, bottomright), panel.image, panel.image.rect());
+		}
+#endif
 	}
 
 	th.join();
@@ -956,10 +986,10 @@ void ImageViewWidget::paintEvent(QPaintEvent *)
 		if (x0 > x1) std::swap(x0, x1);
 		if (y0 > y1) std::swap(y0, y1);
 		QPointF pt;
-		pt = mapToViewportFromCanvas(QPointF(x0, y0));
+		pt = mapper.mapToViewportFromCanvas(QPointF(x0, y0));
 		x0 = floor(pt.x());
 		y0 = floor(pt.y());
-		pt = mapToViewportFromCanvas(QPointF(x1, y1));
+		pt = mapper.mapToViewportFromCanvas(QPointF(x1, y1));
 		x1 = floor(pt.x());
 		y1 = floor(pt.y());
 		misc::drawFrame(&pr_view, x0, y0, x1 - x0 + 1, y1 - y0 + 1, brush, brush);
