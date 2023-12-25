@@ -10,8 +10,8 @@ struct CUDAIMAGE_API {
 	cudamem_t *(*malloc)(int len);
 	void (*free)(cudamem_t *mem);
 	void (*memcpy_htoh)(void *dst_h, void const *src_h, int len);
-	void (*memcpy_dtoh)(cudamem_t *dst_h, void const *src_d, int len);
-	void (*memcpy_htod)(void *dst_d, cudamem_t const *src_h, int len);
+	void (*memcpy_dtoh)(void *dst_h, cudamem_t const *src_d, int len);
+	void (*memcpy_htod)(cudamem_t *dst_d, void const *src_h, int len);
 	void (*memcpy_dtod)(cudamem_t *dst_d, cudamem_t const *src_d, int len);
 	void (*memset)(cudamem_t *dst, uint8_t c, int len);
 	void (*saturation_brightness)(int w, int h, int red, int green, int blue, cudamem_t *mem);
