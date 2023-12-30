@@ -49,7 +49,7 @@ public:
 	{
 		panels_.clear();
 	}
-	void paintImage(QPoint const &dstpos, QImage const &srcimg, QRect const &srcrect);
+	void paintImage(QPoint const &dstpos, QImage const &srcimg, const QRect &scaled_rect, QRect const &srcrect);
 	void renderImage(QPainter *painter, QPoint const &dstpos, QRect const &srcrect) const;
 };
 

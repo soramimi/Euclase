@@ -28,7 +28,7 @@ private:
 
 	QSize imageSize() const;
 
-	QSizeF imageScrollRange() const;
+	QSize imageScrollRange() const;
 	void internalScrollImage(double x, double y, bool render);
 	void scrollImage(double x, double y, bool updateview);
 	bool setImageScale(double scale, bool updateview);

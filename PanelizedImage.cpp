@@ -23,7 +23,7 @@ PanelizedImage::Panel *PanelizedImage::findPanel_(const std::vector<Panel> *pane
 	return nullptr;
 }
 
-void PanelizedImage::paintImage(const QPoint &dstpos, const QImage &srcimg, const QRect &srcrect)
+void PanelizedImage::paintImage(const QPoint &dstpos, const QImage &srcimg, const QRect &scaled_rect, const QRect &srcrect)
 {
 	int panel_dx0 = dstpos.x() - offset_.x();
 	int panel_dy0 = dstpos.y() - offset_.y();
