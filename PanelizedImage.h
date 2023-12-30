@@ -50,7 +50,7 @@ public:
 		panels_.clear();
 	}
 	void paintImage(QPoint const &dstpos, QImage const &srcimg, QRect const &srcrect);
-	void renderImage(QPainter *painter, QPoint const &offset, QRect const &srcrect) const;
+	void renderImage(QPainter *painter, QPoint const &dstpos, QRect const &srcrect) const;
 };
 
 #endif // PANELIZEDIMAGE_H

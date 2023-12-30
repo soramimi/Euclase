@@ -1,11 +1,12 @@
 #ifndef IMAGEVIEWWIDGET_H
 #define IMAGEVIEWWIDGET_H
 
+#include "CoordinateMapper.h"
+#include "MainWindow.h"
+#include "SelectionOutline.h"
 #include <QScrollBar>
 #include <QTimer>
 #include <QWidget>
-#include "MainWindow.h"
-#include "SelectionOutline.h"
 
 class Canvas;
 
@@ -15,6 +16,8 @@ class ImageViewWidget : public QWidget {
 private:
 	struct Private;
 	Private *m;
+
+	static constexpr int OFFSCREEN_PANEL_SIZE = 256;
 
 	QTimer timer_;
 
@@ -49,6 +52,8 @@ private:
 	void invalidateComposedPanels(const QRect &rect);
 	void setRenderRequested(bool f);
 	void setScrollOffset(double x, double y);
+	CoordinateMapper currentCoordinateMapper() const;
+	CoordinateMapper offscreenCoordinateMapper() const;
 protected:
 	void resizeEvent(QResizeEvent *) override;
 	void paintEvent(QPaintEvent *) override;

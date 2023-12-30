@@ -3,7 +3,6 @@
 #include "AlphaBlend.h"
 #include "ApplicationGlobal.h"
 #include "Canvas.h"
-#include "CoordinateMapper.h"
 #include "MainWindow.h"
 #include "PanelizedImage.h"
 #include "SelectionOutline.h"
@@ -51,6 +50,7 @@ struct ImageViewWidget::Private {
 
 	bool left_button = false;
 
+	int delayed_update_counter = 0; // x 100ms
 
 	bool scrolling = false;
 
@@ -195,6 +195,7 @@ void ImageViewWidget::runImageRendering()
 				if (m->render_invalidate) {
 					m->render_invalidate = false;
 					m->offscreen1.clear();
+					qDebug() << "!";
 				}
 			}
 
@@ -216,8 +217,6 @@ void ImageViewWidget::runImageRendering()
 			}
 
 			std::vector<QRect> rects;
-
-			const int OFFSCREEN_PANEL_SIZE = 256;
 
 			{
 				std::lock_guard lock(m->render_mutex);
@@ -437,6 +436,16 @@ void ImageViewWidget::invalidateComposedPanels(QRect const &rect)
 	qDebug() << m->composed_panels_cache.size();
 }
 
+CoordinateMapper ImageViewWidget::currentCoordinateMapper() const
+{
+	return CoordinateMapper(size(), m->d.view_scroll_offset, m->d.view_scale);
+}
+
+CoordinateMapper ImageViewWidget::offscreenCoordinateMapper() const
+{
+	return m->offscreen1_mapper;
+}
+
 void ImageViewWidget::requestRendering(bool invalidate, QRect const &rect)
 {
 	QRect r = rect;
@@ -458,7 +467,7 @@ void ImageViewWidget::requestRendering(bool invalidate, QRect const &rect)
 	}
 	{
 		std::lock_guard lock(m->render_mutex);
-		m->offscreen1_mapper = CoordinateMapper(size(), m->d.view_scroll_offset, m->d.view_scale);
+		m->offscreen1_mapper = currentCoordinateMapper();
 		m->render_canvas_rects.push_back(r);
 		m->render_requested = true;
 	}
@@ -487,14 +496,12 @@ void ImageViewWidget::stopRenderingThread()
 
 QPointF ImageViewWidget::mapToCanvasFromViewport(QPointF const &pos)
 {
-	CoordinateMapper mapper(size(), m->d.view_scroll_offset, m->d.view_scale);
-	return mapper.mapToCanvasFromViewport(pos);
+	return currentCoordinateMapper().mapToCanvasFromViewport(pos);
 }
 
 QPointF ImageViewWidget::mapToViewportFromCanvas(QPointF const &pos)
 {
-	CoordinateMapper mapper(size(), m->d.view_scroll_offset, m->d.view_scale);
-	return mapper.mapToViewportFromCanvas(pos);
+	return currentCoordinateMapper().mapToViewportFromCanvas(pos);
 }
 
 void ImageViewWidget::showRect(QPointF const &start, QPointF const &end)
@@ -850,9 +857,14 @@ SelectionOutline ImageViewWidget::renderSelectionOutline(bool *abort)
 	return data;
 }
 
+static inline QColor bgcolor()
+{
+	return QColor(240, 240, 240); // 背景（枠の外側）の色
+}
+
 void ImageViewWidget::paintEvent(QPaintEvent *)
 {
-	QColor bgcolor(240, 240, 240); // 背景（枠の外側）の色
+	const QColor bgcolor = ::bgcolor();
 
 	const int view_w = width();
 	const int view_h = height();
@@ -860,7 +872,7 @@ void ImageViewWidget::paintEvent(QPaintEvent *)
 	const int doc_w = canvas()->width();
 	const int doc_h = canvas()->height();
 
-	const CoordinateMapper mapper(size(), m->d.view_scroll_offset, m->d.view_scale);
+	const CoordinateMapper mapper = currentCoordinateMapper();
 
 	QPointF pt0(0, 0);
 	QPointF pt1(doc_w, doc_h);
@@ -933,14 +945,15 @@ void ImageViewWidget::paintEvent(QPaintEvent *)
 		m->offscreen1.renderImage(&pr_view, {visible_x, visible_y}, {visible_x, visible_y, visible_w, visible_h});
 #else
 		std::lock_guard lock(m->render_mutex);
+		auto osmapper = offscreenCoordinateMapper();
 		for (PanelizedImage::Panel const &panel : m->offscreen1.panels_) {
 			QPointF topleft(panel.offset);
 			QPointF bottomright(panel.offset.x() + panel.image.width(), panel.offset.y() + panel.image.height());
 			topleft += m->offscreen1.offset();
-			topleft = m->offscreen1_mapper.mapToCanvasFromViewport(topleft);
+			topleft = osmapper.mapToCanvasFromViewport(topleft);
 			topleft = mapper.mapToViewportFromCanvas(topleft);
 			bottomright += m->offscreen1.offset();
-			bottomright = m->offscreen1_mapper.mapToCanvasFromViewport(bottomright);
+			bottomright = osmapper.mapToCanvasFromViewport(bottomright);
 			bottomright = mapper.mapToViewportFromCanvas(bottomright);
 			pr_view.drawImage(QRectF(topleft, bottomright), panel.image, panel.image.rect());
 		}
@@ -1102,6 +1115,7 @@ void ImageViewWidget::wheelEvent(QWheelEvent *e)
 	double t = 1.001;
 	scale *= pow(t, d);
 	zoomToCursor(m->d.view_scale * scale);
+	m->delayed_update_counter = 5;
 }
 
 void ImageViewWidget::onSelectionOutlineReady(const SelectionOutline &data)
@@ -1114,6 +1128,64 @@ void ImageViewWidget::onTimer()
 {
 	m->stripe_animation = (m->stripe_animation + 1) & 7;
 	m->rectangle_animation = (m->rectangle_animation + 1) % 10;
+
+	if (m->delayed_update_counter > 0) {
+		m->delayed_update_counter--;
+		if (m->delayed_update_counter == 0) {
+			{
+
+				std::lock_guard lock(m->render_mutex);
+
+				const int w = width();
+				const int h = height();
+				QImage image(w, h, QImage::Format_RGBA8888);
+				image.fill(bgcolor());
+				image.fill(Qt::red);
+				{
+					QPainter pr(&image);
+					m->offscreen1.renderImage(&pr, {0, 0}, rect());
+					pr.drawEllipse(0, 0, w, h);
+				}
+
+				auto osmapper1 = offscreenCoordinateMapper();
+
+				auto topleft = osmapper1.mapToCanvasFromViewport(QPointF(0, 0));
+				auto bottomright = osmapper1.mapToCanvasFromViewport(QPointF(width(), height()));
+
+
+				{
+					auto topleft = mapToCanvasFromViewport(QPointF(0, 0));
+					auto bottomright = mapToCanvasFromViewport(QPointF(width(), height()));
+					int x0 = (int)floor(topleft.x()) - 1;
+					int y0 = (int)floor(topleft.y()) - 1;
+					int x1 = (int)ceil(bottomright.x()) + 1;
+					int y1 = (int)ceil(bottomright.y()) + 1;
+					// m->render_canvas_rects.emplace_back(x0, y0, x1 - x0, y1 - y0);
+				}
+				m->offscreen1.setOffset(currentCoordinateMapper().mapToViewportFromCanvas(QPointF(0, 0)).toPoint());
+				m->offscreen1_mapper = currentCoordinateMapper();
+
+				auto osmapper2 = offscreenCoordinateMapper();
+
+
+				topleft = osmapper2.mapToViewportFromCanvas(topleft);
+				bottomright = osmapper2.mapToViewportFromCanvas(bottomright);
+				int x0 = topleft.x();
+				int y0 = topleft.y();
+				int x1 = bottomright.x();
+				int y1 = bottomright.y();
+				image = image.scaled(int(x1 - x0), int(y1 - y0), Qt::IgnoreAspectRatio, Qt::FastTransformation);
+				m->offscreen1.panels_.clear();
+				m->offscreen1.paintImage({x0, y0}, image, image.rect());
+
+				m->render_requested = true;
+				m->render_canceled = true;
+			}
+
+
+		}
+	}
+
 	update();
 }
 

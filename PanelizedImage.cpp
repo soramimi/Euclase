@@ -29,10 +29,11 @@ void PanelizedImage::paintImage(const QPoint &dstpos, const QImage &srcimg, cons
 	int panel_dy0 = dstpos.y() - offset_.y();
 	int panel_dx1 = panel_dx0 + srcimg.width() - 1;
 	int panel_dy1 = panel_dy0 + srcimg.height() - 1;
-	panel_dx0 = panel_dx0 - (panel_dx0 & (PANEL_SIZE - 1));
-	panel_dy0 = panel_dy0 - (panel_dy0 & (PANEL_SIZE - 1));
-	panel_dx1 = panel_dx1 - (panel_dx1 & (PANEL_SIZE - 1));
-	panel_dy1 = panel_dy1 - (panel_dy1 & (PANEL_SIZE - 1));
+	const int S1 = PANEL_SIZE - 1;
+	panel_dx0 = panel_dx0 & ~S1;
+	panel_dy0 = panel_dy0 & ~S1;
+	panel_dx1 = (panel_dx1 + S1) & ~S1;
+	panel_dy1 = (panel_dy1 + S1) & ~S1;
 	std::vector<Panel> newpanels;
 	for (int y = panel_dy0; y <= panel_dy1; y += PANEL_SIZE) {
 		for (int x = panel_dx0; x <= panel_dx1; x += PANEL_SIZE) {
@@ -72,31 +73,15 @@ void PanelizedImage::paintImage(const QPoint &dstpos, const QImage &srcimg, cons
 	});
 }
 
-void PanelizedImage::renderImage(QPainter *painter, const QPoint &offset, const QRect &srcrect) const
+void PanelizedImage::renderImage(QPainter *painter, const QPoint &dstpos, const QRect &srcrect) const
 {
-	int panel_sx0 = srcrect.x() - offset_.x();
-	int panel_sy0 = srcrect.y() - offset_.y();
-	int panel_sx1 = panel_sx0 + srcrect.width() - 1;
-	int panel_sy1 = panel_sy0 + srcrect.height() - 1;
-	panel_sx0 = panel_sx0 - (panel_sx0 & (PANEL_SIZE - 1));
-	panel_sy0 = panel_sy0 - (panel_sy0 & (PANEL_SIZE - 1));
-	panel_sx1 = panel_sx1 - (panel_sx1 & (PANEL_SIZE - 1));
-	panel_sy1 = panel_sy1 - (panel_sy1 & (PANEL_SIZE - 1));
-	for (int y = panel_sy0; y <= panel_sy1; y += PANEL_SIZE) {
-		for (int x = panel_sx0; x <= panel_sx1; x += PANEL_SIZE) {
-			int dx0 = x - panel_sx0;
-			int dy0 = y - panel_sy0;
-			int dx1 = std::min(dx0 + PANEL_SIZE, srcrect.width());
-			int dy1 = std::min(dy0 + PANEL_SIZE, srcrect.height());
-			QRect r(x, y, PANEL_SIZE, PANEL_SIZE);
-			r = r.intersected({dx0, dy0, dx1 - dx0, dy1 - dy0});
-			if (r.width() > 0 && r.height() > 0) {
-				Panel *p = findPanel_(&panels_, {x, y});
-				if (p) {
-					r = r.translated(-x, -y);
-					painter->drawImage(offset.x() + dx0, offset.y() + dy0, p->image, r.x(), r.y(), r.width(), r.height());
-				}
-			}
+	for (Panel const &panel : panels_) {
+		QRect r(0, 0, PANEL_SIZE, PANEL_SIZE);
+		int x = offset().x() + panel.offset.x();
+		int y = offset().y() + panel.offset.y();
+		r = r.intersected(srcrect.translated(-x, -y));
+		if (r.width() > 0 && r.height() > 0) {
+			painter->drawImage(dstpos.x() + x + r.x(), dstpos.y() + y + r.y(), panel.image, r.x(), r.y(), r.width(), r.height());
 		}
 	}
 }
