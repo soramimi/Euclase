@@ -189,7 +189,7 @@ void ImageViewWidget::runImageRendering()
 			m->render_canceled = false;
 
 			CoordinateMapper mapper;
-			QPoint offset = m->offscreen1.offset();
+			// QPoint offset = m->offscreen1.offset();
 			{
 				std::lock_guard lock(m->render_mutex);
 				mapper = m->offscreen1_mapper;
@@ -238,21 +238,22 @@ void ImageViewWidget::runImageRendering()
 				m->render_canvas_rects.clear();
 			}
 
-			// マウスカーソルから近い順にソート
-			QPoint center = mapper.mapToCanvasFromViewport(mapFromGlobal(QCursor::pos())).toPoint();
-			std::sort(rects.begin(), rects.end(), [&](QRect const &a, QRect const &b){
-				auto Center = [=](QRect const &r){
-					return r.center();
-				};
-				auto Distance = [](QPoint const &a, QPoint const &b){
-					auto dx = a.x() - b.x();
-					auto dy = a.y() - b.y();
-					return sqrt(dx * dx + dy * dy);
-				};
-				QPoint ca = Center(a);
-				QPoint cb = Center(b);
-				return Distance(ca, center) < Distance(cb, center);
-			});
+			if (0) { // マウスカーソルから近い順にソート
+				QPoint center = mapper.mapToCanvasFromViewport(mapFromGlobal(QCursor::pos())).toPoint();
+				std::sort(rects.begin(), rects.end(), [&](QRect const &a, QRect const &b){
+					auto Center = [=](QRect const &r){
+						return r.center();
+					};
+					auto Distance = [](QPoint const &a, QPoint const &b){
+						auto dx = a.x() - b.x();
+						auto dy = a.y() - b.y();
+						return sqrt(dx * dx + dy * dy);
+					};
+					QPoint ca = Center(a);
+					QPoint cb = Center(b);
+					return Distance(ca, center) < Distance(cb, center);
+				});
+			}
 
 			auto isCanceled = [&](){
 				bool f = /*m->render_requested ||*/ m->render_canceled || /*m->render_invalidate ||*/ m->render_interrupted;
@@ -381,7 +382,9 @@ void ImageViewWidget::runImageRendering()
 				{
 					std::lock_guard lock(m->render_mutex);
 					if (!isCanceled()) {
-						m->offscreen1.paintImage({offset.x() + dx, offset.y() + dy}, qimg, qimg.rect(), qimg.rect());
+						int ox = width() / 2 - m->offscreen1_mapper.scrollOffset().x();
+						int oy = height() / 2 - m->offscreen1_mapper.scrollOffset().y();
+						m->offscreen1.paintImage(QPoint(dx - ox, dy - oy), qimg, qimg.rect(), qimg.rect());
 					}
 				}
 			}
@@ -548,7 +551,12 @@ void ImageViewWidget::geometryChanged(bool force_render)
 	pt0 = mapToViewportFromCanvas(pt0);
 	int offset_x = (int)floor(pt0.x() + 0.5);
 	int offset_y = (int)floor(pt0.y() + 0.5);
+#if 1
+	// qDebug() << offset_x << offset_y;
+	// m->offscreen1_mapper.setScrollOffset(QPointF(-offset_x, -offset_y));
+#else
 	m->offscreen1.setOffset({offset_x, offset_y});
+#endif
 	if (force_render) {
 		requestRendering(true, {});
 	}
@@ -941,13 +949,17 @@ void ImageViewWidget::paintEvent(QPaintEvent *)
 		std::lock_guard lock(m->render_mutex);
 		auto osmapper = offscreenCoordinateMapper();
 		for (PanelizedImage::Panel const &panel : m->offscreen1.panels_) {
-			QPointF topleft(panel.offset);
-			QPointF bottomright(panel.offset.x() + panel.image.width(), panel.offset.y() + panel.image.height());
+			QPoint org = panel.offset - m->offscreen1_mapper.scrollOffset().toPoint();
+			org.rx() += width() / 2;
+			org.ry() += height() / 2;
+			QPointF topleft(org);
+			QPointF bottomright(org.x() + panel.image.width(), org.y() + panel.image.height());
 			topleft = osmapper.mapToCanvasFromViewport(topleft);
 			topleft = mapper.mapToViewportFromCanvas(topleft);
 			bottomright = osmapper.mapToCanvasFromViewport(bottomright);
 			bottomright = mapper.mapToViewportFromCanvas(bottomright);
 			pr_view.drawImage(QRectF(topleft, bottomright), panel.image, panel.image.rect());
+			pr_view.drawEllipse(QRectF(topleft, bottomright));
 		}
 	}
 
@@ -1129,34 +1141,20 @@ void ImageViewWidget::onTimer()
 			image.fill(bgcolor());
 			image.fill(Qt::red);
 			{
+				QPoint offset = m->offscreen1_mapper.scrollOffset().toPoint();
+				offset.rx() = width() / 2 - offset.x();
+				offset.ry() = height() / 2 - offset.y();
+				qDebug() << offset;
+
 				QPainter pr(&image);
-				m->offscreen1.renderImage(&pr, {0, 0}, rect());
+				m->offscreen1.renderImage(&pr, {0, 0}, rect().translated(50, 100));
 				pr.drawEllipse(0, 0, width(), height());
 			}
 
-			auto osmapper1 = offscreenCoordinateMapper();
-
-			auto topleft = osmapper1.mapToCanvasFromViewport(QPointF(0, 0));
-			auto bottomright = osmapper1.mapToCanvasFromViewport(QPointF(width(), height()));
-
-
-			// m->offscreen1.setOffset(currentCoordinateMapper().mapToViewportFromCanvas(QPointF(0, 0)).toPoint());
-			// m->offscreen1_mapper = currentCoordinateMapper();
-
-			auto osmapper2 = offscreenCoordinateMapper();
 
 			{
-				topleft = osmapper2.mapToViewportFromCanvas(topleft);
-				bottomright = osmapper2.mapToViewportFromCanvas(bottomright);
-				int x0 = topleft.x();
-				int y0 = topleft.y();
-				int x1 = bottomright.x();
-				int y1 = bottomright.y();
-				int scaled_w = x1 - x0;
-				int scaled_h = y1 - y0;
-				image = image.scaled(scaled_w, scaled_h, Qt::IgnoreAspectRatio, Qt::FastTransformation);
 				m->offscreen1.panels_.clear();
-				m->offscreen1.paintImage({x0, y0}, image, image.rect(), image.rect());
+				m->offscreen1.paintImage({0, 0}, image, image.rect(), image.rect());
 			}
 
 			// m->render_requested = true;

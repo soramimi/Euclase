@@ -77,11 +77,13 @@ void PanelizedImage::renderImage(QPainter *painter, const QPoint &dstpos, const 
 {
 	for (Panel const &panel : panels_) {
 		QRect r(0, 0, PANEL_SIZE, PANEL_SIZE);
-		int x = offset().x() + panel.offset.x();
-		int y = offset().y() + panel.offset.y();
-		r = r.intersected(srcrect.translated(-x, -y));
-		if (r.width() > 0 && r.height() > 0) {
-			painter->drawImage(dstpos.x() + x + r.x(), dstpos.y() + y + r.y(), panel.image, r.x(), r.y(), r.width(), r.height());
+		int ox = offset().x() + panel.offset.x();
+		int oy = offset().y() + panel.offset.y();
+		r = r.intersected(srcrect.translated(-ox, -oy));
+		if (!r.isEmpty()) {
+			int dx = dstpos.x() + ox + r.x() - srcrect.x();
+			int dy = dstpos.y() + oy + r.y() - srcrect.y();
+			painter->drawImage(dx, dy, panel.image, r.x(), r.y(), r.width(), r.height());
 		}
 	}
 }
