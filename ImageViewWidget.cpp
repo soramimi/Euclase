@@ -188,8 +188,12 @@ void ImageViewWidget::runImageRendering()
 			m->render_requested = false;
 			m->render_canceled = false;
 
+			// qDebug() << Q_FUNC_INFO;
+
+			Q_ASSERT(m->offscreen1.offset().x() == 0);
+			Q_ASSERT(m->offscreen1.offset().y() == 0);
+
 			CoordinateMapper mapper;
-			// QPoint offset = m->offscreen1.offset();
 			{
 				std::lock_guard lock(m->render_mutex);
 				mapper = m->offscreen1_mapper;
@@ -238,7 +242,7 @@ void ImageViewWidget::runImageRendering()
 				m->render_canvas_rects.clear();
 			}
 
-			if (0) { // マウスカーソルから近い順にソート
+			if (1) { // マウスカーソルから近い順にソート
 				QPoint center = mapper.mapToCanvasFromViewport(mapFromGlobal(QCursor::pos())).toPoint();
 				std::sort(rects.begin(), rects.end(), [&](QRect const &a, QRect const &b){
 					auto Center = [=](QRect const &r){
@@ -263,7 +267,7 @@ void ImageViewWidget::runImageRendering()
 			int panelindex = 0;
 			std::atomic_int rectindex = 0;
 
-// #pragma omp parallel for num_threads(16)
+#pragma omp parallel for num_threads(16)
 			for (int i = 0; i < rects.size(); i++) {
 				if (isCanceled()) continue;
 
@@ -384,7 +388,7 @@ void ImageViewWidget::runImageRendering()
 					if (!isCanceled()) {
 						int ox = width() / 2 - m->offscreen1_mapper.scrollOffset().x();
 						int oy = height() / 2 - m->offscreen1_mapper.scrollOffset().y();
-						m->offscreen1.paintImage(QPoint(dx - ox, dy - oy), qimg, qimg.rect(), qimg.rect());
+						m->offscreen1.paintImage(QPoint(dx - ox, dy - oy), qimg, qimg.rect());
 					}
 				}
 			}
@@ -945,6 +949,8 @@ void ImageViewWidget::paintEvent(QPaintEvent *)
 	});
 
 	// 画像のオフスクリーンを描画
+	Q_ASSERT(m->offscreen1.offset().x() == 0);
+	Q_ASSERT(m->offscreen1.offset().y() == 0);
 	{
 		std::lock_guard lock(m->render_mutex);
 		auto osmapper = offscreenCoordinateMapper();
@@ -958,6 +964,8 @@ void ImageViewWidget::paintEvent(QPaintEvent *)
 			topleft = mapper.mapToViewportFromCanvas(topleft);
 			bottomright = osmapper.mapToCanvasFromViewport(bottomright);
 			bottomright = mapper.mapToViewportFromCanvas(bottomright);
+			bottomright.rx() = ceil(bottomright.x());
+			bottomright.ry() = ceil(bottomright.y());
 			pr_view.drawImage(QRectF(topleft, bottomright), panel.image, panel.image.rect());
 		}
 	}
@@ -1117,7 +1125,7 @@ void ImageViewWidget::wheelEvent(QWheelEvent *e)
 	double t = 1.001;
 	scale *= pow(t, d);
 	zoomToCursor(m->d.view_scale * scale);
-	m->delayed_update_counter = 5;
+	m->delayed_update_counter = 3;
 }
 
 void ImageViewWidget::onSelectionOutlineReady(const SelectionOutline &data)
@@ -1136,20 +1144,43 @@ void ImageViewWidget::onTimer()
 		if (m->delayed_update_counter == 0) {
 			std::lock_guard lock(m->render_mutex);
 
-			auto topleft = mapToCanvasFromViewport(QPointF(0, 0));
-			auto bottomright = mapToCanvasFromViewport(QPointF(width(), height()));
-			int x0 = (int)floor(topleft.x()) - 1;
-			int y0 = (int)floor(topleft.y()) - 1;
-			int x1 = (int)ceil(bottomright.x()) + 1;
-			int y1 = (int)ceil(bottomright.y()) + 1;
-			QRect r(x0, y0, x1 - x0, y1 - y0);
-			m->offscreen1_mapper = currentCoordinateMapper();
-			// m->render_canvas_rects.push_back(r);
+			Q_ASSERT(m->offscreen1.offset().x() == 0);
+			Q_ASSERT(m->offscreen1.offset().y() == 0);
 
+			auto old_mapper = m->offscreen1_mapper;
+			auto new_mapper = currentCoordinateMapper();
 
-			// m->render_requested = true;
+			PanelizedImage new_offscreen;
+
+			QPointF old_org(width() / 2 - old_mapper.scrollOffset().x(), height() / 2 - old_mapper.scrollOffset().y());
+			QPointF new_org(width() / 2 - new_mapper.scrollOffset().x(), height() / 2 - new_mapper.scrollOffset().y());
+
+			for (PanelizedImage::Panel const &panel : m->offscreen1.panels_) {
+				QPointF topleft(old_org + panel.offset);
+				QPointF bottomright = topleft + QPoint(panel.image.width(), panel.image.height());
+				topleft = old_mapper.mapToCanvasFromViewport(topleft);
+				topleft = new_mapper.mapToViewportFromCanvas(topleft);
+				topleft -= new_org;
+				bottomright = old_mapper.mapToCanvasFromViewport(bottomright);
+				bottomright = new_mapper.mapToViewportFromCanvas(bottomright);
+				bottomright -= new_org;
+				bottomright.rx() = ceil(bottomright.x());
+				bottomright.ry() = ceil(bottomright.y());
+				int dx0 = (int)round(topleft.x());
+				int dy0 = (int)round(topleft.y());
+				int dx1 = (int)ceil(bottomright.x());
+				int dy1 = (int)ceil(bottomright.y());
+				QRect dr(dx0, dy0, dx1 - dx0, dy1 - dy0);
+				if (!dr.translated(new_org.toPoint()).intersects(rect())) continue; // 画面外
+				auto newimage = panel.image.scaled(dr.size());
+				new_offscreen.paintImage(QPoint(dx0, dy0), newimage, QRect(0, 0, dr.width(), dr.height()));
+			}
+
+			m->offscreen1_mapper = new_mapper;
+			m->offscreen1 = new_offscreen;
+
+			m->render_requested = true;
 			m->render_canceled = true;
-			// requestRendering(true, {});
 		}
 	}
 
