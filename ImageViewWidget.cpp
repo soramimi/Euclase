@@ -547,11 +547,11 @@ QBrush ImageViewWidget::stripeBrush()
 void ImageViewWidget::geometryChanged(bool force_render)
 {
 
-	QPointF pt0(0, 0);
-	pt0 = mapToViewportFromCanvas(pt0);
-	int offset_x = (int)floor(pt0.x() + 0.5);
-	int offset_y = (int)floor(pt0.y() + 0.5);
 #if 1
+	// QPointF pt0(0, 0);
+	// pt0 = mapToViewportFromCanvas(pt0);
+	// int offset_x = (int)floor(pt0.x() + 0.5);
+	// int offset_y = (int)floor(pt0.y() + 0.5);
 	// qDebug() << offset_x << offset_y;
 	// m->offscreen1_mapper.setScrollOffset(QPointF(-offset_x, -offset_y));
 #else
@@ -959,7 +959,6 @@ void ImageViewWidget::paintEvent(QPaintEvent *)
 			bottomright = osmapper.mapToCanvasFromViewport(bottomright);
 			bottomright = mapper.mapToViewportFromCanvas(bottomright);
 			pr_view.drawImage(QRectF(topleft, bottomright), panel.image, panel.image.rect());
-			pr_view.drawEllipse(QRectF(topleft, bottomright));
 		}
 	}
 
@@ -1137,28 +1136,20 @@ void ImageViewWidget::onTimer()
 		if (m->delayed_update_counter == 0) {
 			std::lock_guard lock(m->render_mutex);
 
-			QImage image(width(), height(), QImage::Format_RGBA8888);
-			image.fill(bgcolor());
-			image.fill(Qt::red);
-			{
-				QPoint offset = m->offscreen1_mapper.scrollOffset().toPoint();
-				offset.rx() = width() / 2 - offset.x();
-				offset.ry() = height() / 2 - offset.y();
-				qDebug() << offset;
+			auto topleft = mapToCanvasFromViewport(QPointF(0, 0));
+			auto bottomright = mapToCanvasFromViewport(QPointF(width(), height()));
+			int x0 = (int)floor(topleft.x()) - 1;
+			int y0 = (int)floor(topleft.y()) - 1;
+			int x1 = (int)ceil(bottomright.x()) + 1;
+			int y1 = (int)ceil(bottomright.y()) + 1;
+			QRect r(x0, y0, x1 - x0, y1 - y0);
+			m->offscreen1_mapper = currentCoordinateMapper();
+			// m->render_canvas_rects.push_back(r);
 
-				QPainter pr(&image);
-				m->offscreen1.renderImage(&pr, {0, 0}, rect().translated(50, 100));
-				pr.drawEllipse(0, 0, width(), height());
-			}
-
-
-			{
-				m->offscreen1.panels_.clear();
-				m->offscreen1.paintImage({0, 0}, image, image.rect(), image.rect());
-			}
 
 			// m->render_requested = true;
 			m->render_canceled = true;
+			// requestRendering(true, {});
 		}
 	}
 
