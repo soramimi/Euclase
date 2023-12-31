@@ -33,8 +33,8 @@ void PanelizedImage::paintImage(const QPoint &dstpos, const QImage &srcimg, QSiz
 	const int S1 = PANEL_SIZE - 1;
 	panel_dx0 = panel_dx0 & ~S1;
 	panel_dy0 = panel_dy0 & ~S1;
-	panel_dx1 = (panel_dx1 + S1) & ~S1;
-	panel_dy1 = (panel_dy1 + S1) & ~S1;
+	panel_dx1 = panel_dx1 & ~S1;
+	panel_dy1 = panel_dy1 & ~S1;
 
 	std::vector<Panel> newpanels;
 
@@ -44,20 +44,23 @@ void PanelizedImage::paintImage(const QPoint &dstpos, const QImage &srcimg, QSiz
 			int sh = scale.height();
 			int sx0 = srcrect.x();
 			int sy0 = srcrect.y();
-			int sx1 = sx0 + srcrect.width();
-			int sy1 = sy0 + srcrect.height();
+			int sx1 = sx0 + sw;
+			int sy1 = sy0 + sh;
 			int dx0 = dstpos.x() - (offset_.x() + x);
 			int dy0 = dstpos.y() - (offset_.y() + y);
-			int dx1 = dx0 + srcrect.width();
-			int dy1 = dy0 + srcrect.width();
+			int dx1 = dx0 + sw;
+			int dy1 = dy0 + sh;
 			if (sx0 < 0) { dx0 -= sx0; sx0 = 0; }
 			if (sy0 < 0) { dy0 -= sy0; sy0 = 0; }
 			if (dx0 < 0) { sx0 -= dx0; dx0 = 0; }
 			if (dy0 < 0) { sy0 -= dy0; dy0 = 0; }
-			if (sx1 > scale.width()) { dx1 -= sx1 - sw; sx1 = sw; }
-			if (sy1 > scale.height()) { dy1 -= sy1 - sh; sy1 = sh; }
+			if (sx1 > sw) { dx1 -= sx1 - sw; sx1 = sw; }
+			if (sy1 > sh) { dy1 -= sy1 - sh; sy1 = sh; }
+			if (dx1 > PANEL_SIZE) { sx1 -= dx1 - PANEL_SIZE; dx1 = PANEL_SIZE; }
+			if (dy1 > PANEL_SIZE) { sy1 -= dy1 - PANEL_SIZE; dy1 = PANEL_SIZE; }
 			int dw = sx1 - sx0;
 			int dh = sy1 - sy0;
+			if (dw < 1 || dh < 1) continue;
 			if (srcimg.size() == scale) {
 				sw = dw;
 				sh = dh;
@@ -68,8 +71,9 @@ void PanelizedImage::paintImage(const QPoint &dstpos, const QImage &srcimg, QSiz
 				sy1 = sy1 * srcimg.height() / scale.height();
 				sw = sx1 - sx0;
 				sh = sy1 - sy0;
+				if (sw < 1 || sh < 1) continue;
 			}
-			if (sw > 0 && sh > 0) {
+			{
 				Panel *dst = findPanel_(&panels_, {x, y});
 				if (!dst) { // なければ追加
 					newpanels.push_back({{x, y}, QImage(PANEL_SIZE, PANEL_SIZE, format_)});
@@ -79,6 +83,8 @@ void PanelizedImage::paintImage(const QPoint &dstpos, const QImage &srcimg, QSiz
 				{
 					QPainter pr(&dst->image);
 					pr.drawImage(QRect(dx0, dy0, dw, dh), srcimg, QRect(sx0, sy0, sw, sh));
+					pr.setPen(QPen(Qt::red));
+					pr.drawEllipse(dst->image.rect());
 				}
 			}
 		}

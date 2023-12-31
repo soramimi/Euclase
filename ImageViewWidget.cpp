@@ -1163,7 +1163,7 @@ void ImageViewWidget::rescaleOffScreen()
 		QRect r(dx0, dy0, dx1 - dx0, dy1 - dy0);
 		if (!r.translated(new_org.toPoint()).intersects(rect())) continue; // 画面外ならスキップ
 
-		// 描画先の拡大係数を求める
+		// 描画元の拡大値を求める
 		int scaled_w = (int)ceil(dst_bottomright.x()) - (int)round(dst_topleft.x());
 		int scaled_h = (int)ceil(dst_bottomright.y()) - (int)round(dst_topleft.y());
 
@@ -1185,12 +1185,12 @@ void ImageViewWidget::rescaleOffScreen()
 		src_topleft = old_mapper.mapToViewportFromCanvas(src_topleft);
 		src_bottomright = new_mapper.mapToCanvasFromViewport(src_bottomright);
 		src_bottomright = old_mapper.mapToViewportFromCanvas(src_bottomright);
-		src_topleft -= old_org;
-		src_bottomright -= old_org;
+		src_topleft -= old_org + panel.offset;
+		src_bottomright -= old_org + panel.offset;
 		if (src_topleft.x() < 0) src_topleft.rx() = 0;
 		if (src_topleft.y() < 0) src_topleft.ry() = 0;
-		if (src_bottomright.x() > panel.image.width()) src_bottomright.rx() = panel.image.width();
-		if (src_bottomright.y() > panel.image.height()) src_bottomright.ry() = panel.image.height();
+		if (src_bottomright.x() > scaled_w) src_bottomright.rx() = scaled_w;
+		if (src_bottomright.y() > scaled_h) src_bottomright.ry() = scaled_h;
 		int sx = (int)round(src_topleft.x());
 		int sy = (int)round(src_topleft.y());
 		int sw = (int)round(src_bottomright.x()) - sx;
@@ -1198,7 +1198,8 @@ void ImageViewWidget::rescaleOffScreen()
 		if (sw < 1 || sh < 1) continue; // 描画元が小さすぎる
 
 		// 描画
-		new_offscreen.paintImage(QPoint(dx, dy), panel.image, QSize(scaled_w, scaled_h), QRect(sx, sy, sw, sh));
+		QImage img = panel.image;
+		new_offscreen.paintImage(QPoint(dx, dy), img, QSize(scaled_w, scaled_h), QRect(sx, sy, sw, sh));
 	}
 
 	m->offscreen1_mapper = new_mapper;
@@ -1217,8 +1218,8 @@ void ImageViewWidget::onTimer()
 		if (m->delayed_update_counter == 0) { // 更新する
 			rescaleOffScreen(); // オフスクリーンを再構築
 			m->render_canceled = true; // 現在の再描画要求をキャンセル
-			m->render_requested = true; // 再描画要求
-			update = false;
+			// m->render_requested = true; // 再描画要求
+			// update = false;
 		}
 	}
 
