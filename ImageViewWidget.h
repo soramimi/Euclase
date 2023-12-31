@@ -93,6 +93,8 @@ public:
 
 	void clearRenderCache();
 	void requestRendering(bool invalidate, const QRect &rect);
+
+	static constexpr QColor BGCOLOR = QColor(240, 240, 240);
 private slots:
 	void onSelectionOutlineReady(SelectionOutline const &data);
 	void onTimer();

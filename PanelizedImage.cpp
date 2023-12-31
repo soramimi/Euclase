@@ -83,8 +83,6 @@ void PanelizedImage::paintImage(const QPoint &dstpos, const QImage &srcimg, QSiz
 				{
 					QPainter pr(&dst->image);
 					pr.drawImage(QRect(dx0, dy0, dw, dh), srcimg, QRect(sx0, sy0, sw, sh));
-					pr.setPen(QPen(Qt::red));
-					pr.drawEllipse(dst->image.rect());
 				}
 			}
 		}
