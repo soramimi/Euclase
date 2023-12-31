@@ -1078,11 +1078,9 @@ void ImageViewWidget::rescaleOffScreen()
 		const int y = floor(dst_topleft.y());
 		const int w = ceil(dst_bottomright.x()) - x;
 		const int h = ceil(dst_bottomright.y()) - y;
-		if (!QRect(x, y, w, h).intersects(rect())) continue;
-
-		// 描画先座標
-		const int dx = (int)round(dst_topleft.x() - new_org.x());
-		const int dy = (int)round(dst_topleft.y() - new_org.y());
+		QRect r(x, y, w, h);
+		r = r.intersected(rect());
+		if (r.isEmpty()) continue;
 
 		// 描画元の座標を計算
 		QPointF src_topleft(x, y);
@@ -1098,6 +1096,10 @@ void ImageViewWidget::rescaleOffScreen()
 		const int sx1 = std::min(w, (int)round(src_bottomright.x()));
 		const int sy1 = std::min(h, (int)round(src_bottomright.y()));
 		const QRect srect(sx0, sy0, sx1 - sx0, sy1 - sy0);
+
+		// 描画先座標
+		const int dx = (int)round(dst_topleft.x() - new_org.x());
+		const int dy = (int)round(dst_topleft.y() - new_org.y());
 
 		// 描画
 		new_offscreen.paintImage(QPoint(dx, dy), panel.image, QSize(w, h), srect);
@@ -1214,7 +1216,7 @@ void ImageViewWidget::onTimer()
 		if (m->delayed_update_counter == 0) { // 更新する
 			rescaleOffScreen(); // オフスクリーンを再構築
 			m->render_canceled = true; // 現在の再描画要求をキャンセル
-			m->render_requested = true; // 再描画要求
+			// m->render_requested = true; // 再描画要求
 			update = false;
 		}
 	}

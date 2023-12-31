@@ -50,14 +50,14 @@ void PanelizedImage::paintImage(const QPoint &dstpos, const QImage &srcimg, QSiz
 			int dy0 = dstpos.y() - (offset_.y() + y);
 			int dx1 = dx0 + sw;
 			int dy1 = dy0 + sh;
-			if (sx0 < 0) { dx0 -= sx0; sx0 = 0; }
-			if (sy0 < 0) { dy0 -= sy0; sy0 = 0; }
 			if (dx0 < 0) { sx0 -= dx0; dx0 = 0; }
 			if (dy0 < 0) { sy0 -= dy0; dy0 = 0; }
-			if (sx1 > sw) { dx1 -= sx1 - sw; sx1 = sw; }
-			if (sy1 > sh) { dy1 -= sy1 - sh; sy1 = sh; }
 			if (dx1 > PANEL_SIZE) { sx1 -= dx1 - PANEL_SIZE; dx1 = PANEL_SIZE; }
 			if (dy1 > PANEL_SIZE) { sy1 -= dy1 - PANEL_SIZE; dy1 = PANEL_SIZE; }
+			if (sx0 < 0) { dx0 -= sx0; sx0 = 0; }
+			if (sy0 < 0) { dy0 -= sy0; sy0 = 0; }
+			if (sx1 > sw) { dx1 -= sx1 - sw; sx1 = sw; }
+			if (sy1 > sh) { dy1 -= sy1 - sh; sy1 = sh; }
 			int dw = sx1 - sx0;
 			int dh = sy1 - sy0;
 			if (dw < 1 || dh < 1) continue;
