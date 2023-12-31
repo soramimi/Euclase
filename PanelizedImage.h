@@ -56,7 +56,7 @@ public:
 	{
 		panels_.clear();
 	}
-	void paintImage(QPoint const &dstpos, QImage const &srcimg, const QSize &scale, QRect const &srcrect);
+	void paintImage(QPoint const &dstpos, QImage const &srcimg, const QSize &scale, const QRect &dstmask);
 	void renderImage(QPainter *painter, QPoint const &dstpos, QRect const &srcrect) const;
 };
 

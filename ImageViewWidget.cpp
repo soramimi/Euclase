@@ -673,8 +673,8 @@ void ImageViewWidget::runImageRendering()
 				QPointF bottomright = mapper.mapToViewportFromCanvas(QPointF(canvas_w, canvas_h));
 				view_left = std::max((int)floor(topleft.x()), 0);
 				view_top = std::max((int)floor(topleft.y()), 0);
-				view_right = std::min((int)ceil(bottomright.x()), width());
-				view_bottom = std::min((int)ceil(bottomright.y()), height());
+				view_right = std::min((int)ceil(bottomright.x() + 1), width()); // ceilだけでは足りなことがあるので 1 足す
+				view_bottom = std::min((int)ceil(bottomright.y() + 1), height());
 			}
 
 			std::vector<QRect> rects;
@@ -845,7 +845,7 @@ void ImageViewWidget::runImageRendering()
 					if (!isCanceled()) {
 						int ox = width() / 2 - m->offscreen1_mapper.scrollOffset().x();
 						int oy = height() / 2 - m->offscreen1_mapper.scrollOffset().y();
-						m->offscreen1.paintImage(QPoint(dx - ox, dy - oy), qimg, qimg.size(), qimg.rect());
+						m->offscreen1.paintImage(QPoint(dx - ox, dy - oy), qimg, qimg.size(), {});
 					}
 				}
 			}
@@ -894,9 +894,6 @@ void ImageViewWidget::paintEvent(QPaintEvent *)
 	int visible_y = (int)round(pt0.y());
 	int visible_w = (int)round(pt1.x()) - visible_x;
 	int visible_h = (int)round(pt1.y()) - visible_y;
-
-	QElapsedTimer t;
-	t.start();
 
 	QPainter pr_view(this);
 
@@ -1042,7 +1039,7 @@ void ImageViewWidget::paintEvent(QPaintEvent *)
 }
 
 /**
- * @brief ImageViewWidget::mousePressEvent
+ * @brief ImageViewWidget::rescaleOffScreen
  *
  *  座標マッピングに応じてオフスクリーンを再描画する
  */
@@ -1082,27 +1079,15 @@ void ImageViewWidget::rescaleOffScreen()
 		r = r.intersected(rect());
 		if (r.isEmpty()) continue;
 
-		// 描画元の座標を計算
-		QPointF src_topleft(x, y);
-		QPointF src_bottomright(x + w, y + h);
-		src_topleft = new_mapper.mapToCanvasFromViewport(src_topleft);
-		src_topleft = old_mapper.mapToViewportFromCanvas(src_topleft);
-		src_bottomright = new_mapper.mapToCanvasFromViewport(src_bottomright);
-		src_bottomright = old_mapper.mapToViewportFromCanvas(src_bottomright);
-		src_topleft -= org;
-		src_bottomright -= org;
-		const int sx0 = std::max(0, (int)round(src_topleft.x()));
-		const int sy0 = std::max(0, (int)round(src_topleft.y()));
-		const int sx1 = std::min(w, (int)round(src_bottomright.x()));
-		const int sy1 = std::min(h, (int)round(src_bottomright.y()));
-		const QRect srect(sx0, sy0, sx1 - sx0, sy1 - sy0);
-
 		// 描画先座標
-		const int dx = (int)round(dst_topleft.x() - new_org.x());
-		const int dy = (int)round(dst_topleft.y() - new_org.y());
+		int dx = (int)round(dst_topleft.x() - new_org.x());
+		int dy = (int)round(dst_topleft.y() - new_org.y());
+
+		// 描画先マスク
+		QRect dstmask(r.translated(-new_org.toPoint()));
 
 		// 描画
-		new_offscreen.paintImage(QPoint(dx, dy), panel.image, QSize(w, h), srect);
+		new_offscreen.paintImage(QPoint(dx, dy), panel.image, QSize(w, h), dstmask);
 	}
 
 	m->offscreen1_mapper = new_mapper;
@@ -1216,8 +1201,10 @@ void ImageViewWidget::onTimer()
 		if (m->delayed_update_counter == 0) { // 更新する
 			rescaleOffScreen(); // オフスクリーンを再構築
 			m->render_canceled = true; // 現在の再描画要求をキャンセル
-			// m->render_requested = true; // 再描画要求
-			update = false;
+			if (1) {
+				m->render_requested = true; // 再描画要求
+			}
+			update = false; // 再描画すると表示がガタつくので再描画しない。次のonTimerで再描画される
 		}
 	}
 
@@ -1225,4 +1212,5 @@ void ImageViewWidget::onTimer()
 		this->update();
 	}
 }
+
 
