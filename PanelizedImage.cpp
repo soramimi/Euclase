@@ -23,22 +23,25 @@ PanelizedImage::Panel *PanelizedImage::findPanel_(const std::vector<Panel> *pane
 	return nullptr;
 }
 
-void PanelizedImage::paintImage(const QPoint &dstpos, const QImage &srcimg, const QRect &srcrect)
+void PanelizedImage::paintImage(const QPoint &dstpos, const QImage &srcimg, QSize const &scale, const QRect &srcrect)
 {
 	int panel_dx0 = dstpos.x() - offset_.x();
 	int panel_dy0 = dstpos.y() - offset_.y();
-	int panel_dx1 = panel_dx0 + srcimg.width() - 1;
-	int panel_dy1 = panel_dy0 + srcimg.height() - 1;
+	int panel_dx1 = panel_dx0 + scale.width() - 1;
+	int panel_dy1 = panel_dy0 + scale.height() - 1;
+
 	const int S1 = PANEL_SIZE - 1;
 	panel_dx0 = panel_dx0 & ~S1;
 	panel_dy0 = panel_dy0 & ~S1;
 	panel_dx1 = (panel_dx1 + S1) & ~S1;
 	panel_dy1 = (panel_dy1 + S1) & ~S1;
+
 	std::vector<Panel> newpanels;
+
 	for (int y = panel_dy0; y <= panel_dy1; y += PANEL_SIZE) {
 		for (int x = panel_dx0; x <= panel_dx1; x += PANEL_SIZE) {
-			int w = srcimg.width();
-			int h = srcimg.height();
+			int sw = scale.width();
+			int sh = scale.height();
 			int sx0 = srcrect.x();
 			int sy0 = srcrect.y();
 			int sx1 = sx0 + srcrect.width();
@@ -51,24 +54,39 @@ void PanelizedImage::paintImage(const QPoint &dstpos, const QImage &srcimg, cons
 			if (sy0 < 0) { dy0 -= sy0; sy0 = 0; }
 			if (dx0 < 0) { sx0 -= dx0; dx0 = 0; }
 			if (dy0 < 0) { sy0 -= dy0; dy0 = 0; }
-			if (sx1 > w) { dx1 -= sx1 - w; sx1 = w; }
-			if (sy1 > h) { dy1 -= sy1 - h; sy1 = h; }
-			w = sx1 - sx0;
-			h = sy1 - sy0;
-			if (w > 0 && h > 0) {
+			if (sx1 > scale.width()) { dx1 -= sx1 - sw; sx1 = sw; }
+			if (sy1 > scale.height()) { dy1 -= sy1 - sh; sy1 = sh; }
+			int dw = sx1 - sx0;
+			int dh = sy1 - sy0;
+			if (srcimg.size() == scale) {
+				sw = dw;
+				sh = dh;
+			} else {
+				sx0 = sx0 * srcimg.width() / scale.width();
+				sy0 = sy0 * srcimg.height() / scale.height();
+				sx1 = sx1 * srcimg.width() / scale.width();
+				sy1 = sy1 * srcimg.height() / scale.height();
+				sw = sx1 - sx0;
+				sh = sy1 - sy0;
+			}
+			if (sw > 0 && sh > 0) {
 				Panel *dst = findPanel_(&panels_, {x, y});
-				if (!dst) {
+				if (!dst) { // なければ追加
 					newpanels.push_back({{x, y}, QImage(PANEL_SIZE, PANEL_SIZE, format_)});
 					dst = &newpanels.back();
 					dst->image.fill(Qt::transparent);
 				}
-				QPainter pr(&dst->image);
-				pr.drawImage(dx0, dy0, srcimg, sx0, sy0, w, h);
+				{
+					QPainter pr(&dst->image);
+					pr.drawImage(QRect(dx0, dy0, dw, dh), srcimg, QRect(sx0, sy0, sw, sh));
+				}
 			}
 		}
 	}
+
 	panels_.insert(panels_.end(), newpanels.begin(), newpanels.end());
-	std::sort(panels_.begin(), panels_.end(), [&](Panel const &a, Panel const &b){
+
+	std::sort(panels_.begin(), panels_.end(), [&](Panel const &a, Panel const &b){ // offset でソート
 		return misc::compareQPoint(a.offset, b.offset) < 0;
 	});
 }

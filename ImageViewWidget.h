@@ -54,6 +54,7 @@ private:
 	void setScrollOffset(double x, double y);
 	CoordinateMapper currentCoordinateMapper() const;
 	CoordinateMapper offscreenCoordinateMapper() const;
+	void rescaleOffScreen();
 protected:
 	void resizeEvent(QResizeEvent *) override;
 	void paintEvent(QPaintEvent *) override;

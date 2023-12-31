@@ -190,7 +190,7 @@ void ImageViewWidget::runImageRendering()
 
 			// qDebug() << Q_FUNC_INFO;
 
-			Q_ASSERT(m->offscreen1.offset().x() == 0);
+			Q_ASSERT(m->offscreen1.offset().x() == 0); // オフスクリーンの原点は常に(0, 0)
 			Q_ASSERT(m->offscreen1.offset().y() == 0);
 
 			CoordinateMapper mapper;
@@ -388,7 +388,7 @@ void ImageViewWidget::runImageRendering()
 					if (!isCanceled()) {
 						int ox = width() / 2 - m->offscreen1_mapper.scrollOffset().x();
 						int oy = height() / 2 - m->offscreen1_mapper.scrollOffset().y();
-						m->offscreen1.paintImage(QPoint(dx - ox, dy - oy), qimg, qimg.rect());
+						m->offscreen1.paintImage(QPoint(dx - ox, dy - oy), qimg, qimg.size(), qimg.rect());
 					}
 				}
 			}
@@ -455,7 +455,7 @@ CoordinateMapper ImageViewWidget::offscreenCoordinateMapper() const
 void ImageViewWidget::requestRendering(bool invalidate, QRect const &rect)
 {
 	QRect r = rect;
-	if (invalidate) {
+	if (0) {//if (invalidate) {
 		m->render_invalidate = true;
 		r = {};
 	}
@@ -550,17 +550,6 @@ QBrush ImageViewWidget::stripeBrush()
 
 void ImageViewWidget::geometryChanged(bool force_render)
 {
-
-#if 1
-	// QPointF pt0(0, 0);
-	// pt0 = mapToViewportFromCanvas(pt0);
-	// int offset_x = (int)floor(pt0.x() + 0.5);
-	// int offset_y = (int)floor(pt0.y() + 0.5);
-	// qDebug() << offset_x << offset_y;
-	// m->offscreen1_mapper.setScrollOffset(QPointF(-offset_x, -offset_y));
-#else
-	m->offscreen1.setOffset({offset_x, offset_y});
-#endif
 	if (force_render) {
 		requestRendering(true, {});
 	}
@@ -949,7 +938,7 @@ void ImageViewWidget::paintEvent(QPaintEvent *)
 	});
 
 	// 画像のオフスクリーンを描画
-	Q_ASSERT(m->offscreen1.offset().x() == 0);
+	Q_ASSERT(m->offscreen1.offset().x() == 0); // オフスクリーンの原点は常に(0, 0)
 	Q_ASSERT(m->offscreen1.offset().y() == 0);
 	{
 		std::lock_guard lock(m->render_mutex);
@@ -1134,56 +1123,107 @@ void ImageViewWidget::onSelectionOutlineReady(const SelectionOutline &data)
 	update();
 }
 
+/**
+ * @brief オフスクリーンを再構築する
+ */
+void ImageViewWidget::rescaleOffScreen()
+{
+	std::lock_guard lock(m->render_mutex);
+
+	Q_ASSERT(m->offscreen1.offset().x() == 0); // オフスクリーンの原点は常に(0, 0)
+	Q_ASSERT(m->offscreen1.offset().y() == 0);
+
+	auto old_mapper = m->offscreen1_mapper; // 古い座標系
+	auto new_mapper = currentCoordinateMapper(); // 新しい座標系
+
+	QPointF old_org(width() / 2 - old_mapper.scrollOffset().x(), height() / 2 - old_mapper.scrollOffset().y()); // 古い座標系の原点
+	QPointF new_org(width() / 2 - new_mapper.scrollOffset().x(), height() / 2 - new_mapper.scrollOffset().y()); // 新しい座標系の原点
+
+	PanelizedImage new_offscreen;
+
+	// 新しい座標系でオフスクリーンを再構築
+	for (PanelizedImage::Panel &panel : m->offscreen1.panels_) {
+		// 描画先矩形を計算
+		QPointF dst_topleft(old_org + panel.offset);
+		QPointF dst_bottomright = dst_topleft + QPoint(panel.image.width(), panel.image.height());
+		dst_topleft = old_mapper.mapToCanvasFromViewport(dst_topleft);
+		dst_topleft = new_mapper.mapToViewportFromCanvas(dst_topleft);
+		dst_bottomright = old_mapper.mapToCanvasFromViewport(dst_bottomright);
+		dst_bottomright = new_mapper.mapToViewportFromCanvas(dst_bottomright);
+		dst_topleft -= new_org;
+		dst_bottomright -= new_org;
+		dst_bottomright.rx() = ceil(dst_bottomright.x());
+		dst_bottomright.ry() = ceil(dst_bottomright.y());
+
+		// 画面外ならスキップ
+		int dx0 = (int)round(dst_topleft.x());
+		int dy0 = (int)round(dst_topleft.y());
+		int dx1 = (int)round(dst_bottomright.x());
+		int dy1 = (int)round(dst_bottomright.y());
+		QRect r(dx0, dy0, dx1 - dx0, dy1 - dy0);
+		if (!r.translated(new_org.toPoint()).intersects(rect())) continue; // 画面外ならスキップ
+
+		// 描画先の拡大係数を求める
+		int scaled_w = (int)ceil(dst_bottomright.x()) - (int)round(dst_topleft.x());
+		int scaled_h = (int)ceil(dst_bottomright.y()) - (int)round(dst_topleft.y());
+
+		// 描画先の座標を求める
+		if (dst_topleft.x() < 0) dst_topleft.rx() = 0;
+		if (dst_topleft.y() < 0) dst_topleft.ry() = 0;
+		if (dst_bottomright.x() > width()) dst_bottomright.rx() = width();
+		if (dst_bottomright.y() > height()) dst_bottomright.ry() = height();
+		int dx = (int)round(dst_topleft.x());
+		int dy = (int)round(dst_topleft.y());
+		int dw = (int)round(dst_bottomright.x()) - dx;
+		int dh = (int)round(dst_bottomright.y()) - dy;
+		if (dw < 1 || dh < 1) continue; // 描画先が小さすぎる
+
+		// 描画元の座標を求める
+		QPointF src_topleft = dst_topleft + new_org;
+		QPointF src_bottomright = dst_bottomright + new_org;
+		src_topleft = new_mapper.mapToCanvasFromViewport(src_topleft);
+		src_topleft = old_mapper.mapToViewportFromCanvas(src_topleft);
+		src_bottomright = new_mapper.mapToCanvasFromViewport(src_bottomright);
+		src_bottomright = old_mapper.mapToViewportFromCanvas(src_bottomright);
+		src_topleft -= old_org;
+		src_bottomright -= old_org;
+		if (src_topleft.x() < 0) src_topleft.rx() = 0;
+		if (src_topleft.y() < 0) src_topleft.ry() = 0;
+		if (src_bottomright.x() > panel.image.width()) src_bottomright.rx() = panel.image.width();
+		if (src_bottomright.y() > panel.image.height()) src_bottomright.ry() = panel.image.height();
+		int sx = (int)round(src_topleft.x());
+		int sy = (int)round(src_topleft.y());
+		int sw = (int)round(src_bottomright.x()) - sx;
+		int sh = (int)round(src_bottomright.y()) - sy;
+		if (sw < 1 || sh < 1) continue; // 描画元が小さすぎる
+
+		// 描画
+		new_offscreen.paintImage(QPoint(dx, dy), panel.image, QSize(scaled_w, scaled_h), QRect(sx, sy, sw, sh));
+	}
+
+	m->offscreen1_mapper = new_mapper;
+	m->offscreen1 = std::move(new_offscreen);
+}
+
 void ImageViewWidget::onTimer()
 {
 	m->stripe_animation = (m->stripe_animation + 1) & 7;
 	m->rectangle_animation = (m->rectangle_animation + 1) % 10;
 
-	if (m->delayed_update_counter > 0) {
+	bool update = true;
+
+	if (m->delayed_update_counter > 0) { // 遅延更新
 		m->delayed_update_counter--;
-		if (m->delayed_update_counter == 0) {
-			std::lock_guard lock(m->render_mutex);
-
-			Q_ASSERT(m->offscreen1.offset().x() == 0);
-			Q_ASSERT(m->offscreen1.offset().y() == 0);
-
-			auto old_mapper = m->offscreen1_mapper;
-			auto new_mapper = currentCoordinateMapper();
-
-			PanelizedImage new_offscreen;
-
-			QPointF old_org(width() / 2 - old_mapper.scrollOffset().x(), height() / 2 - old_mapper.scrollOffset().y());
-			QPointF new_org(width() / 2 - new_mapper.scrollOffset().x(), height() / 2 - new_mapper.scrollOffset().y());
-
-			for (PanelizedImage::Panel const &panel : m->offscreen1.panels_) {
-				QPointF topleft(old_org + panel.offset);
-				QPointF bottomright = topleft + QPoint(panel.image.width(), panel.image.height());
-				topleft = old_mapper.mapToCanvasFromViewport(topleft);
-				topleft = new_mapper.mapToViewportFromCanvas(topleft);
-				topleft -= new_org;
-				bottomright = old_mapper.mapToCanvasFromViewport(bottomright);
-				bottomright = new_mapper.mapToViewportFromCanvas(bottomright);
-				bottomright -= new_org;
-				bottomright.rx() = ceil(bottomright.x());
-				bottomright.ry() = ceil(bottomright.y());
-				int dx0 = (int)round(topleft.x());
-				int dy0 = (int)round(topleft.y());
-				int dx1 = (int)ceil(bottomright.x());
-				int dy1 = (int)ceil(bottomright.y());
-				QRect dr(dx0, dy0, dx1 - dx0, dy1 - dy0);
-				if (!dr.translated(new_org.toPoint()).intersects(rect())) continue; // 画面外
-				auto newimage = panel.image.scaled(dr.size());
-				new_offscreen.paintImage(QPoint(dx0, dy0), newimage, QRect(0, 0, dr.width(), dr.height()));
-			}
-
-			m->offscreen1_mapper = new_mapper;
-			m->offscreen1 = new_offscreen;
-
-			m->render_requested = true;
-			m->render_canceled = true;
+		if (m->delayed_update_counter == 0) { // 更新する
+			rescaleOffScreen(); // オフスクリーンを再構築
+			m->render_canceled = true; // 現在の再描画要求をキャンセル
+			m->render_requested = true; // 再描画要求
+			update = false;
 		}
 	}
 
-	update();
+	if (update) {
+		this->update();
+	}
 }
 

@@ -4,7 +4,6 @@
 #include <QImage>
 #include "misc.h"
 
-
 class PanelizedImage {
 	friend class ImageViewWidget;
 private:
@@ -33,6 +32,14 @@ private:
 	std::vector<Panel> panels_;
 	static Panel *findPanel_(std::vector<Panel> const *panels, QPoint const &offset);
 public:
+	PanelizedImage() = default;
+	PanelizedImage &operator = (PanelizedImage &&t)
+	{
+		offset_ = t.offset_;
+		format_ = t.format_;
+		panels_ = std::move(t.panels_);
+		return *this;
+	}
 	void setImageMode(QImage::Format format)
 	{
 		format_ = format;
@@ -49,7 +56,7 @@ public:
 	{
 		panels_.clear();
 	}
-	void paintImage(QPoint const &dstpos, QImage const &srcimg, QRect const &srcrect);
+	void paintImage(QPoint const &dstpos, QImage const &srcimg, const QSize &scale, QRect const &srcrect);
 	void renderImage(QPainter *painter, QPoint const &dstpos, QRect const &srcrect) const;
 };
 
