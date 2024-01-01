@@ -74,7 +74,7 @@ struct ImageViewWidget::Private {
 	bool render_invalidate = false;
 	bool render_requested = false;
 	bool render_canceled = false;
-	std::vector<QRect> render_canvas_rects;
+	std::vector<QRect> render_canvas_rects; // in canvas coordinates
 	std::vector<Canvas::Panel> composed_panels_cache;
 
 	CoordinateMapper offscreen1_mapper;
@@ -175,7 +175,7 @@ void ImageViewWidget::clearRenderCache()
 	std::lock_guard lock(m->render_mutex);
 	m->offscreen1_mapper = CoordinateMapper(size(), m->d.view_scroll_offset, m->d.view_scale);
 	m->composed_panels_cache.clear();
-	m->render_canvas_rects.clear();
+	requestUpdateEntire(false);
 	m->render_requested = true;
 	m->render_canceled = true;
 }
@@ -196,19 +196,19 @@ void ImageViewWidget::runSelectionRendering()
 
 void ImageViewWidget::invalidateComposedPanels(QRect const &rect)
 {
-	std::lock_guard lock(m->render_mutex);
-	if (rect.isEmpty()) {
-		m->composed_panels_cache.clear();
-	} else {
-		size_t i = m->composed_panels_cache.size();
-		while (i > 0) {
-			i--;
-			QRect r(m->composed_panels_cache[i].offset(), m->composed_panels_cache[i].image().size());
-			if (r.intersects(rect)) {
-				m->composed_panels_cache.erase(m->composed_panels_cache.begin() + i);
-			}
-		}
-	}
+	// std::lock_guard lock(m->render_mutex);
+	// if (rect.isEmpty()) {
+	// 	m->composed_panels_cache.clear();
+	// } else {
+	// 	size_t i = m->composed_panels_cache.size();
+	// 	while (i > 0) {
+	// 		i--;
+	// 		QRect r(m->composed_panels_cache[i].offset(), m->composed_panels_cache[i].image().size());
+	// 		if (r.intersects(rect)) {
+	// 			m->composed_panels_cache.erase(m->composed_panels_cache.begin() + i);
+	// 		}
+	// 	}
+	// }
 }
 
 CoordinateMapper ImageViewWidget::currentCoordinateMapper() const
@@ -221,9 +221,9 @@ CoordinateMapper ImageViewWidget::offscreenCoordinateMapper() const
 	return m->offscreen1_mapper;
 }
 
-void ImageViewWidget::requestRendering(bool invalidate, QRect const &rect)
+void ImageViewWidget::requestRendering(bool invalidate, QRect const &canvasrect)
 {
-	QRect r = rect;
+	QRect r = canvasrect;
 	if (0) {//if (invalidate) {
 		m->render_invalidate = true;
 		r = {};
@@ -332,31 +332,86 @@ QSize ImageViewWidget::imageScrollRange() const
 	return QSize(w, h);
 }
 
-void ImageViewWidget::setScrollOffset(double x, double y)
+void ImageViewWidget::requestUpdateCanvas(QRect const &canvasrect, bool lock)
 {
+	if (lock) {
+		std::lock_guard lock(m->render_mutex);
+		requestUpdateCanvas(canvasrect, false);
+		return;
+	}
+	m->render_canvas_rects.push_back(canvasrect);
+}
+
+void ImageViewWidget::requestUpdateView(QRect const &viewrect, bool lock)
+{
+	QPointF topleft = viewrect.topLeft();
+	QPointF bottomright = viewrect.bottomRight();
+	topleft = mapToCanvasFromViewport(topleft);
+	bottomright = mapToCanvasFromViewport(bottomright);
+	int x0 = (int)floor(topleft.x());
+	int y0 = (int)floor(topleft.y());
+	int x1 = (int)ceil(bottomright.x());
+	int y1 = (int)ceil(bottomright.y());
+	requestUpdateCanvas(QRect(x0, y0, x1 - x0, y1 - y0), lock);
+}
+
+void ImageViewWidget::requestUpdateEntire(bool lock)
+{
+	requestUpdateView({0, 0, width(), height()}, lock);
+}
+
+
+void ImageViewWidget::setScrollOffset(double x, double y, bool render_request)
+{
+	qDebug() << Q_FUNC_INFO;
 	QSizeF sz = imageScrollRange();
 	x = std::min(std::max(x, 0.0), sz.width());
 	y = std::min(std::max(y, 0.0), sz.height());
+
+	int delta_x = (int)ceil(m->d.view_scroll_offset.x() - x);
+	int delta_y = (int)ceil(m->d.view_scroll_offset.y() - y);
+
 	m->d.view_scroll_offset = QPointF(x, y);
+
+	if (render_request) {
+		if (delta_x != 0 || delta_y != 0) {
+			std::lock_guard lock(m->render_mutex);
+			m->render_canceled = true;
+			m->offscreen1_mapper = currentCoordinateMapper();
+			if (delta_x > 0) { // 右にスクロール、左に空白ができる
+				requestUpdateView({0, 0, delta_x, height()}, false);
+			} else if (delta_x < 0) { // 左にスクロール、右に空白ができる
+				requestUpdateView({width() + delta_x, 0, -delta_x, height()}, false);
+			}
+			if (delta_y > 0) { // 下にスクロール、上に空白ができる
+				requestUpdateView({0, 0, width(), delta_y}, false);
+			} else if (delta_y < 0) { // 上にスクロール、下に空白ができる
+				requestUpdateView({0, height() + delta_y, width(), -delta_y}, false);
+			}
+			m->render_requested = true;
+		}
+	}
 }
 
-void ImageViewWidget::internalScrollImage(double x, double y, bool render)
+void ImageViewWidget::internalScrollImage(double x, double y, bool render_request)
 {
-	setScrollOffset(x, y);
+	setScrollOffset(x, y, render_request);
 
 	geometryChanged(false);
 
-	if (render) {
-		// requestRendering(false, {});
-		paintViewLater(true);
-	}
+	// if (render) {
+	// 	// requestRendering(false, {});
+	// 	paintViewLater(true);
+	// }
 
-	update();
+	if (render_request) {
+		update();
+	}
 }
 
-void ImageViewWidget::scrollImage(double x, double y, bool updateview)
+void ImageViewWidget::scrollImage(double x, double y, bool render_request)
 {
-	internalScrollImage(x, y, updateview);
+	internalScrollImage(x, y, render_request);
 
 	if (m->h_scroll_bar) {
 		auto b = m->h_scroll_bar->blockSignals(true);
@@ -482,7 +537,7 @@ void ImageViewWidget::scaleFit(double ratio)
 	}
 	updateScrollBarRange();
 
-	scrollImage(w * m->d.view_scale / 2.0, h * m->d.view_scale / 2.0, true);
+	scrollImage(w * m->d.view_scale / 2.0, h * m->d.view_scale / 2.0, false);
 	updateCursorAnchorPos();
 }
 
@@ -503,9 +558,11 @@ void ImageViewWidget::zoomToCursor(double scale)
 
 	double x = m->d.cursor_anchor_pos.x() * m->d.view_scale + width() / 2.0 - (pos.x() + 0.5);
 	double y = m->d.cursor_anchor_pos.y() * m->d.view_scale + height() / 2.0 - (pos.y() + 0.5);
-	scrollImage(x, y, true);
+	scrollImage(x, y, false);
 
 	updateCenterAnchorPos();
+
+	update();
 }
 
 void ImageViewWidget::zoomToCenter(double scale)
@@ -520,7 +577,7 @@ void ImageViewWidget::zoomToCenter(double scale)
 
 	double x = m->d.cursor_anchor_pos.x() * m->d.view_scale + width() / 2.0 - pos.x();
 	double y = m->d.cursor_anchor_pos.y() * m->d.view_scale + height() / 2.0 - pos.y();
-	scrollImage(x, y, true);
+	scrollImage(x, y, false);
 
 	updateCenterAnchorPos();
 }
@@ -662,7 +719,6 @@ void ImageViewWidget::runImageRendering()
 
 			const int canvas_w = mainwindow()->canvasWidth();
 			const int canvas_h = mainwindow()->canvasHeight();
-			const QRect canvas_rect(0, 0, canvas_w, canvas_h);
 
 			int view_left;
 			int view_top;
@@ -681,6 +737,9 @@ void ImageViewWidget::runImageRendering()
 
 			{
 				std::lock_guard lock(m->render_mutex);
+				for (auto const &r : m->render_canvas_rects) {
+					qDebug() << r;
+				}
 				QPointF topleft = mapper.mapToCanvasFromViewport(QPointF(0, 0));
 				QPointF bottomright = mapper.mapToCanvasFromViewport(QPointF(width(), height()));
 				const int S1 = OFFSCREEN_PANEL_SIZE - 1;
@@ -691,12 +750,14 @@ void ImageViewWidget::runImageRendering()
 				for (int y = y0; y <= y1; y += OFFSCREEN_PANEL_SIZE) {
 					for (int x = x0; x <= x1; x += OFFSCREEN_PANEL_SIZE) {
 						QRect rect(x, y, OFFSCREEN_PANEL_SIZE, OFFSCREEN_PANEL_SIZE);
-						if (rect.intersects(canvas_rect)) {
-							rects.push_back(rect);
+						for (auto const &r : m->render_canvas_rects) {
+							if (rect.intersects(r)) {
+								rects.push_back(rect);
+								break;
+							}
 						}
 					}
 				}
-				m->render_canvas_rects.clear();
 			}
 
 			if (1) { // マウスカーソルから近い順にソート
@@ -853,6 +914,7 @@ void ImageViewWidget::runImageRendering()
 				std::lock_guard lock(m->render_mutex);
 
 				if (!isCanceled()) {
+					m->render_canvas_rects.clear();
 					update();
 				}
 
@@ -1112,20 +1174,20 @@ void ImageViewWidget::mousePressEvent(QMouseEvent *e)
 	}
 }
 
-void ImageViewWidget::internalUpdateScroll()
+void ImageViewWidget::internalUpdateScroll(bool request_render)
 {
 	QPoint pos = m->d.mouse_pos;
 	clearSelectionOutline();
 	int delta_x = pos.x() - m->d.mouse_press_pos.x();
 	int delta_y = pos.y() - m->d.mouse_press_pos.y();
-	scrollImage(m->d.scroll_starting_offset.x() - delta_x, m->d.scroll_starting_offset.y() - delta_y, false);
+	scrollImage(m->d.scroll_starting_offset.x() - delta_x, m->d.scroll_starting_offset.y() - delta_y, request_render);
 }
 
 void ImageViewWidget::doHandScroll()
 {
 	if (m->left_button) {
 		m->scrolling = true;
-		internalUpdateScroll();
+		internalUpdateScroll(true);
 	}
 }
 
@@ -1166,7 +1228,7 @@ void ImageViewWidget::mouseReleaseEvent(QMouseEvent *)
 		mainwindow()->onMouseLeftButtonRelase(pos.x(), pos.y(), true);
 
 		if (m->scrolling) {
-			internalUpdateScroll();
+			internalUpdateScroll(true);
 			m->scrolling = false;
 		}
 	}
@@ -1202,7 +1264,8 @@ void ImageViewWidget::onTimer()
 			rescaleOffScreen(); // オフスクリーンを再構築
 			m->render_canceled = true; // 現在の再描画要求をキャンセル
 			if (1) {
-				m->render_requested = true; // 再描画要求
+				requestUpdateEntire(true);
+				m->render_requested = true;
 			}
 			update = false; // 再描画すると表示がガタつくので再描画しない。次のonTimerで再描画される
 		}

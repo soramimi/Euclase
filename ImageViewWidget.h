@@ -29,8 +29,8 @@ private:
 	QSize imageSize() const;
 
 	QSize imageScrollRange() const;
-	void internalScrollImage(double x, double y, bool render);
-	void scrollImage(double x, double y, bool updateview);
+	void internalScrollImage(double x, double y, bool render_request);
+	void scrollImage(double x, double y, bool render_request);
 	bool setImageScale(double scale, bool updateview);
 	QBrush getTransparentBackgroundBrush();
 	void setScrollBarRange(QScrollBar *h, QScrollBar *v);
@@ -42,7 +42,7 @@ private:
 	QBrush stripeBrush();
 	void initBrushes();
 	QImage generateOutlineImage(const euclase::Image &selection, bool *abort);
-	void internalUpdateScroll();
+	void internalUpdateScroll(bool request_render);
 	void startRenderingThread();
 	void stopRenderingThread();
 	void runImageRendering();
@@ -51,7 +51,7 @@ private:
 	void runSelectionRendering();
 	void invalidateComposedPanels(const QRect &rect);
 	void setRenderRequested(bool f);
-	void setScrollOffset(double x, double y);
+	void setScrollOffset(double x, double y, bool render_request);
 	CoordinateMapper currentCoordinateMapper() const;
 	CoordinateMapper offscreenCoordinateMapper() const;
 	void rescaleOffScreen();
@@ -92,9 +92,12 @@ public:
 	void updateToolCursor();
 
 	void clearRenderCache();
-	void requestRendering(bool invalidate, const QRect &rect);
+	void requestRendering(bool invalidate, const QRect &canvasrect);
 
 	static constexpr QColor BGCOLOR = QColor(240, 240, 240);
+	void requestUpdateEntire(bool lock);
+	void requestUpdateView(const QRect &viewrect, bool lock);
+	void requestUpdateCanvas(const QRect &canvasrect, bool lock);
 private slots:
 	void onSelectionOutlineReady(SelectionOutline const &data);
 	void onTimer();
