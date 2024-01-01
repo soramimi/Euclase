@@ -203,7 +203,13 @@ void ImageViewWidget::startRenderingThread()
 
 void ImageViewWidget::stopRenderingThread()
 {
-	m->render_interrupted = true;
+	{
+		std::lock_guard lock(m->render_mutex);
+		m->composed_panels_cache.clear();
+		m->render_canvas_rects.clear();
+		m->render_interrupted = true;
+		m->render_canceled = true;
+	}
 	if (m->image_rendering_thread.joinable()) {
 		m->image_rendering_thread.join();
 	}
@@ -284,17 +290,25 @@ QSize ImageViewWidget::imageScrollRange() const
 	return QSize(w, h);
 }
 
-void ImageViewWidget::clearRenderCache(bool lock)
+
+
+void ImageViewWidget::clearRenderCache(bool clear_offscreen, bool lock)
 {
 	if (lock) {
 		std::lock_guard lock(m->render_mutex);
-		clearRenderCache(false);
+		clearRenderCache(clear_offscreen, false);
 		return;
 	}
+
 	m->offscreen1_mapper = currentCoordinateMapper();
 	m->composed_panels_cache.clear();
 	m->render_requested = true;
 	m->render_canceled = true;
+
+	if (clear_offscreen) {
+		m->offscreen1.clear();
+		m->offscreen2 = {};
+	}
 }
 
 void ImageViewWidget::requestUpdateView(const QRect &viewrect, bool lock)
@@ -317,7 +331,7 @@ void ImageViewWidget::requestUpdateEntire(bool lock)
 		requestUpdateEntire(false);
 		return;
 	}
-	clearRenderCache(false);
+	clearRenderCache(false, false);
 	requestUpdateView({0, 0, width(), height()}, false);
 }
 
@@ -456,6 +470,16 @@ void ImageViewWidget::requestUpdateSelectionOutline()
 	m->selection_outline_requested = true;
 }
 
+void ImageViewWidget::setScaleAnchorPos(QPointF const &pos)
+{
+	m->d.scale_anchor_pos = pos;
+}
+
+QPointF ImageViewWidget::getScaleAnchorPos()
+{
+	return m->d.scale_anchor_pos;
+}
+
 /**
  * @brief ImageViewWidget::updateCursorAnchorPos
  *
@@ -463,7 +487,7 @@ void ImageViewWidget::requestUpdateSelectionOutline()
  */
 void ImageViewWidget::updateCursorAnchorPos()
 {
-	m->d.scale_anchor_pos = mapToCanvasFromViewport(mapFromGlobal(QCursor::pos()));
+	setScaleAnchorPos(mapToCanvasFromViewport(mapFromGlobal(QCursor::pos())));
 }
 
 bool ImageViewWidget::setScale(double s, bool fire_event)
@@ -494,13 +518,25 @@ double ImageViewWidget::scale() const
 	return m->d.view_scale;
 }
 
+/**
+ * @brief ImageViewWidget::zoomInternal
+ * @param pos 拡大縮小の基準座標
+ *
+ * 拡大縮小の内部処理
+ */
 void ImageViewWidget::zoomInternal(QPointF const &pos)
 {
-	QPointF pt = m->d.scale_anchor_pos * scale() + centerF() - pos;
+	QPointF pt = getScaleAnchorPos() * scale() + centerF() - pos;
 	scrollImage(pt.x(), pt.y(), false);
 	update();
 }
 
+/**
+ * @brief ImageViewWidget::zoomToCursor
+ *
+ * カーソル位置を基準に拡大縮小する
+ * @param scale 拡大率
+ */
 void ImageViewWidget::zoomToCursor(double scale)
 {
 	if (!setScale(scale, true)) return;
@@ -509,11 +545,17 @@ void ImageViewWidget::zoomToCursor(double scale)
 	zoomInternal({pos.x() + 0.5, pos.y() + 0.5});
 }
 
+/**
+ * @brief ImageViewWidget::zoomToCenter
+ *
+ * 中心を基準に拡大縮小する
+ * @param scale 拡大率
+ */
 void ImageViewWidget::zoomToCenter(double scale)
 {
 	QPointF pos = centerF();
 
-	m->d.scale_anchor_pos = mapToCanvasFromViewport(centerF()); // 中心を基準に拡大縮小する
+	setScaleAnchorPos(mapToCanvasFromViewport(centerF())); // 中心を基準に拡大縮小する
 
 	setScale(scale, true);
 
@@ -698,9 +740,6 @@ void ImageViewWidget::runImageRendering()
 
 			{
 				std::lock_guard lock(m->render_mutex);
-				for (auto const &r : m->render_canvas_rects) {
-					qDebug() << r;
-				}
 				QPointF topleft = mapper.mapToCanvasFromViewport(QPointF(0, 0));
 				QPointF bottomright = mapper.mapToCanvasFromViewport(QPointF(width(), height()));
 				const int S1 = OFFSCREEN_PANEL_SIZE - 1;
@@ -1207,6 +1246,11 @@ void ImageViewWidget::onSelectionOutlineReady(const SelectionOutline &data)
 	update();
 }
 
+/**
+ * @brief ImageViewWidget::onTimer
+ *
+ * タイマーイベントの処理
+ */
 void ImageViewWidget::onTimer()
 {
 	m->stripe_animation = (m->stripe_animation + 1) & 7;

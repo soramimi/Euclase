@@ -247,6 +247,8 @@ void MainWindow::setupBasicLayer(Canvas::Layer *p)
 void MainWindow::setImage(euclase::Image image, bool fitview)
 {
 	clearCanvas();
+	ui->widget_image_view->clearRenderCache(true, true);
+
 
 	int w = image.width();
 	int h = image.height();
@@ -606,7 +608,7 @@ void MainWindow::on_action_trim_triggered()
 
 void MainWindow::updateImageView()
 {
-	ui->widget_image_view->clearRenderCache(true);
+	ui->widget_image_view->clearRenderCache(false, true);
 	ui->widget_image_view->requestUpdateSelectionOutline();
 }
 
@@ -1540,8 +1542,11 @@ void MainWindow::colorCollection()
 
 void MainWindow::test()
 {
+#if 0
 	ui->widget_image_view->requestRendering({});
-
+#else
+	openFile("/mnt/lucy/pub/pictures/favolite/IMG_0934.JPG");
+#endif
 }
 
 

@@ -53,6 +53,8 @@ private:
 	CoordinateMapper offscreenCoordinateMapper() const;
 	void rescaleOffScreen();
 	void zoomInternal(const QPointF &pos);
+	void setScaleAnchorPos(const QPointF &pos);
+	QPointF getScaleAnchorPos();
 protected:
 	void resizeEvent(QResizeEvent *) override;
 	void paintEvent(QPaintEvent *) override;
@@ -91,7 +93,7 @@ public:
 
 	static constexpr QColor BGCOLOR = QColor(240, 240, 240);
 
-	void clearRenderCache(bool lock);
+	void clearRenderCache(bool clear_offscreen, bool lock);
 	void requestUpdateEntire(bool lock);
 	void requestUpdateView(const QRect &viewrect, bool lock);
 	void requestUpdateCanvas(const QRect &canvasrect, bool lock);

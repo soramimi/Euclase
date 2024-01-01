@@ -4,6 +4,8 @@ TEMPLATE = app
 CONFIG += c++17
 QT += core gui widgets svg
 
+CONFIG += nostrip debug_info
+
 DESTDIR = $$PWD/_bin
 
 DEFINES += USE_QT=1
