@@ -232,6 +232,11 @@ euclase::Image::MemoryType MainWindow::preferredMemoryType() const
 	return global->cuda ? euclase::Image::CUDA : euclase::Image::Host;;
 }
 
+void MainWindow::needToUpdateView(const QRect &canvasrect)
+{
+	ui->widget_image_view->requestRendering(canvasrect);
+}
+
 void MainWindow::setupBasicLayer(Canvas::Layer *p)
 {
 	p->clear();
@@ -259,8 +264,7 @@ void MainWindow::setImage(euclase::Image image, bool fitview)
 	canvas()->renderToLayer(canvas()->current_layer(), Canvas::Canvas::PrimaryLayer, layer, nullptr, opt, nullptr);
 
 	resetView(fitview);
-	ui->widget_image_view->clearRenderCache();
-	ui->widget_image_view->requestRendering(true, {});
+	ui->widget_image_view->requestRendering({});
 }
 
 void MainWindow::setImageFromBytes(QByteArray const &ba, bool fitview)
@@ -602,13 +606,13 @@ void MainWindow::on_action_trim_triggered()
 
 void MainWindow::updateImageView()
 {
-	ui->widget_image_view->clearRenderCache();
-	ui->widget_image_view->paintViewLater(true);
+	ui->widget_image_view->clearRenderCache(true);
+	ui->widget_image_view->requestUpdateSelectionOutline();
 }
 
 void MainWindow::updateSelectionOutline()
 {
-	ui->widget_image_view->paintViewLater(false);
+	ui->widget_image_view->requestUpdateSelectionOutline();
 }
 
 void MainWindow::onSelectionChanged()
@@ -622,11 +626,6 @@ void MainWindow::clearCanvas()
 }
 
 
-
-void MainWindow::needToUpdateView(QRect const &rect)
-{
-	ui->widget_image_view->requestRendering(false, rect);
-}
 
 void MainWindow::paintLayer(Operation op, Canvas::Layer const &layer)
 {
@@ -1541,7 +1540,8 @@ void MainWindow::colorCollection()
 
 void MainWindow::test()
 {
-	ui->widget_image_view->geometryChanged(true);
+	ui->widget_image_view->requestRendering({});
+
 }
 
 

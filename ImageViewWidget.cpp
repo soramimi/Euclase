@@ -22,10 +22,8 @@
 #include <mutex>
 #include <thread>
 
-using SvgRendererPtr = std::shared_ptr<QSvgRenderer>;
-
-const int MAX_SCALE = 32;
-const int MIN_SCALE = 16;
+const int MAX_SCALE = 32; // 32x
+const int MIN_SCALE = 16; // 1/16x
 
 struct ImageViewWidget::Private {
 	MainWindow *mainwindow = nullptr;
@@ -41,8 +39,7 @@ struct ImageViewWidget::Private {
 		QPoint mouse_pos;
 		QPoint mouse_press_pos;
 		int wheel_delta = 0;
-		QPointF cursor_anchor_pos;
-		QPointF center_anchor_pos;
+		QPointF scale_anchor_pos; // 拡大縮小の時の中心座標 (in canvas coordinates)
 		int top_margin = 1;
 		int bottom_margin = 1;
 	};
@@ -170,16 +167,6 @@ static QImage scale_float_to_uint8_rgba(euclase::Image const &src, int w, int h)
 	return ret;
 }
 
-void ImageViewWidget::clearRenderCache()
-{
-	std::lock_guard lock(m->render_mutex);
-	m->offscreen1_mapper = CoordinateMapper(size(), m->d.view_scroll_offset, m->d.view_scale);
-	m->composed_panels_cache.clear();
-	requestUpdateEntire(false);
-	m->render_requested = true;
-	m->render_canceled = true;
-}
-
 void ImageViewWidget::runSelectionRendering()
 {
 	while (1) {
@@ -194,58 +181,14 @@ void ImageViewWidget::runSelectionRendering()
 	}
 }
 
-void ImageViewWidget::invalidateComposedPanels(QRect const &rect)
-{
-	// std::lock_guard lock(m->render_mutex);
-	// if (rect.isEmpty()) {
-	// 	m->composed_panels_cache.clear();
-	// } else {
-	// 	size_t i = m->composed_panels_cache.size();
-	// 	while (i > 0) {
-	// 		i--;
-	// 		QRect r(m->composed_panels_cache[i].offset(), m->composed_panels_cache[i].image().size());
-	// 		if (r.intersects(rect)) {
-	// 			m->composed_panels_cache.erase(m->composed_panels_cache.begin() + i);
-	// 		}
-	// 	}
-	// }
-}
-
 CoordinateMapper ImageViewWidget::currentCoordinateMapper() const
 {
-	return CoordinateMapper(size(), m->d.view_scroll_offset, m->d.view_scale);
+	return CoordinateMapper(size(), m->d.view_scroll_offset, scale());
 }
 
 CoordinateMapper ImageViewWidget::offscreenCoordinateMapper() const
 {
 	return m->offscreen1_mapper;
-}
-
-void ImageViewWidget::requestRendering(bool invalidate, QRect const &canvasrect)
-{
-	QRect r = canvasrect;
-	if (0) {//if (invalidate) {
-		m->render_invalidate = true;
-		r = {};
-	}
-
-	invalidateComposedPanels(r);
-
-	if (r.isEmpty()) {
-		auto topleft = mapToCanvasFromViewport(QPointF(0, 0));
-		auto bottomright = mapToCanvasFromViewport(QPointF(width(), height()));
-		int x0 = (int)floor(topleft.x()) - 1;
-		int y0 = (int)floor(topleft.y()) - 1;
-		int x1 = (int)ceil(bottomright.x()) + 1;
-		int y1 = (int)ceil(bottomright.y()) + 1;
-		r = {x0, y0, x1 - x0, y1 - y0};
-	}
-	{
-		std::lock_guard lock(m->render_mutex);
-		m->offscreen1_mapper = currentCoordinateMapper();
-		m->render_canvas_rects.push_back(r);
-		m->render_requested = true;
-	}
 }
 
 void ImageViewWidget::startRenderingThread()
@@ -317,32 +260,44 @@ QBrush ImageViewWidget::stripeBrush()
 	return QBrush(image);
 }
 
-void ImageViewWidget::geometryChanged(bool force_render)
+QSize ImageViewWidget::imageSize() const
 {
-	if (force_render) {
-		requestRendering(true, {});
-	}
+	return canvas()->size();
 }
+
+QPoint ImageViewWidget::center() const
+{
+	return QPoint(width() / 2, height() / 2);
+}
+
+QPointF ImageViewWidget::centerF() const
+{
+	return QPointF(width() / 2.0, height() / 2.0);
+}
+
 
 QSize ImageViewWidget::imageScrollRange() const
 {
 	QSize sz = imageSize();
-	int w = int(sz.width() * m->d.view_scale);
-	int h = int(sz.height() * m->d.view_scale);
+	int w = int(sz.width() * scale());
+	int h = int(sz.height() * scale());
 	return QSize(w, h);
 }
 
-void ImageViewWidget::requestUpdateCanvas(QRect const &canvasrect, bool lock)
+void ImageViewWidget::clearRenderCache(bool lock)
 {
 	if (lock) {
 		std::lock_guard lock(m->render_mutex);
-		requestUpdateCanvas(canvasrect, false);
+		clearRenderCache(false);
 		return;
 	}
-	m->render_canvas_rects.push_back(canvasrect);
+	m->offscreen1_mapper = currentCoordinateMapper();
+	m->composed_panels_cache.clear();
+	m->render_requested = true;
+	m->render_canceled = true;
 }
 
-void ImageViewWidget::requestUpdateView(QRect const &viewrect, bool lock)
+void ImageViewWidget::requestUpdateView(const QRect &viewrect, bool lock)
 {
 	QPointF topleft = viewrect.topLeft();
 	QPointF bottomright = viewrect.bottomRight();
@@ -357,62 +312,87 @@ void ImageViewWidget::requestUpdateView(QRect const &viewrect, bool lock)
 
 void ImageViewWidget::requestUpdateEntire(bool lock)
 {
-	requestUpdateView({0, 0, width(), height()}, lock);
+	if (lock) {
+		std::lock_guard lock(m->render_mutex);
+		requestUpdateEntire(false);
+		return;
+	}
+	clearRenderCache(false);
+	requestUpdateView({0, 0, width(), height()}, false);
 }
 
-
-void ImageViewWidget::setScrollOffset(double x, double y, bool render_request)
+void ImageViewWidget::requestUpdateCanvas(const QRect &canvasrect, bool lock)
 {
-	qDebug() << Q_FUNC_INFO;
+	if (lock) {
+		std::lock_guard lock(m->render_mutex);
+		requestUpdateCanvas(canvasrect, false);
+		return;
+	}
+	m->render_canvas_rects.push_back(canvasrect);
+}
+
+void ImageViewWidget::requestRendering(const QRect &canvasrect)
+{
+	std::lock_guard lock(m->render_mutex);
+	m->offscreen1_mapper = currentCoordinateMapper();
+	if (canvasrect.isEmpty()) {
+		requestUpdateEntire(false);
+	} else {
+		requestUpdateCanvas(canvasrect, false);
+	}
+	m->render_requested = true;
+}
+
+void ImageViewWidget::internalScrollImage(double x, double y, bool differential_update)
+{
+	auto old_offset = m->d.view_scroll_offset;
+
 	QSizeF sz = imageScrollRange();
 	x = std::min(std::max(x, 0.0), sz.width());
 	y = std::min(std::max(y, 0.0), sz.height());
-
-	int delta_x = (int)ceil(m->d.view_scroll_offset.x() - x);
-	int delta_y = (int)ceil(m->d.view_scroll_offset.y() - y);
-
 	m->d.view_scroll_offset = QPointF(x, y);
 
-	if (render_request) {
-		if (delta_x != 0 || delta_y != 0) {
-			std::lock_guard lock(m->render_mutex);
-			m->render_canceled = true;
-			m->offscreen1_mapper = currentCoordinateMapper();
-			if (delta_x > 0) { // 右にスクロール、左に空白ができる
-				requestUpdateView({0, 0, delta_x, height()}, false);
-			} else if (delta_x < 0) { // 左にスクロール、右に空白ができる
-				requestUpdateView({width() + delta_x, 0, -delta_x, height()}, false);
+	if (differential_update) { // 差分更新
+		if (m->d.view_scroll_offset != old_offset) {
+			int delta_x = (int)ceil(old_offset.x() - x); // 右にスクロールするとdelta_xは正
+			int delta_y = (int)ceil(old_offset.y() - y); // 下にスクロールするとdelta_yは正
+			{
+				std::lock_guard lock(m->render_mutex);
+				m->offscreen1_mapper = currentCoordinateMapper();
+				m->render_canceled = true;
+
+				if (delta_x > 0) { // 右にスクロール、左に空白ができる
+					requestUpdateView({0, 0, delta_x, height()}, false);
+				} else if (delta_x < 0) { // 左にスクロール、右に空白ができる
+					requestUpdateView({width() + delta_x, 0, -delta_x, height()}, false);
+				}
+				if (delta_y > 0) { // 下にスクロール、上に空白ができる
+					requestUpdateView({0, 0, width(), delta_y}, false);
+				} else if (delta_y < 0) { // 上にスクロール、下に空白ができる
+					requestUpdateView({0, height() + delta_y, width(), -delta_y}, false);
+				}
+
+				m->render_requested = true;
 			}
-			if (delta_y > 0) { // 下にスクロール、上に空白ができる
-				requestUpdateView({0, 0, width(), delta_y}, false);
-			} else if (delta_y < 0) { // 上にスクロール、下に空白ができる
-				requestUpdateView({0, height() + delta_y, width(), -delta_y}, false);
-			}
-			m->render_requested = true;
+			update();
 		}
 	}
 }
 
-void ImageViewWidget::internalScrollImage(double x, double y, bool render_request)
+/**
+ * @brief 指定した位置にスクロールする
+ * @param x スクロール先のx座標
+ * @param y スクロール先のy座標
+ * @param differential_update 差分更新するかどうか
+ */
+void ImageViewWidget::scrollImage(double x, double y, bool differential_update)
 {
-	setScrollOffset(x, y, render_request);
+	internalScrollImage(x, y, differential_update);
 
-	geometryChanged(false);
+	// 選択領域のアウトラインを更新
+	requestUpdateSelectionOutline();
 
-	// if (render) {
-	// 	// requestRendering(false, {});
-	// 	paintViewLater(true);
-	// }
-
-	if (render_request) {
-		update();
-	}
-}
-
-void ImageViewWidget::scrollImage(double x, double y, bool render_request)
-{
-	internalScrollImage(x, y, render_request);
-
+	// スクロールバーの位置を更新
 	if (m->h_scroll_bar) {
 		auto b = m->h_scroll_bar->blockSignals(true);
 		m->h_scroll_bar->setValue((int)m->d.view_scroll_offset.x());
@@ -427,7 +407,8 @@ void ImageViewWidget::scrollImage(double x, double y, bool render_request)
 
 void ImageViewWidget::refrectScrollBar()
 {
-	double e = 0.75;
+	// スクロールバーの値をスクロール位置に反映する
+	const double e = 0.75;
 	double x = m->h_scroll_bar->value();
 	double y = m->v_scroll_bar->value();
 	if (fabs(x - m->d.view_scroll_offset.x()) < e) x = m->d.view_scroll_offset.x(); // 差が小さいときは値を維持する
@@ -435,6 +416,13 @@ void ImageViewWidget::refrectScrollBar()
 	internalScrollImage(x, y, true);
 }
 
+/**
+ * @brief ImageViewWidget::setScrollBarRange
+ *
+ * スクロールバーの範囲を設定する
+ * @param h 水平スクロールバー
+ * @param v 垂直スクロールバー
+ */
 void ImageViewWidget::setScrollBarRange(QScrollBar *h, QScrollBar *v)
 {
 	auto bh = h->blockSignals(true);
@@ -448,83 +436,96 @@ void ImageViewWidget::setScrollBarRange(QScrollBar *h, QScrollBar *v)
 	v->blockSignals(bv);
 }
 
+/**
+ * @brief ImageViewWidget::updateScrollBarRange
+ *
+ * スクロールバーの範囲を更新する
+ */
 void ImageViewWidget::updateScrollBarRange()
 {
 	setScrollBarRange(m->h_scroll_bar, m->v_scroll_bar);
 }
 
-QBrush ImageViewWidget::getTransparentBackgroundBrush()
+/**
+ * @brief ImageViewWidget::requestUpdateSelectionOutline
+ *
+ * 選択領域のアウトラインを更新要求する
+ */
+void ImageViewWidget::requestUpdateSelectionOutline()
 {
-	if (m->transparent_pixmap.isNull()) {
-		m->transparent_pixmap = QPixmap(":/image/transparent.png");
-	}
-	return m->transparent_pixmap;
-}
-
-QSize ImageViewWidget::imageSize() const
-{
-	return canvas()->size();
-}
-
-void ImageViewWidget::paintViewLater(bool image)
-{
-	if (image) {
-		QPointF pt0 = mapToCanvasFromViewport(QPointF(0, 0));
-		QPointF pt1 = mapToCanvasFromViewport(QPointF(width(), height()));
-		int x0 = (int)floor(pt0.x());
-		int y0 = (int)floor(pt0.y());
-		int x1 = (int)ceil(pt1.x());
-		int y1 = (int)ceil(pt1.y());
-		x0 = std::max(x0, 0);
-		y0 = std::max(y0, 0);
-		x1 = std::min(x1, canvas()->width());
-		y1 = std::min(y1, canvas()->height());
-		QRect r(x0, y0, x1 - x0, y1 - y0);
-
-		QPoint mousepos = mapFromGlobal(QCursor::pos());
-		QPointF focus_point = mapToCanvasFromViewport(mousepos);
-
-		int div = 1;
-		if (m->d.view_scale < 1) {
-			Q_ASSERT(m->d.view_scale > 0);
-			div = (int)floorf(1.0f / m->d.view_scale);
-		}
-	}
-
 	m->selection_outline_requested = true;
 }
 
+/**
+ * @brief ImageViewWidget::updateCursorAnchorPos
+ *
+ * ホイール拡大縮小の際の基準座標を更新する
+ */
 void ImageViewWidget::updateCursorAnchorPos()
 {
-	m->d.cursor_anchor_pos = mapToCanvasFromViewport(mapFromGlobal(QCursor::pos()));
+	m->d.scale_anchor_pos = mapToCanvasFromViewport(mapFromGlobal(QCursor::pos()));
 }
 
-void ImageViewWidget::updateCenterAnchorPos()
+bool ImageViewWidget::setScale(double s, bool fire_event)
 {
-	m->d.center_anchor_pos = mapToCanvasFromViewport(QPointF(width() / 2.0, height() / 2.0));
-}
+	if (s < 1.0 / MIN_SCALE) s = 1.0 / MIN_SCALE;
+	if (s > MAX_SCALE) s = MAX_SCALE;
+	s = round(s * 1000000.0) / 1000000.0;
+	if (scale() == s) return false;
 
-bool ImageViewWidget::setImageScale(double scale, bool updateview)
-{
-	if (scale < 1.0 / MIN_SCALE) scale = 1.0 / MIN_SCALE;
-	if (scale > MAX_SCALE) scale = MAX_SCALE;
-	if (m->d.view_scale == scale) return false;
+	m->d.view_scale = s;
+	updateScrollBarRange(); // スクロールバーの範囲を更新
 
-	m->d.view_scale = scale;
-
-	geometryChanged(false);
-
-	emit scaleChanged(m->d.view_scale);
-
-	if (updateview) {
-		// requestRendering(true, {});
-		paintViewLater(true);
-		update();
+	if (fire_event) {
+		emit scaleChanged(scale());
 	}
 
 	return true;
 }
 
+/**
+ * @brief ImageViewWidget::scale
+ *
+ * 現在の拡大率を取得する
+ * @return 現在の拡大率
+ */
+double ImageViewWidget::scale() const
+{
+	return m->d.view_scale;
+}
+
+void ImageViewWidget::zoomInternal(QPointF const &pos)
+{
+	QPointF pt = m->d.scale_anchor_pos * scale() + centerF() - pos;
+	scrollImage(pt.x(), pt.y(), false);
+	update();
+}
+
+void ImageViewWidget::zoomToCursor(double scale)
+{
+	if (!setScale(scale, true)) return;
+
+	QPoint pos = mapFromGlobal(QCursor::pos());
+	zoomInternal({pos.x() + 0.5, pos.y() + 0.5});
+}
+
+void ImageViewWidget::zoomToCenter(double scale)
+{
+	QPointF pos = centerF();
+
+	m->d.scale_anchor_pos = mapToCanvasFromViewport(centerF()); // 中心を基準に拡大縮小する
+
+	setScale(scale, true);
+
+	zoomInternal(pos);
+}
+
+/**
+ * @brief ImageViewWidget::scaleTo
+ *
+ * ビューサイズに合わせて拡大率を設定する
+ * @param ratio ビューサイズに対する拡大率（通常は1.0未満）
+ */
 void ImageViewWidget::scaleFit(double ratio)
 {
 	QSize sz = imageSize();
@@ -533,53 +534,13 @@ void ImageViewWidget::scaleFit(double ratio)
 	if (w > 0 && h > 0) {
 		double sx = width() / w;
 		double sy = height() / h;
-		m->d.view_scale = (sx < sy ? sx : sy) * ratio;
+		setScale(std::min(sx, sy) * ratio, true);
 	}
-	updateScrollBarRange();
+	updateScrollBarRange(); // スクロールバーの範囲を更新
 
-	scrollImage(w * m->d.view_scale / 2.0, h * m->d.view_scale / 2.0, false);
-	updateCursorAnchorPos();
-}
+	scrollImage(w * scale() / 2.0, h * scale() / 2.0, false); // 中心にスクロール
 
-void ImageViewWidget::clearSelectionOutline()
-{
-
-}
-
-void ImageViewWidget::zoomToCursor(double scale)
-{
-	if (!setImageScale(scale, false)) return;
-
-	clearSelectionOutline();
-
-	QPoint pos = mapFromGlobal(QCursor::pos());
-
-	updateScrollBarRange();
-
-	double x = m->d.cursor_anchor_pos.x() * m->d.view_scale + width() / 2.0 - (pos.x() + 0.5);
-	double y = m->d.cursor_anchor_pos.y() * m->d.view_scale + height() / 2.0 - (pos.y() + 0.5);
-	scrollImage(x, y, false);
-
-	updateCenterAnchorPos();
-
-	update();
-}
-
-void ImageViewWidget::zoomToCenter(double scale)
-{
-	clearSelectionOutline();
-
-	QPointF pos(width() / 2.0, height() / 2.0);
-	m->d.cursor_anchor_pos = mapToCanvasFromViewport(pos);
-
-	setImageScale(scale, false);
-	updateScrollBarRange();
-
-	double x = m->d.cursor_anchor_pos.x() * m->d.view_scale + width() / 2.0 - pos.x();
-	double y = m->d.cursor_anchor_pos.y() * m->d.view_scale + height() / 2.0 - pos.y();
-	scrollImage(x, y, false);
-
-	updateCenterAnchorPos();
+	updateCursorAnchorPos(); // ホイールスクロールの基準座標を更新
 }
 
 void ImageViewWidget::scale100()
@@ -589,12 +550,12 @@ void ImageViewWidget::scale100()
 
 void ImageViewWidget::zoomIn()
 {
-	zoomToCenter(m->d.view_scale * 2);
+	zoomToCenter(scale() * 2);
 }
 
 void ImageViewWidget::zoomOut()
 {
-	zoomToCenter(m->d.view_scale / 2);
+	zoomToCenter(scale() / 2);
 }
 
 QImage ImageViewWidget::generateOutlineImage(euclase::Image const &selection, bool *abort)
@@ -904,9 +865,8 @@ void ImageViewWidget::runImageRendering()
 				{
 					std::lock_guard lock(m->render_mutex);
 					if (!isCanceled()) {
-						int ox = width() / 2 - m->offscreen1_mapper.scrollOffset().x();
-						int oy = height() / 2 - m->offscreen1_mapper.scrollOffset().y();
-						m->offscreen1.paintImage(QPoint(dx - ox, dy - oy), qimg, qimg.size(), {});
+						QPoint pt = QPoint(dx, dy) - center() + m->offscreen1_mapper.scrollOffset().toPoint();
+						m->offscreen1.paintImage(pt, qimg, qimg.size(), {});
 					}
 				}
 			}
@@ -969,7 +929,7 @@ void ImageViewWidget::paintEvent(QPaintEvent *)
 			QPainter pr2(&m->offscreen2);
 
 			// 最大拡大時のグリッド
-			if (m->d.view_scale == MAX_SCALE && !m->scrolling) { // スクロール中はグリッドを描画しない
+			if (scale() == MAX_SCALE && !m->scrolling) { // スクロール中はグリッドを描画しない
 				QPoint org = mapper.mapToViewportFromCanvas(QPointF(0, 0)).toPoint();
 				QPointF topleft = mapper.mapToCanvasFromViewport(QPointF(0, 0));
 				int topleft_x = (int)floor(topleft.x());
@@ -1016,9 +976,7 @@ void ImageViewWidget::paintEvent(QPaintEvent *)
 		std::lock_guard lock(m->render_mutex);
 		auto osmapper = offscreenCoordinateMapper();
 		for (PanelizedImage::Panel const &panel : m->offscreen1.panels_) {
-			QPoint org = panel.offset - m->offscreen1_mapper.scrollOffset().toPoint();
-			org.rx() += width() / 2;
-			org.ry() += height() / 2;
+			QPoint org = panel.offset - m->offscreen1_mapper.scrollOffset().toPoint() + center();
 			QPointF topleft(org);
 			QPointF bottomright(org.x() + panel.image.width(), org.y() + panel.image.height());
 			topleft = osmapper.mapToCanvasFromViewport(topleft);
@@ -1115,8 +1073,8 @@ void ImageViewWidget::rescaleOffScreen()
 	auto old_mapper = m->offscreen1_mapper; // 古い座標系
 	auto new_mapper = currentCoordinateMapper(); // 新しい座標系
 
-	QPointF old_org(width() / 2 - old_mapper.scrollOffset().x(), height() / 2 - old_mapper.scrollOffset().y()); // 古い座標系の原点
-	QPointF new_org(width() / 2 - new_mapper.scrollOffset().x(), height() / 2 - new_mapper.scrollOffset().y()); // 新しい座標系の原点
+	QPointF old_org(centerF() - old_mapper.scrollOffset()); // 古い座標系の原点
+	QPointF new_org(centerF() - new_mapper.scrollOffset()); // 新しい座標系の原点
 
 	PanelizedImage new_offscreen;
 
@@ -1156,11 +1114,36 @@ void ImageViewWidget::rescaleOffScreen()
 	m->offscreen1 = std::move(new_offscreen);
 }
 
+void ImageViewWidget::setToolCursor(QCursor const &cursor)
+{
+	m->cursor = cursor;
+}
+
+void ImageViewWidget::updateToolCursor()
+{
+	setCursor(m->cursor);
+}
+
+void ImageViewWidget::internalUpdateScroll()
+{
+	QPoint pos = m->d.mouse_pos;
+	int delta_x = pos.x() - m->d.mouse_press_pos.x();
+	int delta_y = pos.y() - m->d.mouse_press_pos.y();
+	scrollImage(m->d.scroll_starting_offset.x() - delta_x, m->d.scroll_starting_offset.y() - delta_y, true);
+}
+
+void ImageViewWidget::doHandScroll()
+{
+	if (m->left_button) {
+		m->scrolling = true;
+		internalUpdateScroll();
+	}
+}
+
 void ImageViewWidget::resizeEvent(QResizeEvent *)
 {
-	clearSelectionOutline();
 	updateScrollBarRange();
-	paintViewLater(true);
+	requestUpdateSelectionOutline();
 }
 
 void ImageViewWidget::mousePressEvent(QMouseEvent *e)
@@ -1171,23 +1154,6 @@ void ImageViewWidget::mousePressEvent(QMouseEvent *e)
 		m->d.mouse_press_pos = pos;
 		m->d.scroll_starting_offset = m->d.view_scroll_offset;
 		mainwindow()->onMouseLeftButtonPress(pos.x(), pos.y());
-	}
-}
-
-void ImageViewWidget::internalUpdateScroll(bool request_render)
-{
-	QPoint pos = m->d.mouse_pos;
-	clearSelectionOutline();
-	int delta_x = pos.x() - m->d.mouse_press_pos.x();
-	int delta_y = pos.y() - m->d.mouse_press_pos.y();
-	scrollImage(m->d.scroll_starting_offset.x() - delta_x, m->d.scroll_starting_offset.y() - delta_y, request_render);
-}
-
-void ImageViewWidget::doHandScroll()
-{
-	if (m->left_button) {
-		m->scrolling = true;
-		internalUpdateScroll(true);
 	}
 }
 
@@ -1205,20 +1171,10 @@ void ImageViewWidget::mouseMoveEvent(QMouseEvent *)
 		mainwindow()->updateToolCursor();
 	}
 
-	m->d.cursor_anchor_pos = mapToCanvasFromViewport(pos);
+	updateCursorAnchorPos();
 	m->d.wheel_delta = 0;
 
 	updateToolCursor();
-}
-
-void ImageViewWidget::setToolCursor(QCursor const &cursor)
-{
-	m->cursor = cursor;
-}
-
-void ImageViewWidget::updateToolCursor()
-{
-	setCursor(m->cursor);
 }
 
 void ImageViewWidget::mouseReleaseEvent(QMouseEvent *)
@@ -1228,7 +1184,7 @@ void ImageViewWidget::mouseReleaseEvent(QMouseEvent *)
 		mainwindow()->onMouseLeftButtonRelase(pos.x(), pos.y(), true);
 
 		if (m->scrolling) {
-			internalUpdateScroll(true);
+			internalUpdateScroll();
 			m->scrolling = false;
 		}
 	}
@@ -1237,11 +1193,11 @@ void ImageViewWidget::mouseReleaseEvent(QMouseEvent *)
 
 void ImageViewWidget::wheelEvent(QWheelEvent *e)
 {
-	double scale = 1;
+	double mul = 1;
 	double d = e->angleDelta().y();
 	double t = 1.001;
-	scale *= pow(t, d);
-	zoomToCursor(m->d.view_scale * scale);
+	mul *= pow(t, d);
+	zoomToCursor(scale() * mul);
 	m->delayed_update_counter = 3;
 }
 
@@ -1263,10 +1219,10 @@ void ImageViewWidget::onTimer()
 		if (m->delayed_update_counter == 0) { // 更新する
 			rescaleOffScreen(); // オフスクリーンを再構築
 			m->render_canceled = true; // 現在の再描画要求をキャンセル
-			if (1) {
-				requestUpdateEntire(true);
-				m->render_requested = true;
-			}
+
+			requestUpdateEntire(true);
+			m->render_requested = true;
+
 			update = false; // 再描画すると表示がガタつくので再描画しない。次のonTimerで再描画される
 		}
 	}
@@ -1275,5 +1231,4 @@ void ImageViewWidget::onTimer()
 		this->update();
 	}
 }
-
 

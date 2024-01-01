@@ -163,7 +163,7 @@ public:
 	bool isPreviewEnabled() const;
 	void setCurrentLayer(int index);
 	euclase::Image::MemoryType preferredMemoryType() const;
-	void needToUpdateView(const QRect &rect);
+	void needToUpdateView(const QRect &canvasrect);
 protected:
 	void dragEnterEvent(QDragEnterEvent *event);
 	void dropEvent(QDropEvent *event);

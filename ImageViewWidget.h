@@ -27,34 +27,32 @@ private:
 	Canvas const *canvas() const;
 
 	QSize imageSize() const;
+	QPoint center() const;
+	QPointF centerF() const;
 
 	QSize imageScrollRange() const;
-	void internalScrollImage(double x, double y, bool render_request);
-	void scrollImage(double x, double y, bool render_request);
-	bool setImageScale(double scale, bool updateview);
-	QBrush getTransparentBackgroundBrush();
+	void internalScrollImage(double x, double y, bool differential_update);
+	void scrollImage(double x, double y, bool differential_update);
+	bool setScale(double scale, bool fire_event);
+	double scale() const;
 	void setScrollBarRange(QScrollBar *h, QScrollBar *v);
 	void updateScrollBarRange();
 	void zoomToCursor(double scale);
 	void zoomToCenter(double scale);
 	void updateCursorAnchorPos();
-	void updateCenterAnchorPos();
 	QBrush stripeBrush();
 	void initBrushes();
 	QImage generateOutlineImage(const euclase::Image &selection, bool *abort);
-	void internalUpdateScroll(bool request_render);
+	void internalUpdateScroll();
 	void startRenderingThread();
 	void stopRenderingThread();
 	void runImageRendering();
-	void geometryChanged(bool render);
-	void clearSelectionOutline();
 	void runSelectionRendering();
-	void invalidateComposedPanels(const QRect &rect);
 	void setRenderRequested(bool f);
-	void setScrollOffset(double x, double y, bool render_request);
 	CoordinateMapper currentCoordinateMapper() const;
 	CoordinateMapper offscreenCoordinateMapper() const;
 	void rescaleOffScreen();
+	void zoomInternal(const QPointF &pos);
 protected:
 	void resizeEvent(QResizeEvent *) override;
 	void paintEvent(QPaintEvent *) override;
@@ -82,7 +80,7 @@ public:
 	void zoomIn();
 	void zoomOut();
 
-	void paintViewLater(bool image);
+	void requestUpdateSelectionOutline();
 
 	QBitmap updateSelection_();
 	SelectionOutline renderSelectionOutline(bool *abort);
@@ -91,13 +89,13 @@ public:
 	void doHandScroll();
 	void updateToolCursor();
 
-	void clearRenderCache();
-	void requestRendering(bool invalidate, const QRect &canvasrect);
-
 	static constexpr QColor BGCOLOR = QColor(240, 240, 240);
+
+	void clearRenderCache(bool lock);
 	void requestUpdateEntire(bool lock);
 	void requestUpdateView(const QRect &viewrect, bool lock);
 	void requestUpdateCanvas(const QRect &canvasrect, bool lock);
+	void requestRendering(const QRect &canvasrect);
 private slots:
 	void onSelectionOutlineReady(SelectionOutline const &data);
 	void onTimer();
