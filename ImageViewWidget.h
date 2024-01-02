@@ -25,8 +25,8 @@ private:
 
 	Canvas *canvas();
 	Canvas const *canvas() const;
-
-	QSize imageSize() const;
+	
+	QSize canvasSize() const;
 	QPoint center() const;
 	QPointF centerF() const;
 
@@ -42,7 +42,7 @@ private:
 	void updateCursorAnchorPos();
 	QBrush stripeBrush();
 	void initBrushes();
-	QImage generateOutlineImage(const euclase::Image &selection, bool *abort);
+	QImage generateSelectionOutlineImage(const euclase::Image &selection, bool *abort);
 	void internalUpdateScroll();
 	void startRenderingThread();
 	void stopRenderingThread();

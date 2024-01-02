@@ -18,7 +18,6 @@
 #include <QSvgRenderer>
 #include <QWheelEvent>
 #include <cmath>
-#include <memory>
 #include <mutex>
 #include <thread>
 
@@ -250,6 +249,12 @@ bool ImageViewWidget::isRectVisible() const
 	return m->rect_visible;
 }
 
+/**
+ * @brief ImageViewWidget::stripeBrush
+ * @return ブラシ
+ *
+ * ストライプパターンのブラシを返す
+ */
 QBrush ImageViewWidget::stripeBrush()
 {
 	QImage image(8, 8, QImage::Format_Indexed8);
@@ -266,32 +271,56 @@ QBrush ImageViewWidget::stripeBrush()
 	return QBrush(image);
 }
 
-QSize ImageViewWidget::imageSize() const
+/**
+ * @brief ImageViewWidget::canvasSize
+ * @return 画像のサイズ
+ *
+ * キャンバスのサイズを返す
+ */
+QSize ImageViewWidget::canvasSize() const
 {
 	return canvas()->size();
 }
 
+/**
+ * @brief ImageViewWidget::center
+ *
+ * ビューポート座標系での中心座標を返す
+ */
 QPoint ImageViewWidget::center() const
 {
 	return QPoint(width() / 2, height() / 2);
 }
 
+/**
+ * @brief ImageViewWidget::centerF
+ *
+ * ビューポート座標系での中心座標を返す
+ */
 QPointF ImageViewWidget::centerF() const
 {
 	return QPointF(width() / 2.0, height() / 2.0);
 }
 
-
+/**
+ * @brief ImageViewWidget::imageScrollRange
+ * @return スクロール範囲
+ *
+ * 画像のスクロール範囲を返す
+ */
 QSize ImageViewWidget::imageScrollRange() const
 {
-	QSize sz = imageSize();
+	QSize sz = canvasSize();
 	int w = int(sz.width() * scale());
 	int h = int(sz.height() * scale());
 	return QSize(w, h);
 }
 
-
-
+/**
+ * @brief ImageViewWidget::clearRenderCache
+ *
+ * レンダリングキャッシュをクリアする
+ */
 void ImageViewWidget::clearRenderCache(bool clear_offscreen, bool lock)
 {
 	if (lock) {
@@ -311,6 +340,30 @@ void ImageViewWidget::clearRenderCache(bool clear_offscreen, bool lock)
 	}
 }
 
+/**
+ * @brief ImageViewWidget::requestUpdateCanvas
+ * @param canvasrect キャンバス座標系での更新領域
+ * @param lock 排他処理を行う場合はtrue
+ *
+ * キャンバス座標系での更新領域を追加する
+ */
+void ImageViewWidget::requestUpdateCanvas(const QRect &canvasrect, bool lock)
+{
+	if (lock) {
+		std::lock_guard lock(m->render_mutex);
+		requestUpdateCanvas(canvasrect, false);
+		return;
+	}
+	m->render_canvas_rects.push_back(canvasrect);
+}
+
+/**
+ * @brief ImageViewWidget::requestUpdateView
+ * @param viewrect ビューポート座標系での更新領域
+ * @param lock 排他処理を行う場合はtrue
+ *
+ * ビューポート座標系での更新領域を追加する
+ */
 void ImageViewWidget::requestUpdateView(const QRect &viewrect, bool lock)
 {
 	QPointF topleft = viewrect.topLeft();
@@ -324,6 +377,12 @@ void ImageViewWidget::requestUpdateView(const QRect &viewrect, bool lock)
 	requestUpdateCanvas(QRect(x0, y0, x1 - x0, y1 - y0), lock);
 }
 
+/**
+ * @brief ImageViewWidget::requestUpdateEntire
+ * @param lock 排他処理を行う場合はtrue
+ *
+ * 画面全体の更新を要求する
+ */
 void ImageViewWidget::requestUpdateEntire(bool lock)
 {
 	if (lock) {
@@ -335,16 +394,13 @@ void ImageViewWidget::requestUpdateEntire(bool lock)
 	requestUpdateView({0, 0, width(), height()}, false);
 }
 
-void ImageViewWidget::requestUpdateCanvas(const QRect &canvasrect, bool lock)
-{
-	if (lock) {
-		std::lock_guard lock(m->render_mutex);
-		requestUpdateCanvas(canvasrect, false);
-		return;
-	}
-	m->render_canvas_rects.push_back(canvasrect);
-}
-
+/**
+ * @brief ImageViewWidget::requestUpdateCanvas
+ * @param canvasrects キャンバス座標系での更新領域
+ * @param lock 排他処理を行う場合はtrue
+ *
+ * キャンバス座標系で更新要求する
+ */
 void ImageViewWidget::requestRendering(const QRect &canvasrect)
 {
 	std::lock_guard lock(m->render_mutex);
@@ -357,6 +413,14 @@ void ImageViewWidget::requestRendering(const QRect &canvasrect)
 	m->render_requested = true;
 }
 
+/**
+ * @brief ImageViewWidget::internalScrollImage
+ * @param x スクロール先のx座標
+ * @param y スクロール先のy座標
+ * @param differential_update 差分更新する場合はtrue
+ *
+ * 画面をスクロールする
+ */
 void ImageViewWidget::internalScrollImage(double x, double y, bool differential_update)
 {
 	auto old_offset = m->d.view_scroll_offset;
@@ -367,7 +431,7 @@ void ImageViewWidget::internalScrollImage(double x, double y, bool differential_
 	m->d.view_scroll_offset = QPointF(x, y);
 
 	if (differential_update) { // 差分更新
-		if (m->d.view_scroll_offset != old_offset) {
+		if (m->d.view_scroll_offset != old_offset) { // スクロールした
 			int delta_x = (int)ceil(old_offset.x() - x); // 右にスクロールするとdelta_xは正
 			int delta_y = (int)ceil(old_offset.y() - y); // 下にスクロールするとdelta_yは正
 			{
@@ -419,6 +483,11 @@ void ImageViewWidget::scrollImage(double x, double y, bool differential_update)
 	}
 }
 
+/**
+ * @brief ImageViewWidget::refrectScrollBar
+ *
+ * スクロールバーの値をスクロール位置に反映する
+ */
 void ImageViewWidget::refrectScrollBar()
 {
 	// スクロールバーの値をスクロール位置に反映する
@@ -470,11 +539,23 @@ void ImageViewWidget::requestUpdateSelectionOutline()
 	m->selection_outline_requested = true;
 }
 
+/**
+ * @brief ImageViewWidget::setScaleAnchorPos
+ * @param pos 拡大縮小の基準座標
+ *
+ * 拡大縮小の基準座標を設定する
+ */
 void ImageViewWidget::setScaleAnchorPos(QPointF const &pos)
 {
 	m->d.scale_anchor_pos = pos;
 }
 
+/**
+ * @brief ImageViewWidget::getScaleAnchorPos
+ * @return 拡大縮小の基準座標
+ *
+ * 拡大縮小の基準座標を取得する
+ */
 QPointF ImageViewWidget::getScaleAnchorPos()
 {
 	return m->d.scale_anchor_pos;
@@ -490,6 +571,14 @@ void ImageViewWidget::updateCursorAnchorPos()
 	setScaleAnchorPos(mapToCanvasFromViewport(mapFromGlobal(QCursor::pos())));
 }
 
+/**
+ * @brief ImageViewWidget::setScale
+ * @param s 拡大率
+ * @param fire_event イベントを発行する場合はtrue
+ * @return 拡大率が変更された場合はtrue
+ *
+ * 拡大率を設定する
+ */
 bool ImageViewWidget::setScale(double s, bool fire_event)
 {
 	if (s < 1.0 / MIN_SCALE) s = 1.0 / MIN_SCALE;
@@ -570,7 +659,7 @@ void ImageViewWidget::zoomToCenter(double scale)
  */
 void ImageViewWidget::scaleFit(double ratio)
 {
-	QSize sz = imageSize();
+	QSize sz = canvasSize();
 	double w = sz.width();
 	double h = sz.height();
 	if (w > 0 && h > 0) {
@@ -585,22 +674,43 @@ void ImageViewWidget::scaleFit(double ratio)
 	updateCursorAnchorPos(); // ホイールスクロールの基準座標を更新
 }
 
+/**
+ * @brief ImageViewWidget::scale100
+ *
+ * 拡大率を100%に設定する
+ */
 void ImageViewWidget::scale100()
 {
 	zoomToCenter(1.0);
 }
 
+/**
+ * @brief ImageViewWidget::scaleIn
+ *
+ * 拡大率を1段階大きくする
+ */
 void ImageViewWidget::zoomIn()
 {
 	zoomToCenter(scale() * 2);
 }
 
+/**
+ * @brief ImageViewWidget::scaleOut
+ *
+ * 拡大率を1段階小さくする
+ */
 void ImageViewWidget::zoomOut()
 {
 	zoomToCenter(scale() / 2);
 }
 
-QImage ImageViewWidget::generateOutlineImage(euclase::Image const &selection, bool *abort)
+/**
+ * @brief ImageViewWidget::generateSelectionOutlineImage
+ * @return アウトライン画像
+ *
+ * 選択領域のアウトライン画像を生成する
+ */
+QImage ImageViewWidget::generateSelectionOutlineImage(euclase::Image const &selection, bool *abort)
 {
 	QImage image;
 	int w = selection.width();
@@ -669,21 +779,22 @@ SelectionOutline ImageViewWidget::renderSelectionOutline(bool *abort)
 			int dy = int(dp0.y());
 			int dw = int(dp1.x()) - dx;
 			int dh = int(dp1.y()) - dy;
-			selection = canvas()->renderSelection(QRect(dx, dy, dw, dh), abort).image();
+			selection = canvas()->renderSelection(QRect(dx, dy, dw, dh), abort).image(); // 選択領域をレンダリング
 			if (abort && *abort) return {};
-			if (selection.memtype() == euclase::Image::CUDA) {
+			// 選択領域をスケーリング
+			if (selection.memtype() == euclase::Image::CUDA) { // CUDAメモリの場合はスケーリングをCUDAで行う
 				euclase::Image sel(vw, vh, euclase::Image::Format_8_Grayscale, euclase::Image::CUDA);
 				int sw = selection.width();
 				int sh = selection.height();
 				global->cuda->scale(vw, vh, vw, sel.data(), sw, sh, sw, selection.data(), 1);
 				selection = sel;
-			} else {
+			} else { // それ以外はホストメモリで行う
 				selection = selection.scaled(vw, vh, false);
 			}
 			selection = selection.toHost();
 		}
 		if (selection.width() > 0 && selection.height() > 0) {
-			QImage image = generateOutlineImage(selection, abort);
+			QImage image = generateSelectionOutlineImage(selection, abort); // アウトライン画像を生成
 			if (image.isNull()) return {};
 			data.bitmap = QBitmap::fromImage(image);
 			data.point = QPoint(vx, vy);
@@ -738,19 +849,19 @@ void ImageViewWidget::runImageRendering()
 
 			std::vector<QRect> rects;
 
-			{
+			{ // レンダリングする領域を決定
 				std::lock_guard lock(m->render_mutex);
 				QPointF topleft = mapper.mapToCanvasFromViewport(QPointF(0, 0));
 				QPointF bottomright = mapper.mapToCanvasFromViewport(QPointF(width(), height()));
 				const int S1 = OFFSCREEN_PANEL_SIZE - 1;
-				int x0 = (int)topleft.x() & ~S1;
+				int x0 = (int)topleft.x() & ~S1; // パネルサイズ単位に切り下げ
 				int y0 = (int)topleft.y() & ~S1;
 				int x1 = (int)bottomright.x() & ~S1;
 				int y1 = (int)bottomright.y() & ~S1;
 				for (int y = y0; y <= y1; y += OFFSCREEN_PANEL_SIZE) {
 					for (int x = x0; x <= x1; x += OFFSCREEN_PANEL_SIZE) {
-						QRect rect(x, y, OFFSCREEN_PANEL_SIZE, OFFSCREEN_PANEL_SIZE);
-						for (auto const &r : m->render_canvas_rects) {
+						QRect rect(x, y, OFFSCREEN_PANEL_SIZE, OFFSCREEN_PANEL_SIZE); // 描画する候補の矩形
+						for (auto const &r : m->render_canvas_rects) { // 描画要求された矩形と重なっているかどうか
 							if (rect.intersects(r)) {
 								rects.push_back(rect);
 								break;
@@ -880,21 +991,14 @@ void ImageViewWidget::runImageRendering()
 
 				// 透明部分の市松模様
 				for (int iy = 0; iy < qimg.height(); iy++) {
-					uint8_t *p = qimg.scanLine(iy);
+					euclase::OctetRGBA *p = (euclase::OctetRGBA *)qimg.scanLine(iy);
 					for (int ix = 0; ix < qimg.width(); ix++) {
-						euclase::OctetRGBA a, b;
-						b.r = b.g = b.b = (((dx + ix) ^ (dy + iy)) & 8) ? 255 : 192; // 市松模様パターン
-						b.a = 255;
-						a.r = p[0];
-						a.g = p[1];
-						a.b = p[2];
-						a.a = p[3];
-						a = AlphaBlend::blend(b, a);
-						p[0] = a.r;
-						p[1] = a.g;
-						p[2] = a.b;
-						p[3] = a.a;
-						p += 4;
+						if (p->a < 255) { // 透明部分
+							uint8_t v = (((dx + ix) ^ (dy + iy)) & 8) ? 255 : 192; // 市松模様パターン
+							euclase::OctetRGBA bg(v, v, v, 255); // 市松模様の背景
+							*p = AlphaBlend::blend(bg, *p); // 背景に合成
+						}
+						p++;
 					}
 				}
 
@@ -913,7 +1017,7 @@ void ImageViewWidget::runImageRendering()
 				std::lock_guard lock(m->render_mutex);
 
 				if (!isCanceled()) {
-					m->render_canvas_rects.clear();
+					m->render_canvas_rects.clear(); // 描画済みのパネル矩形をクリア
 					update();
 				}
 
