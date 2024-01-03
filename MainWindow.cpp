@@ -56,6 +56,8 @@ struct MainWindow::Private {
 	MainWindow::RectHandle rect_handle = MainWindow::RectHandle::None;
 
 	bool preview_layer_enabled = true;
+
+	std::mutex canvas_mutex;
 };
 
 MainWindow::MainWindow(QWidget *parent)
@@ -132,6 +134,11 @@ Canvas *MainWindow::canvas()
 Canvas const *MainWindow::canvas() const
 {
 	return &m->doc;
+}
+
+std::mutex &MainWindow::mutexForCanvas() const
+{
+	return m->canvas_mutex;
 }
 
 int MainWindow::canvasWidth() const
@@ -222,7 +229,7 @@ void MainWindow::resetView(bool fitview)
 	if (fitview) {
 		fitView();
 	} else {
-		updateImageView();
+		updateImageViewEntire();
 	}
 	onSelectionChanged();
 }
@@ -230,11 +237,6 @@ void MainWindow::resetView(bool fitview)
 euclase::Image::MemoryType MainWindow::preferredMemoryType() const
 {
 	return global->cuda ? euclase::Image::CUDA : euclase::Image::Host;;
-}
-
-void MainWindow::needToUpdateView(const QRect &canvasrect)
-{
-	ui->widget_image_view->requestRendering(canvasrect);
 }
 
 void MainWindow::setupBasicLayer(Canvas::Layer *p)
@@ -266,7 +268,7 @@ void MainWindow::setImage(euclase::Image image, bool fitview)
 	canvas()->renderToLayer(canvas()->current_layer(), Canvas::Canvas::PrimaryLayer, layer, nullptr, opt, nullptr);
 
 	resetView(fitview);
-	ui->widget_image_view->requestRendering({});
+	updateImageView({});
 }
 
 void MainWindow::setImageFromBytes(QByteArray const &ba, bool fitview)
@@ -288,6 +290,8 @@ void MainWindow::openFile(QString const &path)
 
 void MainWindow::setAlternateImage(euclase::Image const &image)
 {
+	std::lock_guard lock(mutexForCanvas());
+
 	Canvas::Layer layer;
 	layer.setImage(QPoint(0, 0), image);
 	Canvas::RenderOption opt;
@@ -317,8 +321,15 @@ bool MainWindow::isPreviewEnabled() const
 
 Canvas::Panel MainWindow::renderToPanel(Canvas::InputLayer inputlayer, euclase::Image::Format format, QRect const &r, QRect const &maskrect, bool *abort) const
 {
+	std::lock_guard lock(mutexForCanvas());
 	auto activepanel = isPreviewEnabled() ? Canvas::AlternateLayer : Canvas::PrimaryLayer;
 	return canvas()->renderToPanel(inputlayer, format, r, maskrect, activepanel, abort).image();
+}
+
+euclase::Image MainWindow::renderSelection(const QRect &r, bool *abort) const
+{
+	std::lock_guard lock(mutexForCanvas());
+	return canvas()->renderSelection(r, abort).image();
 }
 
 euclase::Image MainWindow::renderToImage(euclase::Image::Format format, QRect const &r, bool *abort) const
@@ -446,7 +457,7 @@ void MainWindow::filter(FilterContext *context, AbstractFilterForm *form, std::f
 	} else {
 		canvas()->current_layer()->finishAlternatePanels(false);
 	}
-	updateImageView();
+	updateImageViewEntire();
 }
 
 euclase::Image sepia(euclase::Image const &image, FilterStatus *status)
@@ -606,12 +617,6 @@ void MainWindow::on_action_trim_triggered()
 	}
 }
 
-void MainWindow::updateImageView()
-{
-	ui->widget_image_view->clearRenderCache(false, true);
-	ui->widget_image_view->requestUpdateSelectionOutline();
-}
-
 void MainWindow::updateSelectionOutline()
 {
 	ui->widget_image_view->requestUpdateSelectionOutline();
@@ -627,22 +632,52 @@ void MainWindow::clearCanvas()
 	canvas()->clear();
 }
 
+/**
+ * @brief MainWindow::updateImageViewEntire
+ *
+ * ビューの更新を要求
+ */
+void MainWindow::updateImageViewEntire()
+{
+	ui->widget_image_view->clearRenderCache(false, true);
+	ui->widget_image_view->requestUpdateSelectionOutline();
+}
 
+/**
+ * @brief ビューの更新を要求
+ * @param canvasrect 更新する領域（キャンバス座標系）
+ */
+void MainWindow::updateImageView(const QRect &canvasrect)
+{
+	ui->widget_image_view->requestRendering(canvasrect);
+}
 
 void MainWindow::paintLayer(Operation op, Canvas::Layer const &layer)
 {
 	Canvas::RenderOption opt;
-	opt.notify_changed_rect = [&](QRect const &rect){
-		needToUpdateView(rect);
+	opt.notify_changed_rect = [&](QRect const &canvasrect){
+		updateImageView(canvasrect);
 	};
 	opt.brush_color = foregroundColor();
-	if (op == Operation::PaintToCurrentLayer) {
-		canvas()->paintToCurrentLayer(layer, opt, nullptr);
-	} else if (op == Operation::PaintToCurrentAlternate) {
-		canvas()->paintToCurrentAlternate(layer, opt, nullptr);
+	{
+		std::lock_guard lock(mutexForCanvas());
+		////ui->widget_image_view->cancelRendering(); // これを呼ぶと、描画要求が溜まりすぎて、描画が追いつかなくなる
+		if (op == Operation::PaintToCurrentLayer) {
+			canvas()->paintToCurrentLayer(layer, opt, nullptr);
+		} else if (op == Operation::PaintToCurrentAlternate) {
+			canvas()->paintToCurrentAlternate(layer, opt, nullptr);
+		}
 	}
 }
 
+/**
+ * @brief MainWindow::drawBrush
+ * @param one
+ *
+ * ブラシを描画する
+ * oneがtrueの場合は、一回だけ描画する
+ * falseの場合は、前回の座標から現在の座標までの間を補完して描画する
+ */
 void MainWindow::drawBrush(bool one)
 {
 	auto Put = [&](QPointF const &pt, Brush const &brush){
@@ -665,7 +700,6 @@ void MainWindow::drawBrush(bool one)
 		}
 		paintLayer(Operation::PaintToCurrentAlternate, layer);
 	};
-
 
 	auto Point = [&](double t){
 		return euclase::cubicBezierPoint(m->brush_bezier[0], m->brush_bezier[1], m->brush_bezier[2], m->brush_bezier[3], t);
@@ -742,7 +776,7 @@ void MainWindow::onPenUp(double x, double y)
 {
 	(void)x;
 	(void)y;
-	updateImageView();
+	updateImageViewEntire();
 	m->brush_next_distance = 0;
 	resetCurrentAlternateOption();
 }
@@ -1388,7 +1422,7 @@ void MainWindow::on_action_select_rectangle_triggered()
 			Canvas::SelectionOperation op = Canvas::SelectionOperation::AddSelection;
 			canvas()->changeSelection(op, r);
 			onSelectionChanged();
-			updateImageView();
+			updateImageViewEntire();
 		}
 	}
 }
@@ -1542,7 +1576,7 @@ void MainWindow::colorCollection()
 
 void MainWindow::test()
 {
-#if 0
+#if 1
 	ui->widget_image_view->requestRendering({});
 #else
 	openFile("/mnt/lucy/pub/pictures/favolite/white.png");

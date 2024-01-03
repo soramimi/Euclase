@@ -53,7 +53,7 @@ private:
 	void paintLayer(Operation op, const Canvas::Layer &layer);
 
 	void drawBrush(bool one);
-	void updateImageView();
+	void updateImageViewEntire();
 	void updateSelectionOutline();
 	void setColorRed(int value);
 	void setColorGreen(int value);
@@ -163,7 +163,9 @@ public:
 	bool isPreviewEnabled() const;
 	void setCurrentLayer(int index);
 	euclase::Image::MemoryType preferredMemoryType() const;
-	void needToUpdateView(const QRect &canvasrect);
+	void updateImageView(const QRect &canvasrect); // canvasrect is in canvas coordinate
+	std::mutex &mutexForCanvas() const;
+	euclase::Image renderSelection(const QRect &r, bool *abort) const;
 protected:
 	void dragEnterEvent(QDragEnterEvent *event);
 	void dropEvent(QDropEvent *event);

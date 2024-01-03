@@ -25,6 +25,8 @@ private:
 
 	Canvas *canvas();
 	Canvas const *canvas() const;
+
+	std::mutex &mutexForOffscreen();
 	
 	QSize canvasSize() const;
 	QPoint center() const;
@@ -42,7 +44,7 @@ private:
 	void updateCursorAnchorPos();
 	QBrush stripeBrush();
 	void initBrushes();
-	QImage generateSelectionOutlineImage(const euclase::Image &selection, bool *abort);
+	QImage generateSelectionOutlineImage(const QImage &selection, bool *abort);
 	void internalUpdateScroll();
 	void startRenderingThread();
 	void stopRenderingThread();
@@ -90,6 +92,8 @@ public:
 	void setToolCursor(const QCursor &cursor);
 	void doHandScroll();
 	void updateToolCursor();
+
+	void cancelRendering();
 
 	static constexpr QColor BGCOLOR = QColor(240, 240, 240);
 

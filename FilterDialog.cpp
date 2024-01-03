@@ -108,7 +108,7 @@ void FilterDialog::setProgress(float value)
 void FilterDialog::updateImageView()
 {
 	mainwindow->setPreviewLayerEnable(ui->checkBox_preview->isChecked());
-	mainwindow->updateImageView();
+	mainwindow->updateImageViewEntire();
 }
 
 void FilterDialog::timerEvent(QTimerEvent *event)

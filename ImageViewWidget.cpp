@@ -29,7 +29,6 @@ struct ImageViewWidget::Private {
 	QScrollBar *v_scroll_bar = nullptr;
 	QScrollBar *h_scroll_bar = nullptr;
 	QString mime_type;
-	QMutex sync;
 
 	struct Data {
 		QPointF view_scroll_offset;
@@ -64,8 +63,8 @@ struct ImageViewWidget::Private {
 
 	QPixmap transparent_pixmap;
 
+	std::mutex mutex;
 	std::thread image_rendering_thread;
-	std::mutex render_mutex;
 	bool render_interrupted = false;
 	bool render_invalidate = false;
 	bool render_requested = false;
@@ -145,6 +144,11 @@ Canvas const *ImageViewWidget::canvas() const
 	return m->mainwindow->canvas();
 }
 
+std::mutex &ImageViewWidget::mutexForOffscreen()
+{
+	return m->mutex;
+}
+
 void ImageViewWidget::init(MainWindow *mainwindow, QScrollBar *vsb, QScrollBar *hsb)
 {
 	m->mainwindow = mainwindow;
@@ -203,7 +207,7 @@ void ImageViewWidget::startRenderingThread()
 void ImageViewWidget::stopRenderingThread()
 {
 	{
-		std::lock_guard lock(m->render_mutex);
+		std::lock_guard lock(mutexForOffscreen());
 		m->composed_panels_cache.clear();
 		m->render_canvas_rects.clear();
 		m->render_interrupted = true;
@@ -324,13 +328,14 @@ QSize ImageViewWidget::imageScrollRange() const
 void ImageViewWidget::clearRenderCache(bool clear_offscreen, bool lock)
 {
 	if (lock) {
-		std::lock_guard lock(m->render_mutex);
+		std::lock_guard lock(mutexForOffscreen());
 		clearRenderCache(clear_offscreen, false);
 		return;
 	}
 
 	m->offscreen1_mapper = currentCoordinateMapper();
 	m->composed_panels_cache.clear();
+	m->render_canvas_rects.clear();
 	m->render_requested = true;
 	m->render_canceled = true;
 
@@ -350,7 +355,7 @@ void ImageViewWidget::clearRenderCache(bool clear_offscreen, bool lock)
 void ImageViewWidget::requestUpdateCanvas(const QRect &canvasrect, bool lock)
 {
 	if (lock) {
-		std::lock_guard lock(m->render_mutex);
+		std::lock_guard lock(mutexForOffscreen());
 		requestUpdateCanvas(canvasrect, false);
 		return;
 	}
@@ -381,12 +386,12 @@ void ImageViewWidget::requestUpdateView(const QRect &viewrect, bool lock)
  * @brief ImageViewWidget::requestUpdateEntire
  * @param lock 排他処理を行う場合はtrue
  *
- * 画面全体の更新を要求する
+ * 画面全体の更新を予約する
  */
 void ImageViewWidget::requestUpdateEntire(bool lock)
 {
 	if (lock) {
-		std::lock_guard lock(m->render_mutex);
+		std::lock_guard lock(mutexForOffscreen());
 		requestUpdateEntire(false);
 		return;
 	}
@@ -395,15 +400,14 @@ void ImageViewWidget::requestUpdateEntire(bool lock)
 }
 
 /**
- * @brief ImageViewWidget::requestUpdateCanvas
+ * @brief ImageViewWidget::requestRendering
  * @param canvasrects キャンバス座標系での更新領域
- * @param lock 排他処理を行う場合はtrue
  *
  * キャンバス座標系で更新要求する
  */
 void ImageViewWidget::requestRendering(const QRect &canvasrect)
 {
-	std::lock_guard lock(m->render_mutex);
+	std::lock_guard lock(mutexForOffscreen());
 	m->offscreen1_mapper = currentCoordinateMapper();
 	if (canvasrect.isEmpty()) {
 		requestUpdateEntire(false);
@@ -435,7 +439,7 @@ void ImageViewWidget::internalScrollImage(double x, double y, bool differential_
 			int delta_x = (int)ceil(old_offset.x() - x); // 右にスクロールするとdelta_xは正
 			int delta_y = (int)ceil(old_offset.y() - y); // 下にスクロールするとdelta_yは正
 			{
-				std::lock_guard lock(m->render_mutex);
+				std::lock_guard lock(mutexForOffscreen());
 				m->offscreen1_mapper = currentCoordinateMapper();
 				m->render_canceled = true;
 
@@ -710,36 +714,28 @@ void ImageViewWidget::zoomOut()
  *
  * 選択領域のアウトライン画像を生成する
  */
-QImage ImageViewWidget::generateSelectionOutlineImage(euclase::Image const &selection, bool *abort)
+QImage ImageViewWidget::generateSelectionOutlineImage(QImage const &selection, bool *abort)
 {
+	Q_ASSERT(selection.format() == QImage::Format_Grayscale8);
+
 	QImage image;
 	int w = selection.width();
 	int h = selection.height();
 
-	if (selection.memtype() == euclase::Image::CUDA) {
-		euclase::Image tmpimg(w, h, euclase::Image::Format_8_Grayscale, euclase::Image::CUDA);
-		global->cuda->outline_uint8_grayscale(w, h, selection.data(), tmpimg.data());
-		return tmpimg.qimage();
-	}
-
-	if (selection.memtype() == euclase::Image::Host) {
-		image = QImage(w, h, QImage::Format_Grayscale8);
-		image.fill(Qt::white);
-		for (int y = 1; y + 1 < h; y++) {
-			if (abort && *abort) return {};
-			uint8_t const *s0 = selection.scanLine(y - 1);
-			uint8_t const *s1 = selection.scanLine(y);
-			uint8_t const *s2 = selection.scanLine(y + 1);
-			uint8_t *d = image.scanLine(y);
-			for (int x = 1; x + 1 < w; x++) {
-				uint8_t v = ~(s0[x - 1] & s0[x] & s0[x + 1] & s1[x - 1] & s1[x + 1] & s2[x - 1] & s2[x] & s2[x + 1]) & s1[x];
-				d[x] = (v & 0x80) ? 0 : 255;
-			}
+	image = QImage(w, h, QImage::Format_Grayscale8);
+	image.fill(Qt::white);
+	for (int y = 1; y + 1 < h; y++) {
+		if (abort && *abort) return {};
+		uint8_t const *s0 = selection.scanLine(y - 1);
+		uint8_t const *s1 = selection.scanLine(y);
+		uint8_t const *s2 = selection.scanLine(y + 1);
+		uint8_t *d = image.scanLine(y);
+		for (int x = 1; x + 1 < w; x++) {
+			uint8_t v = ~(s0[x - 1] & s0[x] & s0[x + 1] & s1[x - 1] & s1[x + 1] & s2[x - 1] & s2[x] & s2[x + 1]) & s1[x];
+			d[x] = (v & 0x80) ? 0 : 255;
 		}
-		return image;
 	}
-
-	return {};
+	return image;
 }
 
 /**
@@ -773,32 +769,33 @@ SelectionOutline ImageViewWidget::renderSelectionOutline(bool *abort)
 		int vy = (int)vp0.y();
 		int vw = (int)vp1.x() - vx;
 		int vh = (int)vp1.y() - vy;
-		euclase::Image selection;
+		QImage selection;
 		{
 			int dx = int(dp0.x());
 			int dy = int(dp0.y());
 			int dw = int(dp1.x()) - dx;
 			int dh = int(dp1.y()) - dy;
-			selection = canvas()->renderSelection(QRect(dx, dy, dw, dh), abort).image(); // 選択領域をレンダリング
+			euclase::Image sel;
+			{
+				std::lock_guard lock(mainwindow()->mutexForCanvas());
+				sel = canvas()->renderSelection(QRect(dx, dy, dw, dh), abort).image(); // 選択領域をレンダリング
+			}
 			if (abort && *abort) return {};
 			// 選択領域をスケーリング
-			if (selection.memtype() == euclase::Image::CUDA) { // CUDAメモリの場合はスケーリングをCUDAで行う
-				euclase::Image sel(vw, vh, euclase::Image::Format_8_Grayscale, euclase::Image::CUDA);
-				int sw = selection.width();
-				int sh = selection.height();
-				global->cuda->scale(vw, vh, vw, sel.data(), sw, sh, sw, selection.data(), 1);
-				selection = sel;
+			if (sel.memtype() == euclase::Image::CUDA) { // CUDAメモリの場合はスケーリングをCUDAで行う
+				euclase::Image tmp(vw, vh, euclase::Image::Format_8_Grayscale, euclase::Image::CUDA);
+				int sw = sel.width();
+				int sh = sel.height();
+				global->cuda->scale(vw, vh, vw, tmp.data(), sw, sh, sw, sel.data(), 1);
+				selection = tmp.qimage();
 			} else { // それ以外はホストメモリで行う
-				selection = selection.scaled(vw, vh, false);
+				selection = sel.qimage().scaled(vw, vh);
 			}
-			selection = selection.toHost();
 		}
-		if (selection.width() > 0 && selection.height() > 0) {
-			QImage image = generateSelectionOutlineImage(selection, abort); // アウトライン画像を生成
-			if (image.isNull()) return {};
-			data.bitmap = QBitmap::fromImage(image);
-			data.point = QPoint(vx, vy);
-		}
+		QImage outline = generateSelectionOutlineImage(selection, abort); // アウトライン画像を生成
+		if (outline.isNull()) return {};
+		data.bitmap = QBitmap::fromImage(outline);
+		data.point = QPoint(vx, vy);
 	}
 	return data;
 }
@@ -812,9 +809,16 @@ void ImageViewWidget::runImageRendering()
 {
 	while (1) {
 		if (m->render_interrupted) return;
-		if (m->render_requested) {
-			m->render_requested = false;
+		bool requested = false;
+		{
+			std::lock_guard lock(mutexForOffscreen());
 			m->render_canceled = false;
+			if (m->render_requested) {
+				m->render_requested = false;
+				requested = true;
+			}
+		}
+		if (requested) {
 
 			// qDebug() << Q_FUNC_INFO;
 
@@ -823,7 +827,7 @@ void ImageViewWidget::runImageRendering()
 
 			CoordinateMapper mapper;
 			{
-				std::lock_guard lock(m->render_mutex);
+				std::lock_guard lock(mutexForOffscreen());
 				mapper = m->offscreen1_mapper;
 				if (m->render_invalidate) {
 					m->render_invalidate = false;
@@ -850,7 +854,7 @@ void ImageViewWidget::runImageRendering()
 			std::vector<QRect> rects;
 
 			{ // レンダリングする領域を決定
-				std::lock_guard lock(m->render_mutex);
+				std::lock_guard lock(mutexForOffscreen());
 				QPointF topleft = mapper.mapToCanvasFromViewport(QPointF(0, 0));
 				QPointF bottomright = mapper.mapToCanvasFromViewport(QPointF(width(), height()));
 				const int S1 = OFFSCREEN_PANEL_SIZE - 1;
@@ -952,12 +956,16 @@ void ImageViewWidget::runImageRendering()
 				Canvas::Panel *panel = nullptr;
 				{
 					// パネルキャッシュから検索
-					std::lock_guard lock(m->render_mutex);
+					std::lock_guard lock(mutexForOffscreen());
 					QPoint pos(x, y);
 					for (int j = panelindex; j < m->composed_panels_cache.size(); j++) {
 						if (m->composed_panels_cache[j].offset() == pos) {
 							std::swap(m->composed_panels_cache[panelindex], m->composed_panels_cache[j]);
 							panel = &m->composed_panels_cache[panelindex];
+							if (0) {
+								Canvas::Panel newpanel = m->mainwindow->renderToPanel(Canvas::AllLayers, euclase::Image::Format_F_RGBA, rect, {}, (bool *)&m->render_interrupted);
+								*panel->imagep() = newpanel.imagep()->toHost();
+							}
 							image = cropImage(panel->image(), sx, sy, sw, sh); // 画像を切り出す
 							panelindex++;
 							break;
@@ -971,7 +979,7 @@ void ImageViewWidget::runImageRendering()
 					newpanel.setOffset(x, y);
 					{
 						// パネルキャッシュに追加
-						std::lock_guard lock(m->render_mutex);
+						std::lock_guard lock(mutexForOffscreen());
 						if (panelindex <= m->composed_panels_cache.size()) { // 別スレッドがcomposed_panels_cacheをclearすることがある
 							m->composed_panels_cache.insert(m->composed_panels_cache.begin() + panelindex, newpanel);
 							panel = &m->composed_panels_cache[panelindex];
@@ -1006,15 +1014,22 @@ void ImageViewWidget::runImageRendering()
 
 				// オフスクリーンへ描画する
 				{
-					std::lock_guard lock(m->render_mutex);
+					std::lock_guard lock(mutexForOffscreen());
 					if (!isCanceled()) {
+#if 0
+						{
+							QPainter pr(&qimg);
+							pr.setPen(QPen(QColor(rand() % 255, rand() % 255, rand() % 255, 255), 1));
+							pr.drawEllipse(0, 0, qimg.width(), qimg.height());
+						}
+#endif
 						QPoint pt = QPoint(dx, dy) - center() + m->offscreen1_mapper.scrollOffset().toPoint();
 						m->offscreen1.paintImage(pt, qimg, qimg.size(), {});
 					}
 				}
 			}
 			{
-				std::lock_guard lock(m->render_mutex);
+				std::lock_guard lock(mutexForOffscreen());
 
 				if (!isCanceled()) {
 					m->render_canvas_rects.clear(); // 描画済みのパネル矩形をクリア
@@ -1116,7 +1131,7 @@ void ImageViewWidget::paintEvent(QPaintEvent *)
 	Q_ASSERT(m->offscreen1.offset().x() == 0); // オフスクリーンの原点は常に(0, 0)
 	Q_ASSERT(m->offscreen1.offset().y() == 0);
 	{
-		std::lock_guard lock(m->render_mutex);
+		std::lock_guard lock(mutexForOffscreen());
 		auto osmapper = offscreenCoordinateMapper();
 		for (PanelizedImage::Panel const &panel : m->offscreen1.panels_) {
 			QPoint org = panel.offset - m->offscreen1_mapper.scrollOffset().toPoint() + center();
@@ -1208,7 +1223,7 @@ void ImageViewWidget::paintEvent(QPaintEvent *)
  */
 void ImageViewWidget::rescaleOffScreen()
 {
-	std::lock_guard lock(m->render_mutex);
+	std::lock_guard lock(mutexForOffscreen());
 
 	Q_ASSERT(m->offscreen1.offset().x() == 0); // オフスクリーンの原点は常に(0, 0)
 	Q_ASSERT(m->offscreen1.offset().y() == 0);
@@ -1265,6 +1280,12 @@ void ImageViewWidget::setToolCursor(QCursor const &cursor)
 void ImageViewWidget::updateToolCursor()
 {
 	setCursor(m->cursor);
+}
+
+void ImageViewWidget::cancelRendering()
+{
+	std::lock_guard lock(mutexForOffscreen());
+	m->render_canceled = true;
 }
 
 void ImageViewWidget::internalUpdateScroll()
