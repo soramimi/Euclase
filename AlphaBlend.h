@@ -11,6 +11,7 @@ public:
 	using OctetRGBA = euclase::OctetRGBA;
 	using OctetGrayA = euclase::OctetGrayA;
 	using FloatRGBA = euclase::FloatRGBA;
+	using FloatGrayA= euclase::FloatGrayA;
 
 	static inline int div255(int v)
 	{
@@ -141,6 +142,15 @@ public:
 		float b = over.b * over.a + base.b * base.a * (1 - over.a);
 		float a = over.a + base.a * (1 - over.a);
 		return FloatRGBA(r / a, g / a, b / a, a);
+	}
+
+	static inline FloatGrayA blend(FloatGrayA const &base, FloatGrayA const &over)
+	{
+		if (over.a <= 0) return base;
+		if (base.a <= 0 || over.a >= 1) return over;
+		float v = over.v * over.a + base.v * base.a * (1 - over.a);
+		float a = over.a + base.a * (1 - over.a);
+		return FloatGrayA(v / a, a);
 	}
 };
 

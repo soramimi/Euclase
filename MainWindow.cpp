@@ -1545,7 +1545,7 @@ void MainWindow::test()
 #if 0
 	ui->widget_image_view->requestRendering({});
 #else
-	openFile("/mnt/lucy/pub/pictures/favolite/IMG_0934.JPG");
+	openFile("/mnt/lucy/pub/pictures/favolite/white.png");
 #endif
 }
 

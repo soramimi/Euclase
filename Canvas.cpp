@@ -517,27 +517,11 @@ void Canvas::composePanel(Panel *target_panel, Panel const *alt_panel, Panel con
 		uint8_t const *mask = alt_mask ? (uint8_t const *)(*alt_mask).imagep()->data() : nullptr;
 
 		for (int i = 0; i < PANEL_SIZE * PANEL_SIZE; i++) {
-			uint8_t m = mask ? mask[i] : 255;
-			if (m == 0) {
-				// nop
-			} else if (m == 255) {
-				dst[i] = src[i];
-			} else {
-				auto t = dst[i];
-				auto u = src[i];
-				if (t.a == 0) {
-					t = u;
-					t.a = 0;
-				} else if (u.a == 0) {
-					u = t;
-					u.a = 0;
-				}
-				float n = m / 255.0f;
-				dst[i].r = (dst[i].r * (1.0f - n) + src[i].r * n);
-				dst[i].g = (dst[i].g * (1.0f - n) + src[i].g * n);
-				dst[i].b = (dst[i].b * (1.0f - n) + src[i].b * n);
-				dst[i].a = (dst[i].a * (1.0f - n) + src[i].a * n);
+			auto s = src[i];
+			if (mask) {
+				s.a = s.a * mask[i] / 255;
 			}
+			dst[i] = AlphaBlend::blend(dst[i], s);
 		}
 	} else if (opt.blend_mode == BlendMode::Erase) {
 		euclase::FloatRGBA *dst = (euclase::FloatRGBA *)target_panel->imagep()->data();
@@ -617,7 +601,11 @@ void Canvas::renderToEachPanels_internal_(Panel *target_panel, QPoint const &tar
 				if (input_layer.alternate_selection_panels.empty()) { // 選択が全く無いなら全選択として処理
 					Panel *alt_panel = findPanel(&input_layer.alternate_panels, offset);
 					if (alt_panel) {
-						input_panel = alt_panel;
+						// input_panel = alt_panel;
+						RenderOption opt2;
+						composed_panel = input_panel->copy();
+						composePanel(&composed_panel, alt_panel, nullptr, opt2);
+						input_panel = &composed_panel;
 					}
 				} else {
 					Panel *alt_mask = findPanel(&input_layer.alternate_selection_panels, offset);
