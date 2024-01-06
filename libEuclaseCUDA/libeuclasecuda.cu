@@ -130,42 +130,63 @@ void cuda_copy_uint8_rgba(int w, int h, cudamem_t const *src, int src_w, int src
 	}
 }
 
-__global__ void cu_blend_float_rgba_kernel(int w, int h, float const *src, int src_w, int sx, int sy, uint8_t const *mask, int mask_w, float *dst, int dst_w, int dx, int dy)
+__device__ void alpha_blend_float_RGBA(float *d, float const *s, float m)
+{
+	float baseR = d[0];
+	float baseG = d[1];
+	float baseB = d[2];
+	float baseA = d[3];
+	float overR = s[0];
+	float overG = s[1];
+	float overB = s[2];
+	float overA = s[3];
+	overA = overA * m;
+	float r = overR * overA + baseR * baseA * (1 - overA);
+	float g = overG * overA + baseG * baseA * (1 - overA);
+	float b = overB * overA + baseB * baseA * (1 - overA);
+	float a = overA + baseA * (1 - overA);
+	if (a > 0) {
+		float t = 1 / a;
+		r *= t;
+		g *= t;
+		b *= t;
+	}
+	d[0] = r;
+	d[1] = g;
+	d[2] = b;
+	d[3] = a;
+}
+
+__device__ void alpha_blend_float_GrayA(float *d, float const *s, float m)
+{
+	float baseV = d[0];
+	float baseA = d[1];
+	float overV = s[0];
+	float overA = s[1];
+	overA = overA * m;
+	float r = overV * overA + baseV * baseA * (1 - overA);
+	float a = overA + baseA * (1 - overA);
+	if (a > 0) {
+		r /= a;
+	}
+	d[0] = r;
+	d[1] = a;
+}
+
+__global__ void cu_blend_float_RGBA_kernel(int w, int h, float const *src, int src_w, int sx, int sy, uint8_t const *mask, int mask_w, float *dst, int dst_w, int dx, int dy)
 {
 	int x = blockIdx.x * blockDim.x + threadIdx.x;
 	int y = blockIdx.y * blockDim.y + threadIdx.y;
 
 	if (x < w && y < h) {
-		uint8_t m = mask ? *(mask + mask_w * y + x) : 255;
 		float const *s = src + 4 * (src_w * (sy + y) + sx + x);
 		float *d = dst + 4 * (dst_w * (dy + y) + dx + x);
-		float baseR = d[0];
-		float baseG = d[1];
-		float baseB = d[2];
-		float baseA = d[3];
-		float overR = s[0];
-		float overG = s[1];
-		float overB = s[2];
-		float overA = s[3];
-		overA = overA * m / 255;
-		float r = overR * overA + baseR * baseA * (1 - overA);
-		float g = overG * overA + baseG * baseA * (1 - overA);
-		float b = overB * overA + baseB * baseA * (1 - overA);
-		float a = overA + baseA * (1 - overA);
-		if (a > 0) {
-			float t = 1 / a;
-			r *= t;
-			g *= t;
-			b *= t;
-		}
-		d[0] = r;
-		d[1] = g;
-		d[2] = b;
-		d[3] = a;
+		float m = mask ? mask[mask_w * y + x] / 255.0f : 1.0f;
+		alpha_blend_float_RGBA(d, s, m);
 	}
 }
 
-void cuda_blend_float_rgba(int w, int h, cudamem_t const *src, int src_w, int src_h, int sx, int sy, uint8_t const *mask, int mask_w, int mask_h, cudamem_t *dst, int dst_w, int dst_h, int dx, int dy)
+void cuda_blend_float_RGBA(int w, int h, cudamem_t const *src, int src_w, int src_h, int sx, int sy, cudamem_t const *mask, int mask_w, int mask_h, cudamem_t *dst, int dst_w, int dst_h, int dx, int dy)
 {
 	float const *s = (float const *)src;
 	float *d = (float *)dst;
@@ -178,7 +199,7 @@ void cuda_blend_float_rgba(int w, int h, cudamem_t const *src, int src_w, int sr
 
 	dim3 blocks((w + 15) / 16, (h + 15) / 16);
 	dim3 threads(16, 16);
-	cu_blend_float_rgba_kernel<<<blocks,threads>>>(w, h, s, src_w, sx, sy, buf_mask, mask_w, d, dst_w, dx, dy);
+	cu_blend_float_RGBA_kernel<<<blocks,threads>>>(w, h, s, src_w, sx, sy, buf_mask, mask_w, d, dst_w, dx, dy);
 
 	if (mask) {
 		cudaFree(buf_mask);
@@ -198,7 +219,7 @@ __global__ void cu_blend_uint8_grayscale_kernel(int w, int h, uint8_t const *src
 	}
 }
 
-void cuda_blend_uint8_grayscale(int w, int h, cudamem_t const *src, int src_w, int src_h, int sx, int sy, uint8_t const *mask, int mask_w, int mask_h, cudamem_t *dst, int dst_w, int dst_h, int dx, int dy)
+void cuda_blend_uint8_grayscale(int w, int h, cudamem_t const *src, int src_w, int src_h, int sx, int sy, cudamem_t const *mask, int mask_w, int mask_h, cudamem_t *dst, int dst_w, int dst_h, int dx, int dy)
 {
 	uint8_t const *s = (uint8_t const *)src;
 	uint8_t *d = (uint8_t *)dst;
@@ -247,6 +268,7 @@ void cuda_outline_uint8_grayscale(int w, int h, cudamem_t const *src, cudamem_t 
 	cu_outline_uint8_grayscale_kernel<<<blocks,threads>>>(w, h, s, d);
 }
 
+#if 0
 __global__ void cu_compose_float_rgba_kernel(int w, int h, float *dst, float const *src, uint8_t const *mask)
 {
 	int x = blockIdx.x * blockDim.x + threadIdx.x;
@@ -255,16 +277,12 @@ __global__ void cu_compose_float_rgba_kernel(int w, int h, float *dst, float con
 	if (x < w && y < h) {
 		float *d = dst + 4 * (w * y + x);
 		float const *s = src + 4 * (w * y + x);
-		float t = mask ? mask[w * y + x] / 255.0f : 1.0f;
-		float u = 1.0f - t;
-		d[0] = d[0] * u + s[0] * t;
-		d[1] = d[1] * u + s[1] * t;
-		d[2] = d[2] * u + s[2] * t;
-		d[3] = d[3] * u + s[3] * t;
+		float m = mask ? mask[w * y + x] / 255.0f : 1.0f;
+		alpha_blend_float_RGBA(d, s, m);
 	}
 }
 
-void cuda_compose_float_rgba(int w, int h, cudamem_t *dst, cudamem_t const *src, cudamem_t *mask)
+void cuda_compose_float_rgba(int w, int h, cudamem_t *dst, cudamem_t const *src, cudamem_t const *mask)
 {
 	float *d = (float *)dst;
 	float const *s = (float const *)src;
@@ -274,6 +292,12 @@ void cuda_compose_float_rgba(int w, int h, cudamem_t *dst, cudamem_t const *src,
 	dim3 threads(16, 16);
 	cu_compose_float_rgba_kernel<<<blocks,threads>>>(w, h, d, s, m);
 }
+#else
+void cuda_compose_float_rgba(int w, int h, cudamem_t *dst, cudamem_t const *src, cudamem_t const *mask)
+{
+	cuda_blend_float_RGBA(w, h, src, w, h, 0, 0, mask, w, h, dst, w, h, 0, 0);
+}
+#endif
 
 __global__ void cu_scale_float_to_uint8_rgba_kernel(int dw, int dh, int dstride, uint8_t *dst, int sw, int sh, float const *src)
 {
@@ -415,7 +439,7 @@ extern "C" CUDAIMAGE_API const *init_cudaplugin(int n)
 	API_FUNC(fill_uint8_rgba);
 	API_FUNC(fill_float_rgba);
 	API_FUNC(copy_uint8_rgba);
-	API_FUNC(blend_float_rgba);
+	API_FUNC(blend_float_RGBA);
 	API_FUNC(blend_uint8_grayscale);
 	API_FUNC(outline_uint8_grayscale);
 	API_FUNC(compose_float_rgba);

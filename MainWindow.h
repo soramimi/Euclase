@@ -77,6 +77,7 @@ private:
 	void filter(FilterContext *context, AbstractFilterForm *form, const std::function<euclase::Image (FilterContext *)> &fn);
 	void filter_xBRZ(int factor);
 	void resetCurrentAlternateOption(Canvas::BlendMode blendmode = Canvas::BlendMode::Normal);
+	void applyCurrentAlternateLayer();
 	int addNewLayer();
 	void setupBasicLayer(Canvas::Layer *p);
 	void colorCollection();

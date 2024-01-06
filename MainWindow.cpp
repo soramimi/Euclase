@@ -738,8 +738,15 @@ void MainWindow::drawBrush(bool one)
 
 void MainWindow::resetCurrentAlternateOption(Canvas::BlendMode blendmode)
 {
+	std::lock_guard lock(mutexForCanvas());
 	canvas()->current_layer()->finishAlternatePanels(false);
 	canvas()->current_layer()->setAlternateOption(blendmode);
+}
+
+void MainWindow::applyCurrentAlternateLayer()
+{
+	std::lock_guard lock(mutexForCanvas());
+	canvas()->current_layer()->finishAlternatePanels(true);
 }
 
 void MainWindow::onPenDown(double x, double y)
@@ -776,9 +783,8 @@ void MainWindow::onPenUp(double x, double y)
 {
 	(void)x;
 	(void)y;
-	updateImageViewEntire();
 	m->brush_next_distance = 0;
-	resetCurrentAlternateOption();
+	applyCurrentAlternateLayer();
 }
 
 QPointF MainWindow::pointOnCanvas(int x, int y) const

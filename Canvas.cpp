@@ -361,7 +361,7 @@ void Canvas::renderToSinglePanel(Panel *target_panel, QPoint const &target_offse
 				cudamem_t *dst = out->data();
 				int dst_w = out->width();
 				int dst_h = out->height();
-				global->cuda->blend_float_rgba(w, h, src, src_w, src_h, sx, sy, mask, mask_w, mask_h, dst, dst_w, dst_h, dx, dy);
+				global->cuda->blend_float_RGBA(w, h, src, src_w, src_h, sx, sy, mask, mask_w, mask_h, dst, dst_w, dst_h, dx, dy);
 				target_panel->imagep()->memconvert(memtype);
 				return;
 			}
@@ -506,10 +506,16 @@ void Canvas::composePanel(Panel *target_panel, Panel const *alt_panel, Panel con
 			euclase::Image *dst = target_panel->imagep();
 			euclase::Image const *src = alt_panel->imagep();
 			euclase::Image mask;
+			cudamem_t *m = nullptr;
 			if (alt_mask) {
 				mask = alt_mask->imagep()->toCUDA();
+				m = mask.data();
 			}
-			global->cuda->compose_float_rgba(PANEL_SIZE, PANEL_SIZE, dst->data(), src->data(), alt_mask ? mask.data() : nullptr);
+			auto compose = [](euclase::Image *dst, euclase::Image const *src, cudamem_t const *m){
+				// global->cuda->compose_float_rgba(PANEL_SIZE, PANEL_SIZE, dst->data(), src->data(), alt_mask ? mask.data() : nullptr);
+				global->cuda->blend_float_RGBA(PANEL_SIZE, PANEL_SIZE, src->data(), PANEL_SIZE, PANEL_SIZE, 0, 0, m, PANEL_SIZE, PANEL_SIZE, dst->data(), PANEL_SIZE, PANEL_SIZE, 0, 0);
+			};
+			compose(dst, src, m);
 			return;
 		}
 #endif
@@ -804,7 +810,7 @@ void Canvas::Layer::setAlternateOption(BlendMode blendmode)
 
 void Canvas::Layer::finishAlternatePanels(bool apply)
 {
-	if (apply) {
+	if (apply) { //@TODO:
 		auto const *sel = alternate_selection_panels.empty() ? nullptr : &alternate_selection_panels;
 		for (Panel &panel : primary_panels) {
 			composePanels(&panel, &alternate_panels, sel, {});
