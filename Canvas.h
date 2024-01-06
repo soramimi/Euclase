@@ -139,14 +139,16 @@ public:
 	enum class BlendMode {
 		Disable,
 		Normal,
-		Erase,
+		Replace,
+		Eraser,
 	};
 
 	struct RenderOption {
 		BlendMode blend_mode = BlendMode::Normal;
-		ActivePanel active_panel = AlternateLayer;
+		ActivePanel active_panel = PrimaryLayer;
 		QColor brush_color;
 		QRect mask_rect;
+		bool use_mask = false;
 		std::function<void (QRect const &rect)> notify_changed_rect;
 	};
 
@@ -281,6 +283,7 @@ public:
 		void setAlternateOption(BlendMode blendmode);
 
 		QRect rect() const;
+		static Canvas::Panel *addPanel(std::vector<Panel> *panels, Panel &&panel);
 	};
 	using LayerPtr = std::shared_ptr<Layer>;
 
@@ -301,11 +304,11 @@ public:
 	void paintToCurrentLayer(const Layer &source, const RenderOption &opt, bool *abort);
 	void paintToCurrentAlternate(const Layer &source, const RenderOption &opt, bool *abort);
 
-	enum InputLayer {
+	enum InputLayerMode {
 		AllLayers,
 		CurrentLayerOnly,
 	};
-	Panel renderToPanel(InputLayer inputlayer, euclase::Image::Format format, QRect const &r, QRect const &maskrect, ActivePanel activepanel, bool *abort) const;
+	Panel renderToPanel(InputLayerMode input_layer_mode, euclase::Image::Format format, QRect const &r, QRect const &maskrect, ActivePanel activepanel, RenderOption const &opt, bool *abort) const;
 
 	static void renderToSinglePanel(Panel *target_panel, const QPoint &target_offset, const Panel *input_panel, const QPoint &input_offset, const Layer *mask_layer, RenderOption const &opt, const QColor &brush_color, int opacity = 255, bool *abort = nullptr);
 	static void renderToLayer(Layer *target_layer, ActivePanel activepanel, const Layer &input_layer, Layer *mask_layer, const RenderOption &opt, bool *abort);

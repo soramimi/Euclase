@@ -288,17 +288,22 @@ void MainWindow::openFile(QString const &path)
 	setImageFromBytes(ba, true);
 }
 
-void MainWindow::setAlternateImage(euclase::Image const &image)
+void MainWindow::setFilteredImage(euclase::Image const &image)
 {
 	std::lock_guard lock(mutexForCanvas());
 
+	canvas()->current_layer()->alternate_panels.clear();
+
 	Canvas::Layer layer;
 	layer.setImage(QPoint(0, 0), image);
+
 	Canvas::RenderOption opt;
 	opt.blend_mode = Canvas::BlendMode::Normal;
-
-	canvas()->current_layer()->alternate_panels.clear();
 	canvas()->renderToLayer(canvas()->current_layer(), Canvas::AlternateLayer, layer, nullptr, opt, nullptr);
+
+	canvas()->current_layer()->alternate_blend_mode = Canvas::BlendMode::Replace;
+
+	updateImageViewEntire();
 }
 
 /**
@@ -319,11 +324,11 @@ bool MainWindow::isPreviewEnabled() const
 	return m->preview_layer_enabled;
 }
 
-Canvas::Panel MainWindow::renderToPanel(Canvas::InputLayer inputlayer, euclase::Image::Format format, QRect const &r, QRect const &maskrect, bool *abort) const
+Canvas::Panel MainWindow::renderToPanel(Canvas::InputLayerMode input_layer_mode, euclase::Image::Format format, QRect const &r, QRect const &maskrect, const Canvas::RenderOption &opt, bool *abort) const
 {
 	std::lock_guard lock(mutexForCanvas());
 	auto activepanel = isPreviewEnabled() ? Canvas::AlternateLayer : Canvas::PrimaryLayer;
-	return canvas()->renderToPanel(inputlayer, format, r, maskrect, activepanel, abort).image();
+	return canvas()->renderToPanel(input_layer_mode, format, r, maskrect, activepanel, opt, abort).image();
 }
 
 euclase::Image MainWindow::renderSelection(const QRect &r, bool *abort) const
@@ -332,9 +337,9 @@ euclase::Image MainWindow::renderSelection(const QRect &r, bool *abort) const
 	return canvas()->renderSelection(r, abort).image();
 }
 
-euclase::Image MainWindow::renderToImage(euclase::Image::Format format, QRect const &r, bool *abort) const
+euclase::Image MainWindow::renderToImage(euclase::Image::Format format, QRect const &r, Canvas::RenderOption const &opt, bool *abort) const
 {
-	return renderToPanel(Canvas::CurrentLayerOnly, format, r, {}, abort).image();
+	return renderToPanel(Canvas::CurrentLayerOnly, format, r, {}, opt, abort).image();
 }
 
 SelectionOutline MainWindow::renderSelectionOutline(bool *abort)
@@ -413,7 +418,7 @@ void MainWindow::on_action_file_save_as_triggered()
 	if (!path.isEmpty()) {
 		QSize sz = canvas()->size();
 		auto activepanel = isPreviewEnabled() ? Canvas::AlternateLayer : Canvas::PrimaryLayer;
-		euclase::Image img = canvas()->renderToPanel(Canvas::AllLayers, euclase::Image::Format_F_RGBA, QRect(0, 0, sz.width(), sz.height()), {}, activepanel, nullptr).image();
+		euclase::Image img = canvas()->renderToPanel(Canvas::AllLayers, euclase::Image::Format_F_RGBA, QRect(0, 0, sz.width(), sz.height()), {}, activepanel, {}, nullptr).image();
 		img.qimage().save(path);
 	}
 }
@@ -421,7 +426,7 @@ void MainWindow::on_action_file_save_as_triggered()
 euclase::Image MainWindow::renderFilterTargetImage()
 {
 	QSize sz = canvas()->size();
-	return renderToImage(euclase::Image::Format_F_RGBA, QRect(0, 0, sz.width(), sz.height()), nullptr);
+	return renderToImage(euclase::Image::Format_F_RGBA, QRect(0, 0, sz.width(), sz.height()), {}, nullptr);
 }
 
 void MainWindow::filter(FilterContext *context, AbstractFilterForm *form, std::function<euclase::Image (FilterContext *context)> const &fn)
@@ -443,10 +448,11 @@ void MainWindow::filter(FilterContext *context, AbstractFilterForm *form, std::f
 		Canvas::RenderOption o;
 		o.brush_color = Qt::white;
 		Canvas::renderToLayer(canvas()->current_layer(), Canvas::Canvas::AlternateSelection, layer, nullptr, o, nullptr);
-
 	} else if (!canvas()->selection_layer()->primary_panels.empty()) {
 		canvas()->current_layer()->alternate_selection_panels = canvas()->selection_layer()->primary_panels;
 	}
+
+	canvas()->current_layer()->alternate_blend_mode = Canvas::BlendMode::Replace;
 
 	euclase::Image image = renderFilterTargetImage();
 	context->setSourceImage(image);
@@ -639,8 +645,9 @@ void MainWindow::clearCanvas()
  */
 void MainWindow::updateImageViewEntire()
 {
-	ui->widget_image_view->clearRenderCache(false, true);
-	ui->widget_image_view->requestUpdateSelectionOutline();
+	// ui->widget_image_view->clearRenderCache(false, true);
+	// ui->widget_image_view->requestUpdateSelectionOutline();
+	ui->widget_image_view->requestRendering({});
 }
 
 /**
@@ -754,7 +761,7 @@ void MainWindow::onPenDown(double x, double y)
 	Canvas::BlendMode blendmode = Canvas::BlendMode::Normal;
 	switch (currentTool()) {
 	case MainWindow::Tool::EraserBrush:
-		blendmode = Canvas::BlendMode::Erase;
+		blendmode = Canvas::BlendMode::Eraser;
 		break;
 	}
 
@@ -1583,7 +1590,7 @@ void MainWindow::colorCollection()
 void MainWindow::test()
 {
 #if 1
-	ui->widget_image_view->requestRendering({});
+	updateImageViewEntire();
 #else
 	openFile("/mnt/lucy/pub/pictures/favolite/white.png");
 #endif

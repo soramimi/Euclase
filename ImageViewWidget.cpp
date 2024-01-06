@@ -906,7 +906,7 @@ void ImageViewWidget::runImageRendering()
 			size_t panelindex = 0;
 			std::atomic_int rectindex = 0;
 
-#pragma omp parallel for num_threads(8)
+// #pragma omp parallel for num_threads(8)
 			for (int i = 0; i < rects.size(); i++) {
 				if (canceled()) continue;
 
@@ -961,7 +961,9 @@ void ImageViewWidget::runImageRendering()
 
 				euclase::Image image;
 				Canvas::Panel newpanel;
-				newpanel = m->mainwindow->renderToPanel(Canvas::AllLayers, euclase::Image::Format_F_RGBA, rect, {}, (bool *)&m->render_interrupted);
+				Canvas::RenderOption opt;
+				opt.use_mask = true;
+				newpanel = m->mainwindow->renderToPanel(Canvas::AllLayers, euclase::Image::Format_F_RGBA, rect, {}, opt, (bool *)&m->render_interrupted);
 				if (canceled()) continue;
 
 				newpanel = newpanel->toHost();

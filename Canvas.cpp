@@ -111,6 +111,10 @@ Canvas::Layer *Canvas::selection_layer()
 
 void Canvas::renderToSinglePanel(Panel *target_panel, QPoint const &target_offset, Panel const *input_panel, QPoint const &input_offset, Layer const *mask_layer, RenderOption const &opt, QColor const &brush_color, int opacity, bool *abort)
 {
+	if (!opt.use_mask) {
+		mask_layer = nullptr;
+	}
+
 	const QPoint dst_org = target_offset + target_panel->offset();
 	const QPoint src_org = input_offset + input_panel->offset();
 	int dx0 = dst_org.x();
@@ -436,7 +440,7 @@ void Canvas::renderToSinglePanel(Panel *target_panel, QPoint const &target_offse
 						d += 4;
 					}
 					break;
-				case BlendMode::Erase:
+				case BlendMode::Eraser:
 					for (int x = 0; x < w; x++) {
 						uint8_t m = mask ? *(mask + mask_stride * y + x) : 255;
 						float overR = s[0];
@@ -522,7 +526,7 @@ void Canvas::composePanel(Panel *target_panel, Panel const *alt_panel, Panel con
 
 		euclase::FloatRGBA *dst = (euclase::FloatRGBA *)target_panel->imagep()->data();
 		euclase::FloatRGBA const *src = (euclase::FloatRGBA const *)alt_panel->imagep()->data();
-		uint8_t const *mask = alt_mask ? (uint8_t const *)(*alt_mask).imagep()->data() : nullptr;
+		uint8_t const *mask = (opt.use_mask && alt_mask) ? (uint8_t const *)(*alt_mask).imagep()->data() : nullptr;
 
 		for (int i = 0; i < PANEL_SIZE * PANEL_SIZE; i++) {
 			auto s = src[i];
@@ -531,13 +535,13 @@ void Canvas::composePanel(Panel *target_panel, Panel const *alt_panel, Panel con
 			}
 			dst[i] = AlphaBlend::blend(dst[i], s);
 		}
-	} else if (opt.blend_mode == BlendMode::Erase) {
+	} else if (opt.blend_mode == BlendMode::Eraser) {
 		euclase::FloatRGBA *dst = (euclase::FloatRGBA *)target_panel->imagep()->data();
 		euclase::FloatRGBA const *src = (euclase::FloatRGBA const *)alt_panel->imagep()->data();
 		uint8_t const *mask = alt_mask ? (uint8_t const *)(*alt_mask).imagep()->data() : nullptr;
 
 		for (int i = 0; i < PANEL_SIZE * PANEL_SIZE; i++) {
-			float v = euclase::grayf(src[i].r, src[i].g, src[i].b) * src[i].a;
+			float v = src[i].a; // 消しゴムはアルファ値のみを使う
 			if (mask) {
 				v = v * mask[i] / 255;
 			}
@@ -570,10 +574,6 @@ void Canvas::composePanels(Panel *target_panel, std::vector<Panel> const *altern
 
 void Canvas::renderToEachPanels_internal_(Panel *target_panel, QPoint const &target_offset, Layer const &input_layer, Layer *mask_layer, QColor const &brush_color, int opacity, RenderOption const &opt, bool *abort)
 {
-	if (mask_layer && mask_layer->panelCount() == 0) {
-		mask_layer = nullptr;
-	}
-
 	QRect r1(
 		target_offset.x() + target_panel->offset().x(),
 		target_offset.y() + target_panel->offset().y(),
@@ -605,22 +605,43 @@ void Canvas::renderToEachPanels_internal_(Panel *target_panel, QPoint const &tar
 
 		Panel composed_panel;
 		if (opt.active_panel == Canvas::AlternateLayer) { // プレビュー有効
-			if (input_layer.alternate_blend_mode == BlendMode::Normal) {
+			RenderOption opt2;
+			opt2.use_mask = false;
+			if (input_layer.alternate_blend_mode == BlendMode::Normal) { // ブラシなど
 				Panel *alt_mask = nullptr;
-				if (!input_layer.alternate_selection_panels.empty()) { // 選択が全く無いなら全選択として処理
+				if (opt.use_mask && mask_layer) {
+					alt_mask = findPanel(&mask_layer->primary_panels, offset);
+					if (!alt_mask) { // マスクが存在していてマスクパネルが存在しない場合
+						goto next; // 選択範囲外なのでcomposeは行わずにinput_panelをそのまま使う
+					}
+				}
+				composed_panel = input_panel->copy();
+				input_panel = &composed_panel;
+				Panel *alt_panel = findPanel(&input_layer.alternate_panels, offset);
+				if (alt_panel) {
+					opt2.use_mask = opt.use_mask;
+					composePanel(&composed_panel, alt_panel, alt_mask, opt2);
+				}
+			} else if (input_layer.alternate_blend_mode == BlendMode::Replace) { // フィルタなど
+				Panel *alt_mask = nullptr;
+				if (input_layer.alternate_selection_panels.empty()) {
+					// nop: 選択パネルが全く無いなら全選択として処理
+				} else {
 					alt_mask = findPanel(&input_layer.alternate_selection_panels, offset);
+					if (!alt_mask) { // 選択パネルが存在しないなら
+						goto next; // 選択範囲外なのでcomposeは行わずにinput_panelをそのまま使う
+					}
+					opt2.use_mask = true;
 				}
 				Panel *alt_panel = findPanel(&input_layer.alternate_panels, offset);
 				if (alt_panel) {
-					RenderOption opt2;
 					composed_panel = input_panel->copy();
 					composePanel(&composed_panel, alt_panel, alt_mask, opt2);
 					input_panel = &composed_panel;
 				}
-			} else if (input_layer.alternate_blend_mode == BlendMode::Erase) {
+			} else if (input_layer.alternate_blend_mode == BlendMode::Eraser) { // 消しゴム
 				Panel *alt_panel = findPanel(&input_layer.alternate_panels, offset);
 				if (alt_panel) {
-					RenderOption opt2;
 					opt2.blend_mode = input_layer.alternate_blend_mode;
 					composed_panel = input_panel->copy();
 					composePanel(&composed_panel, alt_panel, nullptr, opt2);
@@ -628,8 +649,10 @@ void Canvas::renderToEachPanels_internal_(Panel *target_panel, QPoint const &tar
 				}
 			}
 		}
-
-		renderToSinglePanel(target_panel, target_offset, input_panel, input_layer.offset(), mask_layer, opt, brush_color, opacity);
+next:;
+		RenderOption opt3 = opt;
+		opt3.use_mask = false; // composeの工程で選択範囲のマスクは済んでいるので次はマスクは使わない
+		renderToSinglePanel(target_panel, target_offset, input_panel, input_layer.offset(), nullptr, opt3, brush_color, opacity);
 	}
 }
 
@@ -694,7 +717,7 @@ void Canvas::paintToCurrentLayer(Layer const &source, RenderOption const &opt, b
 
 void Canvas::paintToCurrentAlternate(Layer const &source, RenderOption const &opt, bool *abort)
 {
-	renderToLayer(current_layer(), Canvas::AlternateLayer, source, selection_layer(), opt, abort);
+	renderToLayer(current_layer(), Canvas::AlternateLayer, source, opt.use_mask ? selection_layer() : nullptr, opt, abort);
 }
 
 void Canvas::addSelection(Layer const &source, RenderOption const &opt, bool *abort)
@@ -722,17 +745,18 @@ Canvas::Panel Canvas::renderSelection(const QRect &r, bool *abort) const
 	return panel;
 }
 
-Canvas::Panel Canvas::renderToPanel(InputLayer inputlayer, euclase::Image::Format format, const QRect &r, QRect const &maskrect, ActivePanel activepanel, bool *abort) const
+Canvas::Panel Canvas::renderToPanel(InputLayerMode input_layer_mode, euclase::Image::Format format, const QRect &r, QRect const &maskrect, ActivePanel activepanel, RenderOption const &opt, bool *abort) const
 {
-	RenderOption opt;
-	opt.mask_rect = maskrect;
-	opt.active_panel = activepanel;
+	RenderOption opt2 = opt;
+	opt2.mask_rect = maskrect;
+	opt2.active_panel = activepanel;
 
 	Panel target_panel;
 	target_panel.imagep()->make(r.width(), r.height(), format, const_cast<Canvas *>(this)->current_layer()->memtype_);
 	target_panel.setOffset(r.topLeft());
 	std::vector<Layer *> input_layers;
-	switch (inputlayer) {
+	Layer *mask_layer = nullptr;
+	switch (input_layer_mode) {
 	case Canvas::AllLayers:
 		for (LayerPtr layer : m->layers) {
 			input_layers.push_back(layer.get());
@@ -740,9 +764,13 @@ Canvas::Panel Canvas::renderToPanel(InputLayer inputlayer, euclase::Image::Forma
 		break;
 	case Canvas::CurrentLayerOnly:
 		input_layers.push_back(const_cast<Canvas *>(this)->current_layer());
+		input_layers.back()->alternate_blend_mode = opt.blend_mode;
 		break;
 	}
-	renderToEachPanels(&target_panel, QPoint(), input_layers, nullptr, QColor(), 255, opt, abort);
+	if (opt2.use_mask) {
+		mask_layer = &m->selection_layer;
+	}
+	renderToEachPanels(&target_panel, QPoint(), input_layers, mask_layer, QColor(), 255, opt2, abort);
 	return target_panel;
 }
 
@@ -764,23 +792,22 @@ void Canvas::trim(const QRect &r)
 	setSize(r.size());
 }
 
-Canvas::Panel *Canvas::Layer::addImagePanel(std::vector<Panel> *panels, int x, int y, int w, int h, euclase::Image::Format format, euclase::Image::MemoryType memtype)
+/**
+ * @brief Canvas::Layer::addPanel
+ * @param panels
+ * @param offset
+ * @return
+ *
+ * パネルを追加
+ */
+Canvas::Panel *Canvas::Layer::addPanel(std::vector<Panel> *panels, Panel &&panel)
 {
-	auto NewPanel = [&](){
-		Panel panel;
-		if (w > 0 && h > 0) {
-			panel->make(w, h, format, memtype);
-		}
-		panel.setOffset(x, y);
-		return panel;
-	};
-
 	size_t lo = 0;
 	size_t hi = panels->size();
 	if (hi > 0) {
 		hi--;
 
-		QPoint pt(x, y);
+		const QPoint pt = panel.offset();
 
 		// 挿入先を二分検索
 		while (lo < hi) {
@@ -791,16 +818,39 @@ Canvas::Panel *Canvas::Layer::addImagePanel(std::vector<Panel> *panels, int x, i
 			} else if (c < 0) {
 				lo = m + 1;
 			} else {
-				return &panels->at(m); // 既にある
+				return nullptr; // 既にある
 			}
 		}
 		if (COMP(panels->at(lo).offset(), pt) < 0) { // 検索結果の次の位置に挿入する場合
 			lo++;
 		}
 	}
-
-	auto it = panels->insert(panels->begin() + lo, NewPanel());
+	auto it = panels->insert(panels->begin() + lo, panel);
 	return &*it;
+}
+
+/**
+ * @brief Canvas::Layer::addImagePanel
+ * @param panels
+ * @param x
+ * @param y
+ * @param w
+ * @param h
+ * @param format
+ * @param memtype
+ * @return
+ *
+ * パネルを追加
+ */
+Canvas::Panel *Canvas::Layer::addImagePanel(std::vector<Panel> *panels, int x, int y, int w, int h, euclase::Image::Format format, euclase::Image::MemoryType memtype)
+{
+	if (w < 1 || h < 1) return nullptr;
+
+	Panel panel;
+	panel->make(w, h, format, memtype);
+	panel.setOffset(x, y);
+
+	return addPanel(panels, std::move(panel));
 }
 
 void Canvas::Layer::setAlternateOption(BlendMode blendmode)
@@ -811,9 +861,16 @@ void Canvas::Layer::setAlternateOption(BlendMode blendmode)
 void Canvas::Layer::finishAlternatePanels(bool apply)
 {
 	if (apply) { //@TODO:
-		auto const *sel = alternate_selection_panels.empty() ? nullptr : &alternate_selection_panels;
-		for (Panel &panel : primary_panels) {
-			composePanels(&panel, &alternate_panels, sel, {});
+		// auto const *sel = alternate_selection_panels.empty() ? nullptr : &alternate_selection_panels;
+		// for (Panel &panel : primary_panels) {
+		// 	composePanels(&panel, &alternate_panels, sel, {});
+		// }
+		for (Panel const &panel : alternate_panels) {
+			Panel *p = findPanel(&primary_panels, panel.offset());
+			if (!p) {
+				p = addImagePanel(&primary_panels, panel.offset().x(), panel.offset().y(), PANEL_SIZE, PANEL_SIZE, panel.format(), panel.image().memtype());
+			}
+			composePanel(p, &panel, nullptr, {});
 		}
 	}
 

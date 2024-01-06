@@ -44,7 +44,7 @@ private:
 
 	void setImage(euclase::Image image, bool fitview);
 	void setImageFromBytes(QByteArray const &ba, bool fitview);
-	void setAlternateImage(const euclase::Image &image);
+	void setFilteredImage(const euclase::Image &image);
 
 	enum class Operation {
 		PaintToCurrentLayer,
@@ -92,8 +92,8 @@ public:
 	Canvas const *canvas() const;
 
 	void fitView();
-	Canvas::Panel renderToPanel(Canvas::InputLayer inputlayer, euclase::Image::Format format, QRect const &r, const QRect &maskrect, bool *abort) const;
-	euclase::Image renderToImage(euclase::Image::Format format, QRect const &r, bool *abort) const;
+	Canvas::Panel renderToPanel(Canvas::InputLayerMode input_layer_mode, euclase::Image::Format format, QRect const &r, const QRect &maskrect, const Canvas::RenderOption &opt, bool *abort) const;
+	euclase::Image renderToImage(euclase::Image::Format format, QRect const &r, Canvas::RenderOption const &opt, bool *abort) const;
 	QRect selectionRect() const;
 	void openFile(const QString &path);
 	int canvasWidth() const;
