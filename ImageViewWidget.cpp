@@ -828,7 +828,7 @@ void ImageViewWidget::runImageRendering()
 			Q_ASSERT(m->offscreen1.offset().x() == 0); // オフスクリーンの原点は常に(0, 0)
 			Q_ASSERT(m->offscreen1.offset().y() == 0);
 
-			CoordinateMapper mapper;
+			CoordinateMapper mapper; // オフスクリーン座標系
 			{
 				std::lock_guard lock(mutexForOffscreen());
 				mapper = m->offscreen1_mapper;
@@ -844,25 +844,19 @@ void ImageViewWidget::runImageRendering()
 			const int canvas_w = mainwindow()->canvasWidth();
 			const int canvas_h = mainwindow()->canvasHeight();
 
-			int view_left;
-			int view_top;
-			int view_right;
-			int view_bottom;
-			{
-				QPointF topleft = mapper.mapToViewportFromCanvas(QPointF(0, 0));
-				QPointF bottomright = mapper.mapToViewportFromCanvas(QPointF(canvas_w, canvas_h));
-				view_left = std::max((int)floor(topleft.x()), 0);
-				view_top = std::max((int)floor(topleft.y()), 0);
-				view_right = std::min((int)ceil(bottomright.x() + 1), width()); // ceilだけでは足りなことがあるので 1 足す
-				view_bottom = std::min((int)ceil(bottomright.y() + 1), height());
-			}
+			const QPointF view_topleft = mapper.mapToViewportFromCanvas(QPointF(0, 0));
+			const QPointF view_bottomright = mapper.mapToViewportFromCanvas(QPointF(canvas_w, canvas_h));
+			const int view_left = std::max((int)floor(view_topleft.x()), 0);
+			const int view_top = std::max((int)floor(view_topleft.y()), 0);
+			const int view_right = std::min((int)ceil(view_bottomright.x() + 1), width()); // ceilだけでは足りなことがあるので 1 足す
+			const int view_bottom = std::min((int)ceil(view_bottomright.y() + 1), height());
 
-			std::vector<QRect> rects;
+			std::vector<QRect> target_rects;
 
 			{ // レンダリングする領域を決定
 				std::lock_guard lock(mutexForOffscreen());
-				QPointF topleft = mapper.mapToCanvasFromViewport(QPointF(0, 0));
-				QPointF bottomright = mapper.mapToCanvasFromViewport(QPointF(width(), height()));
+				QPointF topleft = mapper.mapToCanvasFromViewport(QPointF(view_left, view_top));
+				QPointF bottomright = mapper.mapToCanvasFromViewport(QPointF(view_right, view_bottom));
 				const int S1 = OFFSCREEN_PANEL_SIZE - 1;
 				int x0 = (int)topleft.x() & ~S1; // パネルサイズ単位に切り下げ
 				int y0 = (int)topleft.y() & ~S1;
@@ -870,10 +864,10 @@ void ImageViewWidget::runImageRendering()
 				int y1 = (int)bottomright.y() & ~S1;
 				for (int y = y0; y <= y1; y += OFFSCREEN_PANEL_SIZE) {
 					for (int x = x0; x <= x1; x += OFFSCREEN_PANEL_SIZE) {
-						QRect rect(x, y, OFFSCREEN_PANEL_SIZE, OFFSCREEN_PANEL_SIZE); // 描画する候補の矩形
-						for (auto const &r : m->render_canvas_rects) { // 描画要求された矩形と重なっているかどうか
-							if (rect.intersects(r)) {
-								rects.push_back(rect);
+						QRect target_rect(x, y, OFFSCREEN_PANEL_SIZE, OFFSCREEN_PANEL_SIZE); // 描画する候補の矩形
+						for (auto const &requested_rect : m->render_canvas_rects) { // 描画要求された矩形と重なっているかどうか
+							if (target_rect.intersects(requested_rect)) {
+								target_rects.push_back(target_rect);
 								break;
 							}
 						}
@@ -883,7 +877,7 @@ void ImageViewWidget::runImageRendering()
 
 			if (1) { // マウスカーソルから近い順にソート
 				QPoint center = mapper.mapToCanvasFromViewport(mapFromGlobal(QCursor::pos())).toPoint();
-				std::sort(rects.begin(), rects.end(), [&](QRect const &a, QRect const &b){
+				std::sort(target_rects.begin(), target_rects.end(), [&](QRect const &a, QRect const &b){
 					auto Center = [=](QRect const &r){
 						return r.center();
 					};
@@ -906,12 +900,12 @@ void ImageViewWidget::runImageRendering()
 			size_t panelindex = 0;
 			std::atomic_int rectindex = 0;
 
-// #pragma omp parallel for num_threads(8)
-			for (int i = 0; i < rects.size(); i++) {
+#pragma omp parallel for num_threads(8)
+			for (int i = 0; i < target_rects.size(); i++) {
 				if (canceled()) continue;
 
 				// パネル矩形
-				QRect const &rect = rects[rectindex++];
+				QRect const &rect = target_rects[rectindex++];
 				const int x = rect.x();
 				const int y = rect.y();
 				const int w = rect.width();
@@ -1002,13 +996,17 @@ void ImageViewWidget::runImageRendering()
 
 				if (canceled()) continue;
 
+				QPoint dpos = QPoint(dx, dy) - center() + m->offscreen1_mapper.scrollOffset().toPoint();
+
 				// 透明部分の市松模様
 				for (int iy = 0; iy < qimg.height(); iy++) {
 					euclase::OctetRGBA *p = (euclase::OctetRGBA *)qimg.scanLine(iy);
 					for (int ix = 0; ix < qimg.width(); ix++) {
 						if (p->a < 255) { // 透明部分
-							uint8_t v = (((dx + ix) ^ (dy + iy)) & 8) ? 255 : 192; // 市松模様パターン
-							euclase::OctetRGBA bg(v, v, v, 255); // 市松模様の背景
+							int u = dpos.x() + ix; // 市松模様の座標がずれないように、オフスクリーン系の座標の原点を足す
+							int v = dpos.y() + iy;
+							uint8_t a = ((u ^ v) & 8) ? 255 : 192; // 市松模様パターン
+							euclase::OctetRGBA bg(a, a, a, 255); // 市松模様の背景
 							*p = AlphaBlend::blend(bg, *p); // 背景に合成
 						}
 						p++;
@@ -1021,8 +1019,7 @@ void ImageViewWidget::runImageRendering()
 				{
 					std::lock_guard lock(mutexForOffscreen());
 					if (!canceled()) {
-						QPoint pt = QPoint(dx, dy) - center() + m->offscreen1_mapper.scrollOffset().toPoint();
-						m->offscreen1.paintImage(pt, qimg, qimg.size(), {});
+						m->offscreen1.paintImage(dpos, qimg, qimg.size(), {});
 					}
 				}
 			}

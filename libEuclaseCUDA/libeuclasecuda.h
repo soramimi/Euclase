@@ -20,6 +20,7 @@ struct CUDAIMAGE_API {
 	void (*fill_float_rgba)(int w, int h, float r, float g, float b, float a, cudamem_t *dst, int dst_w, int dst_h, int dx, int dy);
 	void (*copy_uint8_rgba)(int w, int h, cudamem_t const *src, int src_w, int src_h, int sx, int sy, cudamem_t *dst, int dst_w, int dst_h, int dx, int dy);
 	void (*blend_float_RGBA)(int w, int h, cudamem_t const *src, int src_w, int src_h, int sx, int sy, cudamem_t const *mask, int mask_w, int mask_h, cudamem_t *dst, int dst_w, int dst_h, int dx, int dy);
+	void (*erase_float_RGBA)(int w, int h, cudamem_t const *src, int src_w, int src_h, int sx, int sy, cudamem_t const *mask, int mask_w, int mask_h, cudamem_t *dst, int dst_w, int dst_h, int dx, int dy);
 	void (*blend_uint8_grayscale)(int w, int h, cudamem_t const *src, int src_w, int src_h, int sx, int sy, cudamem_t const *mask, int mask_w, int mask_h, cudamem_t *dst, int dst_w, int dst_h, int dx, int dy);
 	void (*outline_uint8_grayscale)(int w, int h, cudamem_t const *src, cudamem_t *dst);
 	void (*compose_float_rgba)(int w, int h, cudamem_t *dst, cudamem_t const *src, cudamem_t const *mask);

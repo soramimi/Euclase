@@ -503,7 +503,6 @@ void Canvas::composePanel(Panel *target_panel, Panel const *alt_panel, Panel con
 	//	Q_ASSERT(alt_mask->format() == euclase::Image::Format_8_Grayscale);
 
 	if (opt.blend_mode == BlendMode::Normal) {
-
 #ifdef USE_CUDA
 		if (target_panel->imagep()->memtype() == euclase::Image::CUDA) {
 			Q_ASSERT(alt_panel->imagep()->memtype() == euclase::Image::CUDA);
@@ -523,7 +522,6 @@ void Canvas::composePanel(Panel *target_panel, Panel const *alt_panel, Panel con
 			return;
 		}
 #endif
-
 		euclase::FloatRGBA *dst = (euclase::FloatRGBA *)target_panel->imagep()->data();
 		euclase::FloatRGBA const *src = (euclase::FloatRGBA const *)alt_panel->imagep()->data();
 		uint8_t const *mask = (opt.use_mask && alt_mask) ? (uint8_t const *)(*alt_mask).imagep()->data() : nullptr;
@@ -536,17 +534,35 @@ void Canvas::composePanel(Panel *target_panel, Panel const *alt_panel, Panel con
 			dst[i] = AlphaBlend::blend(dst[i], s);
 		}
 	} else if (opt.blend_mode == BlendMode::Eraser) {
+#ifdef USE_CUDA
+		if (target_panel->imagep()->memtype() == euclase::Image::CUDA) {
+			Q_ASSERT(alt_panel->imagep()->memtype() == euclase::Image::CUDA);
+			euclase::Image *dst = target_panel->imagep();
+			euclase::Image const *src = alt_panel->imagep();
+			euclase::Image mask;
+			cudamem_t *m = nullptr;
+			if (alt_mask) {
+				mask = alt_mask->imagep()->toCUDA();
+				m = mask.data();
+			}
+			auto compose = [](euclase::Image *dst, euclase::Image const *src, cudamem_t const *m){
+				global->cuda->erase_float_RGBA(PANEL_SIZE, PANEL_SIZE, src->data(), PANEL_SIZE, PANEL_SIZE, 0, 0, m, PANEL_SIZE, PANEL_SIZE, dst->data(), PANEL_SIZE, PANEL_SIZE, 0, 0);
+			};
+			compose(dst, src, m);
+			return;
+		}
+#endif
 		euclase::FloatRGBA *dst = (euclase::FloatRGBA *)target_panel->imagep()->data();
 		euclase::FloatRGBA const *src = (euclase::FloatRGBA const *)alt_panel->imagep()->data();
 		uint8_t const *mask = alt_mask ? (uint8_t const *)(*alt_mask).imagep()->data() : nullptr;
 
 		for (int i = 0; i < PANEL_SIZE * PANEL_SIZE; i++) {
-			float v = src[i].a; // 消しゴムはアルファ値のみを使う
+			float s = src[i].a; // 消しゴムはアルファ値のみを使う
 			if (mask) {
-				v = v * mask[i] / 255;
+				s = s * mask[i] / 255;
 			}
-			v = 1 - euclase::clamp_f01(v);
-			dst[i].a *= v;
+			s = 1 - euclase::clamp_f01(s);
+			dst[i].a *= s;
 		}
 	}
 }

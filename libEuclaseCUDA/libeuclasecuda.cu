@@ -6,6 +6,11 @@ __device__ inline uint8_t clamp_uint8(float x)
 	return (uint8_t)max(0.0f, min(255.0f, x));
 }
 
+__device__ inline float clamp_f01(float x)
+{
+	return max(0.0f, min(1.0f, x));
+}
+
 __global__ void cu_round_brush(int w, int h, float cx, float cy, float radius, float blur, float mul, float *p)
 {
 	int i = blockIdx.x * blockDim.x + threadIdx.x;
@@ -200,6 +205,39 @@ void cuda_blend_float_RGBA(int w, int h, cudamem_t const *src, int src_w, int sr
 	dim3 blocks((w + 15) / 16, (h + 15) / 16);
 	dim3 threads(16, 16);
 	cu_blend_float_RGBA_kernel<<<blocks,threads>>>(w, h, s, src_w, sx, sy, buf_mask, mask_w, d, dst_w, dx, dy);
+
+	if (mask) {
+		cudaFree(buf_mask);
+	}
+}
+
+__global__ void cu_erase_float_RGBA_kernel(int w, int h, float const *src, int src_w, int sx, int sy, uint8_t const *mask, int mask_w, float *dst, int dst_w, int dx, int dy)
+{
+	int x = blockIdx.x * blockDim.x + threadIdx.x;
+	int y = blockIdx.y * blockDim.y + threadIdx.y;
+
+	if (x < w && y < h) {
+		float const *s = src + 4 * (src_w * (sy + y) + sx + x);
+		float *d = dst + 4 * (dst_w * (dy + y) + dx + x);
+		float m = mask ? mask[mask_w * y + x] / 255.0f : 1.0f;
+		d[3] *= 1.0f - clamp_f01(s[3] * m);
+	}
+}
+
+void cuda_erase_float_RGBA(int w, int h, cudamem_t const *src, int src_w, int src_h, int sx, int sy, cudamem_t const *mask, int mask_w, int mask_h, cudamem_t *dst, int dst_w, int dst_h, int dx, int dy)
+{
+	float const *s = (float const *)src;
+	float *d = (float *)dst;
+	uint8_t *buf_mask = nullptr;
+
+	if (mask) {
+		cudaMalloc(&buf_mask, sizeof(uint8_t) * mask_w * mask_h);
+		cudaMemcpy(buf_mask, mask, sizeof(uint8_t) * mask_w * mask_h, cudaMemcpyHostToDevice);
+	}
+
+	dim3 blocks((w + 15) / 16, (h + 15) / 16);
+	dim3 threads(16, 16);
+	cu_erase_float_RGBA_kernel<<<blocks,threads>>>(w, h, s, src_w, sx, sy, buf_mask, mask_w, d, dst_w, dx, dy);
 
 	if (mask) {
 		cudaFree(buf_mask);
@@ -440,6 +478,7 @@ extern "C" CUDAIMAGE_API const *init_cudaplugin(int n)
 	API_FUNC(fill_float_rgba);
 	API_FUNC(copy_uint8_rgba);
 	API_FUNC(blend_float_RGBA);
+	API_FUNC(erase_float_RGBA);
 	API_FUNC(blend_uint8_grayscale);
 	API_FUNC(outline_uint8_grayscale);
 	API_FUNC(compose_float_rgba);

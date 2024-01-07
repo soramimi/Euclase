@@ -1,4 +1,6 @@
 
+#include "MainWindow.h"
+#include "ui_MainWindow.h"
 #include "ApplicationGlobal.h"
 #include "Canvas.h"
 #include "FilterDialog.h"
@@ -6,15 +8,14 @@
 #include "FilterFormColorCorrection.h"
 #include "FilterFormMedian.h"
 #include "FilterStatus.h"
-#include "MainWindow.h"
 #include "MySettings.h"
 #include "NewDialog.h"
 #include "ResizeDialog.h"
 #include "RoundBrushGenerator.h"
 #include "SettingsDialog.h"
 #include "antialias.h"
+#include "euclase.h"
 #include "median.h"
-#include "ui_MainWindow.h"
 #include "xbrz/xbrz.h"
 #include <QBitmap>
 #include <QClipboard>
@@ -28,7 +29,6 @@
 #include <QShortcut>
 #include <omp.h>
 #include <stdint.h>
-#include "euclase.h"
 
 
 struct MainWindow::Private {
@@ -666,8 +666,6 @@ void MainWindow::clearCanvas()
  */
 void MainWindow::updateImageViewEntire()
 {
-	// ui->widget_image_view->clearRenderCache(false, true);
-	// ui->widget_image_view->requestUpdateSelectionOutline();
 	ui->widget_image_view->requestRendering({});
 }
 

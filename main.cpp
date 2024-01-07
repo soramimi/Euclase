@@ -50,7 +50,7 @@ int main(int argc, char *argv[])
 
 	MyApplication a(argc, argv);
 
-#if 0//def USE_CUDA
+#ifdef USE_CUDA
 #ifdef Q_OS_WIN
 	if (1) {
 		QString path = a.applicationDirPath() / "libEuclaseCUDA.dll";
