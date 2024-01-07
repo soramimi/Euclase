@@ -82,6 +82,7 @@ private:
 	void setupBasicLayer(Canvas::Layer *p);
 	void colorCollection();
 	bool mouseMove_internal(int x, int y, bool leftbutton, bool set_cursor_only);
+	Canvas::RenderOption2 renderOption() const;
 protected:
 	void keyPressEvent(QKeyEvent *event);
 public:

@@ -143,6 +143,8 @@ public:
 		Eraser,
 	};
 
+	class Layer;
+
 	struct RenderOption {
 		BlendMode blend_mode = BlendMode::Normal;
 		ActivePanel active_panel = PrimaryLayer;
@@ -150,6 +152,11 @@ public:
 		QRect mask_rect;
 		bool use_mask = false;
 		std::function<void (QRect const &rect)> notify_changed_rect;
+	};
+
+	struct RenderOption2 {
+		RenderOption opt1;
+		Canvas::Layer *selection_layer = nullptr;
 	};
 
 	class Layer {

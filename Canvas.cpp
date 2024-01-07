@@ -857,11 +857,7 @@ void Canvas::Layer::setAlternateOption(BlendMode blendmode)
 
 void Canvas::Layer::finishAlternatePanels(bool apply, Layer *mask_layer, RenderOption const &opt)
 {
-	if (apply) { //@TODO:
-		// auto const *sel = alternate_selection_panels.empty() ? nullptr : &alternate_selection_panels;
-		// for (Panel &panel : primary_panels) {
-		// 	composePanels(&panel, &alternate_panels, sel, {});
-		// }
+	if (apply) {
 		for (Panel const &panel : alternate_panels) {
 			Panel *p = findPanel(&primary_panels, panel.offset());
 			if (!p) {
@@ -870,6 +866,7 @@ void Canvas::Layer::finishAlternatePanels(bool apply, Layer *mask_layer, RenderO
 			Panel *mask = nullptr;
 			if (opt.use_mask && mask_layer) {
 				mask = findPanel(&mask_layer->primary_panels, panel.offset());
+				if (!mask) continue; // マスクが存在していてマスクパネルが存在しない場合、選択範囲外なのでcomposeは行わない
 			}
 			composePanel(p, &panel, mask, opt);
 		}

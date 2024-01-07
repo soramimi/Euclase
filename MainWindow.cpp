@@ -429,6 +429,27 @@ euclase::Image MainWindow::renderFilterTargetImage()
 	return renderToImage(euclase::Image::Format_F_RGBA, QRect(0, 0, sz.width(), sz.height()), {}, nullptr);
 }
 
+Canvas::RenderOption2 MainWindow::renderOption() const
+{
+	Canvas::RenderOption2 opt;
+
+	opt.opt1.blend_mode = Canvas::BlendMode::Normal;
+	switch (currentTool()) {
+	case MainWindow::Tool::EraserBrush:
+		opt.opt1.blend_mode = Canvas::BlendMode::Eraser;
+		break;
+	}
+
+	opt.opt1.use_mask = true;
+	opt.selection_layer = const_cast<MainWindow *>(this)->canvas()->selection_layer();
+	if (opt.selection_layer->panels()->empty()) {
+		opt.selection_layer = nullptr;
+		opt.opt1.use_mask = false;
+	}
+
+	return opt;
+}
+
 void MainWindow::filter(FilterContext *context, AbstractFilterForm *form, std::function<euclase::Image (FilterContext *context)> const &fn)
 {
 	canvas()->current_layer()->alternate_selection_panels.clear();
@@ -457,19 +478,11 @@ void MainWindow::filter(FilterContext *context, AbstractFilterForm *form, std::f
 	euclase::Image image = renderFilterTargetImage();
 	context->setSourceImage(image);
 
-	Canvas::RenderOption opt;
-	Canvas::Layer *selection = canvas()->selection_layer();
-	opt.use_mask = true;
-	if (selection->panels()->empty()) {
-		selection = nullptr;
-		opt.use_mask = false;
-	}
-
 	FilterDialog dlg(this, context, form, fn);
 	if (dlg.exec() == QDialog::Accepted) {
-		canvas()->current_layer()->finishAlternatePanels(true, selection, opt);
+		applyCurrentAlternateLayer();
 	} else {
-		canvas()->current_layer()->finishAlternatePanels(false, selection, opt);
+		resetCurrentAlternateOption({});
 	}
 	updateImageViewEntire();
 }
@@ -760,25 +773,9 @@ void MainWindow::resetCurrentAlternateOption(Canvas::BlendMode blendmode)
 
 void MainWindow::applyCurrentAlternateLayer()
 {
-	Canvas::BlendMode blendmode = Canvas::BlendMode::Normal;
-	switch (currentTool()) {
-	case MainWindow::Tool::EraserBrush:
-		blendmode = Canvas::BlendMode::Eraser;
-		break;
-	}
-
 	std::lock_guard lock(mutexForCanvas());
-
-	Canvas::RenderOption opt;
-	opt.blend_mode = blendmode;
-	Canvas::Layer *selection = canvas()->selection_layer();
-	opt.use_mask = true;
-	if (selection->panels()->empty()) {
-		opt.use_mask = false;
-		selection = nullptr;
-	}
-
-	canvas()->current_layer()->finishAlternatePanels(true, selection, opt);
+	Canvas::RenderOption2 opt = renderOption();
+	canvas()->current_layer()->finishAlternatePanels(true, opt.selection_layer, opt.opt1);
 }
 
 void MainWindow::onPenDown(double x, double y)
