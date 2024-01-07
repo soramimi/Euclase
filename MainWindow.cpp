@@ -457,11 +457,19 @@ void MainWindow::filter(FilterContext *context, AbstractFilterForm *form, std::f
 	euclase::Image image = renderFilterTargetImage();
 	context->setSourceImage(image);
 
+	Canvas::RenderOption opt;
+	Canvas::Layer *selection = canvas()->selection_layer();
+	opt.use_mask = true;
+	if (selection->panels()->empty()) {
+		selection = nullptr;
+		opt.use_mask = false;
+	}
+
 	FilterDialog dlg(this, context, form, fn);
 	if (dlg.exec() == QDialog::Accepted) {
-		canvas()->current_layer()->finishAlternatePanels(true);
+		canvas()->current_layer()->finishAlternatePanels(true, selection, opt);
 	} else {
-		canvas()->current_layer()->finishAlternatePanels(false);
+		canvas()->current_layer()->finishAlternatePanels(false, selection, opt);
 	}
 	updateImageViewEntire();
 }
@@ -746,14 +754,31 @@ void MainWindow::drawBrush(bool one)
 void MainWindow::resetCurrentAlternateOption(Canvas::BlendMode blendmode)
 {
 	std::lock_guard lock(mutexForCanvas());
-	canvas()->current_layer()->finishAlternatePanels(false);
+	canvas()->current_layer()->finishAlternatePanels(false, nullptr, {});
 	canvas()->current_layer()->setAlternateOption(blendmode);
 }
 
 void MainWindow::applyCurrentAlternateLayer()
 {
+	Canvas::BlendMode blendmode = Canvas::BlendMode::Normal;
+	switch (currentTool()) {
+	case MainWindow::Tool::EraserBrush:
+		blendmode = Canvas::BlendMode::Eraser;
+		break;
+	}
+
 	std::lock_guard lock(mutexForCanvas());
-	canvas()->current_layer()->finishAlternatePanels(true);
+
+	Canvas::RenderOption opt;
+	opt.blend_mode = blendmode;
+	Canvas::Layer *selection = canvas()->selection_layer();
+	opt.use_mask = true;
+	if (selection->panels()->empty()) {
+		opt.use_mask = false;
+		selection = nullptr;
+	}
+
+	canvas()->current_layer()->finishAlternatePanels(true, selection, opt);
 }
 
 void MainWindow::onPenDown(double x, double y)

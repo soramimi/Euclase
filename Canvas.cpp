@@ -607,7 +607,7 @@ void Canvas::renderToEachPanels_internal_(Panel *target_panel, QPoint const &tar
 		if (opt.active_panel == Canvas::AlternateLayer) { // プレビュー有効
 			RenderOption opt2;
 			opt2.use_mask = false;
-			if (input_layer.alternate_blend_mode == BlendMode::Normal) { // ブラシなど
+			if (input_layer.alternate_blend_mode == BlendMode::Normal || input_layer.alternate_blend_mode == BlendMode::Eraser) { // ブラシなど
 				Panel *alt_mask = nullptr;
 				if (opt.use_mask && mask_layer) {
 					alt_mask = findPanel(&mask_layer->primary_panels, offset);
@@ -620,6 +620,7 @@ void Canvas::renderToEachPanels_internal_(Panel *target_panel, QPoint const &tar
 				Panel *alt_panel = findPanel(&input_layer.alternate_panels, offset);
 				if (alt_panel) {
 					opt2.use_mask = opt.use_mask;
+					opt2.blend_mode = input_layer.alternate_blend_mode;
 					composePanel(&composed_panel, alt_panel, alt_mask, opt2);
 				}
 			} else if (input_layer.alternate_blend_mode == BlendMode::Replace) { // フィルタなど
@@ -637,14 +638,6 @@ void Canvas::renderToEachPanels_internal_(Panel *target_panel, QPoint const &tar
 				if (alt_panel) {
 					composed_panel = input_panel->copy();
 					composePanel(&composed_panel, alt_panel, alt_mask, opt2);
-					input_panel = &composed_panel;
-				}
-			} else if (input_layer.alternate_blend_mode == BlendMode::Eraser) { // 消しゴム
-				Panel *alt_panel = findPanel(&input_layer.alternate_panels, offset);
-				if (alt_panel) {
-					opt2.blend_mode = input_layer.alternate_blend_mode;
-					composed_panel = input_panel->copy();
-					composePanel(&composed_panel, alt_panel, nullptr, opt2);
 					input_panel = &composed_panel;
 				}
 			}
@@ -768,7 +761,11 @@ Canvas::Panel Canvas::renderToPanel(InputLayerMode input_layer_mode, euclase::Im
 		break;
 	}
 	if (opt2.use_mask) {
-		mask_layer = &m->selection_layer;
+		if (m->selection_layer.panels()->empty()) {
+			opt2.use_mask = false; // 選択パネルが全く無いなら全選択として処理
+		} else {
+			mask_layer = &m->selection_layer;
+		}
 	}
 	renderToEachPanels(&target_panel, QPoint(), input_layers, mask_layer, QColor(), 255, opt2, abort);
 	return target_panel;
@@ -858,7 +855,7 @@ void Canvas::Layer::setAlternateOption(BlendMode blendmode)
 	alternate_blend_mode = blendmode;
 }
 
-void Canvas::Layer::finishAlternatePanels(bool apply)
+void Canvas::Layer::finishAlternatePanels(bool apply, Layer *mask_layer, RenderOption const &opt)
 {
 	if (apply) { //@TODO:
 		// auto const *sel = alternate_selection_panels.empty() ? nullptr : &alternate_selection_panels;
@@ -870,7 +867,11 @@ void Canvas::Layer::finishAlternatePanels(bool apply)
 			if (!p) {
 				p = addImagePanel(&primary_panels, panel.offset().x(), panel.offset().y(), PANEL_SIZE, PANEL_SIZE, panel.format(), panel.image().memtype());
 			}
-			composePanel(p, &panel, nullptr, {});
+			Panel *mask = nullptr;
+			if (opt.use_mask && mask_layer) {
+				mask = findPanel(&mask_layer->primary_panels, panel.offset());
+			}
+			composePanel(p, &panel, mask, opt);
 		}
 	}
 

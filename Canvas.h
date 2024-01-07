@@ -279,7 +279,7 @@ public:
 			setOffset(offset);
 		}
 
-		void finishAlternatePanels(bool apply);
+		void finishAlternatePanels(bool apply, Layer *mask_layer, const RenderOption &opt);
 		void setAlternateOption(BlendMode blendmode);
 
 		QRect rect() const;
