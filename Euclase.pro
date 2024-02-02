@@ -14,8 +14,10 @@ DEFINES += USE_CUDA=1
 #win32:LIBS += -lkernel32.lib
 !win32:LIBS += -ldl
 
-unix:QMAKE_CXXFLAGS += -fopenmp -msse4.1
-unix:QMAKE_LFLAGS += -fopenmp
+macx:LIBS += -L/opt/homebrew/lib -L/opt/homebrew/opt/jpeg/lib
+
+unix:!macx:QMAKE_CXXFLAGS += -fopenmp -msse4.1
+unix:!macx:QMAKE_LFLAGS += -fopenmp
 msvc:QMAKE_CXXFLAGS += /openmp
 
 win32 {

@@ -36,6 +36,23 @@ int main(int argc, char *argv[])
 	putenv("QT_ENABLE_HIGHDPI_SCALING=0");
 #endif
 
+
+#ifdef Q_OS_MACX
+	{
+		QApplication a(argc, argv);
+		QScreen *screen = QApplication::screens().at(0); // メインスクリーンを取得
+		auto ratio = screen->devicePixelRatio();
+		char *tmp = (char *)alloca(100);
+		sprintf(tmp, "QT_SCALE_FACTOR=%f", 1.0 / ratio);
+		putenv(tmp); // いいのかこれで？...
+		// ↓たぶん効果無い
+		putenv("QT_ENABLE_HIGHDPI_SCALING=0");
+		QApplication::setAttribute(Qt::AA_EnableHighDpiScaling, false);
+		QApplication::setAttribute(Qt::AA_DisableHighDpiScaling, true);
+		QApplication::setAttribute(Qt::AA_DisableHighDpiScaling);
+	}
+#endif
+
 	ApplicationGlobal g;
 	global = &g;
 
