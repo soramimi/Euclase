@@ -5,7 +5,6 @@
 #include <QDebug>
 #include <QMutex>
 #include <QPainter>
-#include <QThread>
 #include <QTimer>
 #include "MainWindow.h"
 #include <QWaitCondition>
