@@ -182,6 +182,7 @@ public:
 				return &alternate_selection_panels;
 			}
 			Q_ASSERT(0);
+			return nullptr;
 		}
 
 		std::vector<Panel> const *panels(ActivePanel active = PrimaryLayer) const

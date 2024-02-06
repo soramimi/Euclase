@@ -4,7 +4,13 @@ TEMPLATE = app
 CONFIG += c++17
 QT += core gui widgets svg
 
+macx:QMAKE_CXX = aarch64-apple-darwin22-g++-13
+macx:QMAKE_LINK = aarch64-apple-darwin22-g++-13
+
 CONFIG += nostrip debug_info
+
+CPP_STD = c++17
+gcc:QMAKE_CXXFLAGS += -std=$$CPP_STD -Wall -Wextra -Werror=return-type -Werror=trigraphs -Wno-switch -Wno-reorder -Wno-unknown-pragmas
 
 DESTDIR = $$PWD/_bin
 
@@ -16,8 +22,9 @@ DEFINES += USE_CUDA=1
 
 macx:LIBS += -L/opt/homebrew/lib -L/opt/homebrew/opt/jpeg/lib
 
-unix:!macx:QMAKE_CXXFLAGS += -fopenmp -msse4.1
-unix:!macx:QMAKE_LFLAGS += -fopenmp
+unix:QMAKE_CXXFLAGS += -fopenmp
+#-msse4.1
+unix:QMAKE_LFLAGS += -fopenmp
 msvc:QMAKE_CXXFLAGS += /openmp
 
 win32 {
@@ -118,7 +125,6 @@ HEADERS += \
 	SelectionOutline.h \
 	SettingGeneralForm.h \
 	SettingsDialog.h \
-	TestPlugin/src/TestInterface.h \
 	TransparentCheckerBrush.h \
 	antialias.h \
 	charvec.h \

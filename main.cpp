@@ -38,7 +38,7 @@ int main(int argc, char *argv[])
 
 
 #ifdef Q_OS_MACX
-	{
+	if (1) {
 		QApplication a(argc, argv);
 		QScreen *screen = QApplication::screens().at(0); // メインスクリーンを取得
 		auto ratio = screen->devicePixelRatio();
@@ -80,8 +80,12 @@ int main(int argc, char *argv[])
 	}
 #else
 	if (1) {
+		auto toStdString = [](QString const &s){
+			QByteArray ba = s.toUtf8();
+			return std::string(ba.data(), ba.size());
+		};
 		QString path = a.applicationDirPath() / "libEuclaseCUDA.so";
-		void *so = dlopen(path.toStdString().c_str(), RTLD_NOW);
+		void *so = dlopen(toStdString(path).c_str(), RTLD_NOW);
 		CUDAIMAGE_API const *(*init_cudaplugin)(int);
 		*(void **)&init_cudaplugin = dlsym(so, "init_cudaplugin");
 		if (init_cudaplugin) {

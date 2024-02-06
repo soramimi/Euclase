@@ -48,8 +48,12 @@ void NewDialog::setImageSize(QSize size)
 
 QSize NewDialog::imageSize() const
 {
-	int w = strtoul(ui->lineEdit_width->text().toStdString().c_str(), nullptr, 10);
-	int h = strtoul(ui->lineEdit_height->text().toStdString().c_str(), nullptr, 10);
+	auto toStdString = [](QString const &s){
+		QByteArray ba = s.toUtf8();
+		return std::string(ba.data(), ba.size());
+	};
+	int w = strtoul(toStdString(ui->lineEdit_width->text()).data(), nullptr, 10);
+	int h = strtoul(toStdString(ui->lineEdit_height->text()).data(), nullptr, 10);
 	return validateImageSize(QSize(w, h));
 }
 

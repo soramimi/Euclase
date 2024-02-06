@@ -1,5 +1,5 @@
 
-#ifndef _WIN32
+#if !defined(_WIN32) && !defined(__APPLE__)
 #include <x86intrin.h>
 #endif
 
