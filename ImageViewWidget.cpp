@@ -1051,8 +1051,6 @@ void ImageViewWidget::runImageRendering()
  */
 void ImageViewWidget::paintEvent(QPaintEvent *)
 {
-	const QColor bgcolor = BGCOLOR;
-
 	const int view_w = width();
 	const int view_h = height();
 
@@ -1060,17 +1058,6 @@ void ImageViewWidget::paintEvent(QPaintEvent *)
 	const int doc_h = canvas()->height();
 
 	const CoordinateMapper mapper = currentCoordinateMapper();
-
-	QPointF pt0(0, 0);
-	QPointF pt1(doc_w, doc_h);
-	pt0 = mapper.mapToViewportFromCanvas(pt0);
-	pt1 = mapper.mapToViewportFromCanvas(pt1);
-	int visible_x = (int)round(pt0.x());
-	int visible_y = (int)round(pt0.y());
-	int visible_w = (int)round(pt1.x()) - visible_x;
-	int visible_h = (int)round(pt1.y()) - visible_y;
-
-	QPainter pr_view(this);
 
 	// オーバーレイ用オフスクリーンの描画は別スレッドで実行
 	std::thread th = std::thread([&](){
@@ -1122,6 +1109,9 @@ void ImageViewWidget::paintEvent(QPaintEvent *)
 		}
 	});
 
+	// ビューポートの描画
+	QPainter pr_view(this);
+
 	// 画像のオフスクリーンを描画
 	Q_ASSERT(m->offscreen1.offset().x() == 0); // オフスクリーンの原点は常に(0, 0)
 	Q_ASSERT(m->offscreen1.offset().y() == 0);
@@ -1147,23 +1137,33 @@ void ImageViewWidget::paintEvent(QPaintEvent *)
 	// オーバーレイを描画
 	pr_view.drawPixmap(0, 0, m->offscreen2);
 
-	if (visible_w > 0 && visible_h > 0) {
-		// 背景
-		QPainterPath entire;
-		QPainterPath viewrect;
-		entire.addRect(rect());
-		viewrect.addRect(visible_x, visible_y, visible_w, visible_h);
-		QPainterPath outside = entire.subtracted(viewrect);
-		pr_view.save();
-		pr_view.setRenderHint(QPainter::Antialiasing);
-		pr_view.setClipPath(outside);
-		pr_view.fillRect(rect(), bgcolor);
-		pr_view.restore();
-		// 枠線
-		pr_view.drawRect(visible_x, visible_y, visible_w, visible_h);
-	} else {
-		// 背景
-		pr_view.fillRect(rect(), bgcolor);
+	{
+		QPointF pt0(0, 0);
+		QPointF pt1(doc_w, doc_h);
+		pt0 = mapper.mapToViewportFromCanvas(pt0);
+		pt1 = mapper.mapToViewportFromCanvas(pt1);
+		int visible_x = (int)round(pt0.x());
+		int visible_y = (int)round(pt0.y());
+		int visible_w = (int)round(pt1.x()) - visible_x;
+		int visible_h = (int)round(pt1.y()) - visible_y;
+		if (visible_w > 0 && visible_h > 0) {
+			// 背景
+			QPainterPath entire;
+			QPainterPath viewrect;
+			entire.addRect(rect());
+			viewrect.addRect(visible_x, visible_y, visible_w, visible_h);
+			QPainterPath outside = entire.subtracted(viewrect);
+			pr_view.save();
+			pr_view.setRenderHint(QPainter::Antialiasing);
+			pr_view.setClipPath(outside);
+			pr_view.fillRect(rect(), BGCOLOR);
+			pr_view.restore();
+			// 枠線
+			pr_view.drawRect(visible_x, visible_y, visible_w, visible_h);
+		} else {
+			// 背景
+			pr_view.fillRect(rect(), BGCOLOR);
+		}
 	}
 
 	// 範囲指定矩形点滅
@@ -1352,12 +1352,10 @@ void ImageViewWidget::mouseReleaseEvent(QMouseEvent *)
 
 void ImageViewWidget::wheelEvent(QWheelEvent *e)
 {
-	double mul = 1;
-	double d = e->angleDelta().y();
-	double t = 1.001;
-	mul *= pow(t, d);
-	zoomToCursor(scale() * mul);
-	m->delayed_update_counter = 3;
+	double d = e->angleDelta().y(); // ホイールの回転量
+	double s = scale() * pow(1.001, d); // 拡大率
+	zoomToCursor(s);
+	m->delayed_update_counter = 3; // 300ms後に更新する
 }
 
 void ImageViewWidget::onSelectionOutlineReady(const SelectionOutline &data)
