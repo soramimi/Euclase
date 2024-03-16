@@ -162,16 +162,15 @@ void ImageViewWidget::init(MainWindow *mainwindow, QScrollBar *vsb, QScrollBar *
 
 static QImage scale_float_to_uint8_rgba(euclase::Image const &src, int w, int h)
 {
-	QImage ret(w, h, QImage::Format_RGBA8888);
 	if (src.memtype() == euclase::Image::CUDA) {
-		int dstride = ret.bytesPerLine();
-		global->cuda->scale_float_to_uint8_rgba(w, h, dstride, ret.bits(), src.width(), src.height(), src.data());
+		euclase::Image tmp(w, h, euclase::Image::Format_8_RGBA, euclase::Image::CUDA);
+		global->cuda->scale_float_to_uint8_rgba(w, h, w, tmp.data(), src.width(), src.height(), src.data());
+		return tmp.qimage();
 	} else {
 		QImage qimg = src.qimage();
 		if (qimg.isNull()) return {};
 		return qimg.scaled(w, h, Qt::IgnoreAspectRatio, Qt::FastTransformation);
 	}
-	return ret;
 }
 
 void ImageViewWidget::runSelectionRendering()
@@ -429,7 +428,6 @@ void ImageViewWidget::requestRendering(const QRect &canvasrect)
 	}
 	m->render_requested = true;
 	m->cond.notify_all();
-
 }
 
 /**
@@ -647,12 +645,13 @@ void ImageViewWidget::zoomInternal(QPointF const &pos)
  * カーソル位置を基準に拡大縮小する
  * @param scale 拡大率
  */
-void ImageViewWidget::zoomToCursor(double scale)
+bool ImageViewWidget::zoomToCursor(double scale)
 {
-	if (!setScale(scale, true)) return;
+	if (!setScale(scale, true)) return false;
 
 	QPoint pos = mapFromGlobal(QCursor::pos());
 	zoomInternal({pos.x() + 0.5, pos.y() + 0.5});
+	return true;
 }
 
 /**
@@ -1322,6 +1321,7 @@ void ImageViewWidget::resizeEvent(QResizeEvent *)
 {
 	updateScrollBarRange();
 	requestUpdateSelectionOutline();
+	requestUpdateEntire(false);
 }
 
 void ImageViewWidget::mousePressEvent(QMouseEvent *e)
@@ -1373,8 +1373,9 @@ void ImageViewWidget::wheelEvent(QWheelEvent *e)
 {
 	double d = e->angleDelta().y(); // ホイールの回転量
 	double s = scale() * pow(1.001, d); // 拡大率
-	zoomToCursor(s);
-	m->delayed_update_counter = 3; // 300ms後に更新する
+	if (zoomToCursor(s)) {
+		m->delayed_update_counter = 3; // 300ms後に更新する
+	}
 }
 
 void ImageViewWidget::onSelectionOutlineReady(const SelectionOutline &data)

@@ -1,13 +1,10 @@
 #include "BrushPreviewWidget.h"
-#include "MyApplication.h"
 #include <QDebug>
 #include <QFile>
 #include <QImage>
 #include <QPainter>
 #include <QTime>
-#include <math.h>
 #include "RoundBrushGenerator.h"
-#include "ApplicationGlobal.h"
 
 MainWindow *BrushPreviewWidget::mainwindow()
 {

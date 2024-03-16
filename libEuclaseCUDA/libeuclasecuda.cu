@@ -306,36 +306,10 @@ void cuda_outline_uint8_grayscale(int w, int h, cudamem_t const *src, cudamem_t 
 	cu_outline_uint8_grayscale_kernel<<<blocks,threads>>>(w, h, s, d);
 }
 
-#if 0
-__global__ void cu_compose_float_rgba_kernel(int w, int h, float *dst, float const *src, uint8_t const *mask)
-{
-	int x = blockIdx.x * blockDim.x + threadIdx.x;
-	int y = blockIdx.y * blockDim.y + threadIdx.y;
-
-	if (x < w && y < h) {
-		float *d = dst + 4 * (w * y + x);
-		float const *s = src + 4 * (w * y + x);
-		float m = mask ? mask[w * y + x] / 255.0f : 1.0f;
-		alpha_blend_float_RGBA(d, s, m);
-	}
-}
-
-void cuda_compose_float_rgba(int w, int h, cudamem_t *dst, cudamem_t const *src, cudamem_t const *mask)
-{
-	float *d = (float *)dst;
-	float const *s = (float const *)src;
-	uint8_t const *m = (uint8_t const *)mask;
-
-	dim3 blocks((w + 15) / 16, (h + 15) / 16);
-	dim3 threads(16, 16);
-	cu_compose_float_rgba_kernel<<<blocks,threads>>>(w, h, d, s, m);
-}
-#else
 void cuda_compose_float_rgba(int w, int h, cudamem_t *dst, cudamem_t const *src, cudamem_t const *mask)
 {
 	cuda_blend_float_RGBA(w, h, src, w, h, 0, 0, mask, w, h, dst, w, h, 0, 0);
 }
-#endif
 
 __global__ void cu_scale_float_to_uint8_rgba_kernel(int dw, int dh, int dstride, uint8_t *dst, int sw, int sh, float const *src)
 {
@@ -346,7 +320,7 @@ __global__ void cu_scale_float_to_uint8_rgba_kernel(int dw, int dh, int dstride,
 		int sx = dx * sw / dw;
 		int sy = dy * sh / dh;
 		float const *s = src + 4 * (sw * sy + sx);
-		uint8_t *d = dst + dstride * dy + 4 * dx;
+		uint8_t *d = dst + 4 * (dstride * dy + dx);
 		float R = max(0.0f, min(1.0f, s[0]));
 		float G = max(0.0f, min(1.0f, s[1]));
 		float B = max(0.0f, min(1.0f, s[2]));
@@ -360,15 +334,9 @@ __global__ void cu_scale_float_to_uint8_rgba_kernel(int dw, int dh, int dstride,
 
 void cuda_scale_float_to_uint8_rgba(int dw, int dh, int dstride, cudamem_t *dst, int sw, int sh, cudamem_t const *src)
 {
-	uint8_t *buf_dst = nullptr;
-	cudaMalloc(&buf_dst, dstride * dh);
-
 	dim3 blocks((dw + 15) / 16, (dh + 15) / 16);
 	dim3 threads(16, 16);
-	cu_scale_float_to_uint8_rgba_kernel<<<blocks,threads>>>(dw, dh, dstride, (uint8_t *)buf_dst, sw, sh, (float const *)src);
-
-	cudaMemcpy(dst, buf_dst, dstride * dh, cudaMemcpyDeviceToHost);
-	cudaFree(buf_dst);
+	cu_scale_float_to_uint8_rgba_kernel<<<blocks,threads>>>(dw, dh, dstride, (uint8_t *)dst, sw, sh, (float const *)src);
 }
 
 __global__ void cu_scale_kernel(int dw, int dh, int dstride, uint8_t *dst, int sw, int sh, int sstride, uint8_t const *src, int psize)

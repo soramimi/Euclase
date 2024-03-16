@@ -247,7 +247,7 @@ QImage euclase::Image::qimage() const
 #ifdef USE_CUDA
 		if (memtype() == CUDA) {
 			euclase::Image tmpimg(w, h, Format_8_RGBA, CUDA);
-			global->cuda->blend_float_RGBA(w, h, data(), w, h, 0, 0, nullptr, 0, 0, tmpimg.data(), w, h, 0, 0);
+			global->cuda->scale_float_to_uint8_rgba(w, h, w, tmpimg.data(), w, h, data());
 			return tmpimg.qimage();
 		}
 #endif

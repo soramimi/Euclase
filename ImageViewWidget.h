@@ -39,7 +39,7 @@ private:
 	double scale() const;
 	void setScrollBarRange(QScrollBar *h, QScrollBar *v);
 	void updateScrollBarRange();
-	void zoomToCursor(double scale);
+	bool zoomToCursor(double scale);
 	void zoomToCenter(double scale);
 	void updateCursorAnchorPos();
 	QBrush stripeBrush();
@@ -57,6 +57,7 @@ private:
 	void zoomInternal(const QPointF &pos);
 	void setScaleAnchorPos(const QPointF &pos);
 	QPointF getScaleAnchorPos();
+	void requestUpdateEntire(bool lock);
 protected:
 	void resizeEvent(QResizeEvent *) override;
 	void paintEvent(QPaintEvent *) override;
@@ -98,7 +99,6 @@ public:
 	static constexpr QColor BGCOLOR = QColor(240, 240, 240);
 
 	void clearRenderCache(bool clear_offscreen, bool lock);
-	void requestUpdateEntire(bool lock);
 	void requestUpdateView(const QRect &viewrect, bool lock);
 	void requestUpdateCanvas(const QRect &canvasrect, bool lock);
 	void requestRendering(const QRect &canvasrect);
