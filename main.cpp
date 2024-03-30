@@ -28,11 +28,6 @@ int main(int argc, char *argv[])
 	putenv("QT_ASSUME_STDERR_HAS_CONSOLE=1");
 
 #ifdef Q_OS_WIN
-	// WindowsのQt6では↓が動いてなさそう
-//	QApplication::setAttribute(Qt::AA_EnableHighDpiScaling, false);
-//	QApplication::setAttribute(Qt::AA_DisableHighDpiScaling, true);
-	QApplication::setAttribute(Qt::AA_DisableHighDpiScaling);
-	// ↓これだといける
 	putenv("QT_ENABLE_HIGHDPI_SCALING=0");
 #endif
 

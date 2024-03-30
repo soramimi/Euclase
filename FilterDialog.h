@@ -2,6 +2,7 @@
 #define FILTERDIALOG_H
 
 #include <QDialog>
+#include <QVariant>
 #include <functional>
 #include "euclase.h"
 
