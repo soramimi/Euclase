@@ -1,5 +1,6 @@
 #include "MySettings.h"
 #include "ApplicationGlobal.h"
+#include "ApplicationSettings.h"
 
 #include <QDir>
 #include <QFileInfo>

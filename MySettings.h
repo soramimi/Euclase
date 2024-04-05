@@ -3,16 +3,12 @@
 
 #include <QSettings>
 
-class MySettings : public QSettings
-{
+class ApplicationSettings;
+
+class MySettings : public QSettings {
 	Q_OBJECT
 public:
 	explicit MySettings(QObject *parent = 0);
-	
-signals:
-	
-public slots:
-	
 };
 
 QString makeApplicationDataDir();

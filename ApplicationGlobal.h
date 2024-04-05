@@ -13,10 +13,6 @@ public:
 	QString app_config_dir;
 	QString config_file_path;
 
-	double device_pixel_ratio = 1.0;
-
-	QString open_file_dir;
-
 	CUDAIMAGE_API const *cuda = nullptr;
 
 	ApplicationGlobal();

@@ -1,10 +1,8 @@
 #include "SettingsDialog.h"
 #include "ui_SettingsDialog.h"
+#include "ApplicationSettings.h"
 #include "MySettings.h"
-#include "main.h"
-
 #include <QFileDialog>
-//#include "misc.h"
 
 static int page_number = 0;
 
@@ -77,39 +75,6 @@ public:
 
 } // namespace
 
-void SettingsDialog::loadSettings(ApplicationSettings *as)
-{
-	MySettings s;
-
-	*as = ApplicationSettings::defaultSettings();
-
-	s.beginGroup("Global");
-	GetValue<bool>(s, "SaveWindowPosition")                  >> as->remember_and_restore_window_position;
-	s.endGroup();
-
-	s.beginGroup("UI");
-	GetValue<bool>(s, "EnableHighDpiScaling")                >> as->enable_high_dpi_scaling;
-	s.endGroup();
-}
-
-void SettingsDialog::saveSettings(ApplicationSettings const *as)
-{
-	MySettings s;
-
-	s.beginGroup("Global");
-	SetValue<bool>(s, "SaveWindowPosition")                  << as->remember_and_restore_window_position;
-	s.endGroup();
-
-	s.beginGroup("UI");
-	SetValue<bool>(s, "EnableHighDpiScaling")                << as->enable_high_dpi_scaling;
-	s.endGroup();
-}
-
-void SettingsDialog::saveSettings()
-{
-	saveSettings(&set);
-}
-
 void SettingsDialog::exchange(bool save)
 {
 	QList<AbstractSettingForm *> forms = ui->stackedWidget->findChildren<AbstractSettingForm *>();
@@ -120,8 +85,13 @@ void SettingsDialog::exchange(bool save)
 
 void SettingsDialog::loadSettings()
 {
-	loadSettings(&set);
+	set.load();
 	exchange(false);
+}
+
+void SettingsDialog::saveSettings()
+{
+	set.save();
 }
 
 void SettingsDialog::done(int r)

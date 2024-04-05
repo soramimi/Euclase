@@ -58,6 +58,8 @@ struct MainWindow::Private {
 	bool preview_layer_enabled = true;
 
 	std::mutex canvas_mutex;
+	
+	std::unique_ptr<FilterDialog> filter_dialog;	
 };
 
 MainWindow::MainWindow(QWidget *parent)
@@ -450,7 +452,27 @@ Canvas::RenderOption2 MainWindow::renderOption() const
 	return opt;
 }
 
-void MainWindow::filter(FilterContext *context, AbstractFilterForm *form, std::function<euclase::Image (FilterContext *context)> const &fn)
+bool MainWindow::isFilterDialogActive() const
+{
+	return (bool)m->filter_dialog;
+}
+
+void MainWindow::setFilerDialogActive(bool active)
+{
+	bool enable = !active;
+	ui->menuBar->setEnabled(enable);
+	ui->mainToolBar->setEnabled(enable);
+	ui->frame_tool_frame->setEnabled(enable);
+	ui->frame_property->setEnabled(enable);
+	ui->tabWidget_color->setEnabled(enable);
+	ui->widget_color_edit->setEnabled(enable);
+	ui->tabWidget_brush->setEnabled(enable);
+	
+	
+	
+}
+
+void MainWindow::filterStart(FilterContext &&context, AbstractFilterForm *form, std::function<euclase::Image (FilterContext *context)> const &fn)
 {
 	canvas()->current_layer()->alternate_selection_panels.clear();
 	if (isRectVisible()) {
@@ -476,15 +498,30 @@ void MainWindow::filter(FilterContext *context, AbstractFilterForm *form, std::f
 	canvas()->current_layer()->alternate_blend_mode = Canvas::BlendMode::Replace;
 
 	euclase::Image image = renderFilterTargetImage();
-	context->setSourceImage(image);
+	context.setSourceImage(image);
+	
+	m->filter_dialog = std::make_unique<FilterDialog>(this, std::move(context), form, fn);
+	m->filter_dialog->connect(m->filter_dialog.get(), &FilterDialog::end, this, &MainWindow::filterClose);
+	m->filter_dialog->show();
+	setFilerDialogActive(true);
+}
 
-	FilterDialog dlg(this, context, form, fn);
-	if (dlg.exec() == QDialog::Accepted) {
-		applyCurrentAlternateLayer();
-	} else {
-		resetCurrentAlternateOption({});
+void MainWindow::filterClose(bool apply)
+{
+	std::unique_ptr<FilterDialog> p;
+	p.swap(m->filter_dialog);
+	if (p) {
+		setFilerDialogActive(false);
+		euclase::Image result = p->result();
+		p->close();
+		p.reset();
+		if (apply && result) {
+			setFilteredImage(result);
+		} else {
+			resetCurrentAlternateOption({});
+		}
+		updateImageViewEntire();
 	}
-	updateImageViewEntire();
 }
 
 euclase::Image sepia(euclase::Image const &image, FilterStatus *status)
@@ -535,7 +572,7 @@ void MainWindow::on_action_filter_sepia_triggered()
 {
 	FilterContext fc;
 	fc.setParameter("amount", 10);
-	filter(&fc, nullptr, [](FilterContext *context){
+	filterStart(std::move(fc), nullptr, [](FilterContext *context){
 		FilterStatus s(context->cancel_ptr(), context->progress_ptr());
 		return sepia(context->sourceImage(), &s);
 	});
@@ -545,7 +582,7 @@ void MainWindow::on_action_filter_median_triggered()
 {
 	FilterContext fc;
 	fc.setParameter("amount", 10);
-	filter(&fc, new FilterFormMedian(this), [](FilterContext *context){
+	filterStart(std::move(fc), new FilterFormMedian(this), [](FilterContext *context){
 		FilterStatus s(context->cancel_ptr(), context->progress_ptr());
 		int value = context->parameter("amount").toInt();
 		return filter_median(context->sourceImage(), value, &s);
@@ -556,7 +593,7 @@ void MainWindow::on_action_filter_maximize_triggered()
 {
 	FilterContext fc;
 	fc.setParameter("amount", 10);
-	filter(&fc, nullptr, [](FilterContext *context){
+	filterStart(std::move(fc), nullptr, [](FilterContext *context){
 		FilterStatus s(context->cancel_ptr(), context->progress_ptr());
 		int value = context->parameter("amount").toInt();
 		return filter_maximize(context->sourceImage(), value, &s);
@@ -567,7 +604,7 @@ void MainWindow::on_action_filter_minimize_triggered()
 {
 	FilterContext fc;
 	fc.setParameter("amount", 10);
-	filter(&fc, nullptr, [](FilterContext *context){
+	filterStart(std::move(fc), nullptr, [](FilterContext *context){
 		FilterStatus s(context->cancel_ptr(), context->progress_ptr());
 		int value = context->parameter("amount").toInt();
 		return filter_minimize(context->sourceImage(), value, &s);
@@ -591,14 +628,14 @@ void MainWindow::on_action_filter_blur_triggered()
 
 	FilterContext fc;
 	fc.setParameter("amount", 10);
-	filter(&fc, new FilterFormBlur(this), fn);
+	filterStart(std::move(fc), new FilterFormBlur(this), fn);
 }
 
 void MainWindow::on_action_filter_antialias_triggered()
 {
 	FilterContext fc;
 	fc.setParameter("amount", 10);
-	filter(&fc, nullptr, [](FilterContext *context){
+	filterStart(std::move(fc), nullptr, [](FilterContext *context){
 		euclase::Image newimage = context->sourceImage();
 		filter_antialias(&newimage);
 		return newimage;
@@ -680,6 +717,8 @@ void MainWindow::updateImageView(const QRect &canvasrect)
 
 void MainWindow::paintLayer(Operation op, Canvas::Layer const &layer)
 {
+	if (isFilterDialogActive()) return;
+	
 	Canvas::RenderOption opt;
 	opt.notify_changed_rect = [&](QRect const &canvasrect){
 		updateImageView(canvasrect);
@@ -706,6 +745,8 @@ void MainWindow::paintLayer(Operation op, Canvas::Layer const &layer)
  */
 void MainWindow::drawBrush(bool one)
 {
+	if (isFilterDialogActive()) return;
+	
 	auto Put = [&](QPointF const &pt, Brush const &brush){
 		Canvas::Layer layer;
 		{
@@ -1369,6 +1410,8 @@ void MainWindow::keyPressEvent(QKeyEvent *event)
 
 void MainWindow::changeTool(Tool tool)
 {
+	if (isFilterDialogActive()) return;
+	
 	m->current_tool = tool;
 
 	struct Button {
@@ -1394,6 +1437,7 @@ void MainWindow::changeTool(Tool tool)
 
 MainWindow::Tool MainWindow::currentTool() const
 {
+	if (isFilterDialogActive()) return Tool::Scroll;
 	return m->current_tool;
 }
 
@@ -1597,7 +1641,7 @@ void MainWindow::colorCollection()
 	fc.setParameter("hue", 0);
 	fc.setParameter("saturation", 0);
 	fc.setParameter("brightness", 0);
-	filter(&fc, new FilterFormColorCorrection(this), [](FilterContext *context){
+	filterStart(std::move(fc), new FilterFormColorCorrection(this), [](FilterContext *context){
 		FilterStatus s(context->cancel_ptr(), context->progress_ptr());
 		ColorCorrectionParams params;
 		params.hue = context->parameter("hue").toInt() / 360.f;

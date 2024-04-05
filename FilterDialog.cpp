@@ -19,12 +19,12 @@ struct FilterDialog::Private {
 	bool update = false;
 	std::thread thread;
 	FilterFunction filter_fn;
-	FilterContext *context;
+	FilterContext context;
 	euclase::Image result_image;
 	float progress = 0;
 };
 
-FilterDialog::FilterDialog(MainWindow *parent, FilterContext *context, AbstractFilterForm *form, const FilterFunction &fn)
+FilterDialog::FilterDialog(MainWindow *parent, FilterContext &&context, AbstractFilterForm *form, const FilterFunction &fn)
 	: QDialog(parent)
 	, ui(new Ui::FilterDialog)
 	, m(new Private)
@@ -61,13 +61,13 @@ FilterDialog::~FilterDialog()
 
 FilterContext *FilterDialog::context()
 {
-	return m->context;
+	return &m->context;
 }
 
 void FilterDialog::stopFilter(bool join)
 {
-	*m->context->progress_ptr() = 0.0f;
-	*m->context->cancel_ptr() = true;
+	*context()->progress_ptr() = 0.0f;
+	*context()->cancel_ptr() = true;
 	if (join) {
 		if (m->thread.joinable()) {
 			m->thread.join();
@@ -87,9 +87,9 @@ void FilterDialog::updateFilter()
 void FilterDialog::startFilter()
 {
 	m->thread = std::thread([&](){
-		auto memtype = m->context->sourceImage().memtype();
-		m->result_image = m->filter_fn(m->context);
-		if (!*m->context->cancel_ptr()) {
+		auto memtype = context()->sourceImage().memtype();
+		m->result_image = m->filter_fn(context());
+		if (!*context()->cancel_ptr()) {
 			m->result_image.memconvert(memtype);
 			m->done = true;
 			m->update = true;
@@ -113,7 +113,7 @@ void FilterDialog::updateImageView()
 void FilterDialog::timerEvent(QTimerEvent *event)
 {
 	{
-		float value = *m->context->progress_ptr();
+		float value = *context()->progress_ptr();
 		setProgress(value);
 	}
 
@@ -131,7 +131,7 @@ void FilterDialog::timerEvent(QTimerEvent *event)
 			m->start_filter = {};
 			stopFilter(true);
 			m->busy = true;
-			*m->context->cancel_ptr() = false;
+			*context()->cancel_ptr() = false;
 			startFilter();
 		}
 	}
@@ -164,5 +164,23 @@ bool FilterDialog::isPreviewEnabled() const
 void FilterDialog::on_checkBox_preview_stateChanged(int arg1)
 {
 	updateImageView();
+}
+
+void FilterDialog::done(int r)
+{
+	if (r == QDialog::Accepted) {
+		emit end(true);
+	} else {
+		emit end(false);
+	}
+}
+	
+
+
+
+
+void FilterDialog::on_pushButton_cancel_clicked()
+{
+	done(QDialog::Rejected);
 }
 

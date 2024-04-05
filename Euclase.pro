@@ -53,6 +53,7 @@ SOURCES += main.cpp\
 	AbstractSettingForm.cpp \
 	AlphaBlend.cpp \
 	ApplicationGlobal.cpp \
+	ApplicationSettings.cpp \
 	BrushPreviewWidget.cpp \
 	BrushSlider.cpp \
 	Canvas.cpp \
@@ -96,6 +97,7 @@ HEADERS += \
 	AbstractSettingForm.h \
 	AlphaBlend.h \
 	ApplicationGlobal.h \
+	ApplicationSettings.h \
 	BrushPreviewWidget.h \
 	BrushSlider.h \
 	Canvas.h \
@@ -131,7 +133,6 @@ HEADERS += \
 	euclase.h \
 	joinpath.h \
 	libEuclaseCUDA/libeuclasecuda.h \
-	main.h \
 	median.h \
 	misc.h \
 	uninitialized_vector.h \

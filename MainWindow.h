@@ -74,7 +74,7 @@ private:
 	bool isRectVisible() const;
 	QRect boundsRect() const;
 	void resetView(bool fitview);
-	void filter(FilterContext *context, AbstractFilterForm *form, const std::function<euclase::Image (FilterContext *)> &fn);
+	void filterStart(FilterContext &&context, AbstractFilterForm *form, const std::function<euclase::Image (FilterContext *)> &fn);
 	void filter_xBRZ(int factor);
 	void resetCurrentAlternateOption(Canvas::BlendMode blendmode = Canvas::BlendMode::Normal);
 	void applyCurrentAlternateLayer();
@@ -83,6 +83,7 @@ private:
 	void colorCollection();
 	bool mouseMove_internal(int x, int y, bool leftbutton, bool set_cursor_only);
 	Canvas::RenderOption2 renderOption() const;
+	void setFilerDialogActive(bool active);
 protected:
 	void keyPressEvent(QKeyEvent *event);
 public:
@@ -156,8 +157,9 @@ private slots:
 	void on_action_select_rectangle_triggered();
 	void on_action_settings_triggered();
 	void test();
-
-
+	
+	
+	void filterClose(bool apply);
 public:
 	bool eventFilter(QObject *watched, QEvent *event);
 	void setToolCursor(const QCursor &cursor);
@@ -168,6 +170,7 @@ public:
 	void updateImageView(const QRect &canvasrect); // canvasrect is in canvas coordinate
 	std::mutex &mutexForCanvas() const;
 	euclase::Image renderSelection(const QRect &r, bool *abort) const;
+	bool isFilterDialogActive() const;
 protected:
 	void dragEnterEvent(QDragEnterEvent *event);
 	void dropEvent(QDropEvent *event);

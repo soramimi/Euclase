@@ -65,7 +65,7 @@ private:
 	void setProgress(float value);
 	void updateImageView();
 public:
-	explicit FilterDialog(MainWindow *parent, FilterContext *context, AbstractFilterForm *form, FilterFunction const &fn);
+	explicit FilterDialog(MainWindow *parent, FilterContext &&context, AbstractFilterForm *form, FilterFunction const &fn);
 	~FilterDialog();
 	void updateFilter();
 	euclase::Image result();
@@ -73,9 +73,14 @@ public:
 	FilterContext *context();
 private slots:
 	void on_checkBox_preview_stateChanged(int arg1);
+	void on_pushButton_cancel_clicked();
 protected:
 	void timerEvent(QTimerEvent *event);
 	void paintEvent(QPaintEvent *event);
+public slots:
+	void done(int);
+signals:
+	void end(bool apply);
 };
 
 #endif // FILTERDIALOG_H

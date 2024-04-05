@@ -4,7 +4,7 @@
 #include "MyApplication.h"
 #include "SelectionOutline.h"
 #include "joinpath.h"
-#include "main.h"
+#include "ApplicationSettings.h"
 #include <QDebug>
 #include <QDir>
 #include <QFileInfo>
@@ -17,11 +17,6 @@
 #else
 #include <dlfcn.h>
 #endif
-
-ApplicationSettings ApplicationSettings::defaultSettings()
-{
-	return {};
-}
 
 int main(int argc, char *argv[])
 {

@@ -6,5 +6,6 @@
         <file>image/brush.svg</file>
         <file>image/bounds.svg</file>
         <file>image/icon.png</file>
+        <file>image/eraser.svg</file>
     </qresource>
 </RCC>

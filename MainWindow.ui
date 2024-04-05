@@ -58,7 +58,7 @@
         <number>0</number>
        </property>
        <item>
-        <widget class="QTabWidget" name="Color">
+        <widget class="QTabWidget" name="tabWidget_color">
          <property name="sizePolicy">
           <sizepolicy hsizetype="Preferred" vsizetype="Preferred">
            <horstretch>0</horstretch>
@@ -115,7 +115,7 @@
         <widget class="ColorEditWidget" name="widget_color_edit" native="true"/>
        </item>
        <item>
-        <widget class="QTabWidget" name="tabWidget_3">
+        <widget class="QTabWidget" name="tabWidget_brush">
          <property name="sizePolicy">
           <sizepolicy hsizetype="Preferred" vsizetype="Preferred">
            <horstretch>0</horstretch>
@@ -287,7 +287,7 @@
      </widget>
     </item>
     <item row="0" column="1" colspan="2">
-     <widget class="QFrame" name="frame_6">
+     <widget class="QFrame" name="frame_property">
       <property name="minimumSize">
        <size>
         <width>0</width>
@@ -415,7 +415,7 @@
      </widget>
     </item>
     <item row="0" column="0" rowspan="3">
-     <widget class="QFrame" name="frame_5">
+     <widget class="QFrame" name="frame_tool_frame">
       <property name="minimumSize">
        <size>
         <width>46</width>
@@ -536,7 +536,7 @@
          </property>
          <property name="icon">
           <iconset resource="resources.qrc">
-           <normaloff>:/image/brush.svg</normaloff>:/image/brush.svg</iconset>
+           <normaloff>:/image/eraser.svg</normaloff>:/image/eraser.svg</iconset>
          </property>
          <property name="iconSize">
           <size>
@@ -624,7 +624,7 @@
      <x>0</x>
      <y>0</y>
      <width>1096</width>
-     <height>17</height>
+     <height>28</height>
     </rect>
    </property>
    <widget class="QMenu" name="menu_Edit">
@@ -694,27 +694,27 @@
   </action>
   <action name="action_filter_median">
    <property name="text">
-    <string>Median</string>
+    <string>&amp;Median</string>
    </property>
   </action>
   <action name="action_filter_maximize">
    <property name="text">
-    <string>Maximize</string>
+    <string>Ma&amp;ximize</string>
    </property>
   </action>
   <action name="action_filter_minimize">
    <property name="text">
-    <string>Minimize</string>
+    <string>M&amp;inimize</string>
    </property>
   </action>
   <action name="action_filter_blur">
    <property name="text">
-    <string>Blur</string>
+    <string>&amp;Blur</string>
    </property>
   </action>
   <action name="action_filter_antialias">
    <property name="text">
-    <string>Antialias</string>
+    <string>&amp;Antialias</string>
    </property>
   </action>
   <action name="action_file_save_as">
@@ -724,7 +724,7 @@
   </action>
   <action name="action_trim">
    <property name="text">
-    <string>Trim</string>
+    <string>&amp;Trim</string>
    </property>
   </action>
   <action name="action_edit_copy">
@@ -737,7 +737,7 @@
   </action>
   <action name="action_new">
    <property name="text">
-    <string>New...</string>
+    <string>&amp;New...</string>
    </property>
    <property name="shortcut">
     <string>Ctrl+N</string>
@@ -745,12 +745,12 @@
   </action>
   <action name="action_select_rectangle">
    <property name="text">
-    <string>Select rectangle</string>
+    <string>&amp;Select rectangle</string>
    </property>
   </action>
   <action name="action_clear_bounds">
    <property name="text">
-    <string>Clear bounds</string>
+    <string>&amp;Clear bounds</string>
    </property>
    <property name="toolTip">
     <string>Clear bounds</string>
@@ -758,7 +758,7 @@
   </action>
   <action name="action_filter_sepia">
    <property name="text">
-    <string>Sepia</string>
+    <string>&amp;Sepia</string>
    </property>
   </action>
   <action name="action_settings">
@@ -768,12 +768,12 @@
   </action>
   <action name="action_filter_2xBRZ">
    <property name="text">
-    <string>2xBRZ</string>
+    <string>&amp;2xBRZ</string>
    </property>
   </action>
   <action name="action_filter_4xBRZ">
    <property name="text">
-    <string>4xBRZ</string>
+    <string>&amp;4xBRZ</string>
    </property>
   </action>
  </widget>
@@ -819,8 +819,8 @@
   <tabstop>toolButton_scroll</tabstop>
   <tabstop>toolButton_paint_brush</tabstop>
   <tabstop>toolButton_rect</tabstop>
-  <tabstop>Color</tabstop>
-  <tabstop>tabWidget_3</tabstop>
+  <tabstop>tabWidget_color</tabstop>
+  <tabstop>tabWidget_brush</tabstop>
   <tabstop>horizontalSlider_size</tabstop>
   <tabstop>horizontalSlider_softness</tabstop>
   <tabstop>spinBox_brush_size</tabstop>

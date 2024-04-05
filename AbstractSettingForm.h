@@ -2,7 +2,7 @@
 #define ABSTRACTSETTINGFORM_H
 
 #include <QWidget>
-#include "main.h"
+#include "ApplicationSettings.h"
 #include "SettingsDialog.h"
 
 class MainWindow;
