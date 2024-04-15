@@ -173,7 +173,7 @@ public:
 
 		std::vector<Panel> *panels(ActivePanel active = PrimaryLayer)
 		{
-            switch (active) {
+			switch (active) {
 			case PrimaryLayer:
 				return &primary_panels;
 			case AlternateLayer:

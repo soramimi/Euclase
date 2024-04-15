@@ -9,4 +9,4 @@ _bin/
 *.lib
 *.obj
 _build*
-build-*
+build*
