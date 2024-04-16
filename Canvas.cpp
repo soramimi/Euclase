@@ -171,6 +171,7 @@ void Canvas::renderToSinglePanel(Panel *target_panel, QPoint const &target_offse
 
 		if (input_image->memtype() == euclase::Image::CUDA || target_panel->imagep()->memtype() == euclase::Image::CUDA) {
 			if (target_panel->imagep()->format() == euclase::Image::Format_8_Grayscale) {
+#ifdef USE_CUDA
 				euclase::Image in = input_image->toCUDA();
 				euclase::Image *out = target_panel->imagep();
 				out->memconvert(euclase::Image::CUDA);
@@ -185,6 +186,7 @@ void Canvas::renderToSinglePanel(Panel *target_panel, QPoint const &target_offse
 					, dx, dy
 					);
 				out->memconvert(memtype);
+#endif
 				return;
 			}
 		}
@@ -348,6 +350,7 @@ void Canvas::renderToSinglePanel(Panel *target_panel, QPoint const &target_offse
 
 		if (input_image->format() == euclase::Image::Format_F_RGBA) {
 			if (target_panel->image().memtype() == euclase::Image::CUDA) {
+#ifdef USE_CUDA
 				auto memtype = target_panel->imagep()->memtype();
 				euclase::Image in = input_image->toCUDA();
 				euclase::Image *out = target_panel->imagep();
@@ -367,6 +370,7 @@ void Canvas::renderToSinglePanel(Panel *target_panel, QPoint const &target_offse
 				int dst_h = out->height();
 				global->cuda->blend_float_RGBA(w, h, src, src_w, src_h, sx, sy, mask, mask_w, mask_h, dst, dst_w, dst_h, dx, dy);
 				target_panel->imagep()->memconvert(memtype);
+#endif
 				return;
 			}
 		}
