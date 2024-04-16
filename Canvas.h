@@ -211,16 +211,6 @@ public:
 
 		static void remove(std::vector<Panel> *panels, QPoint const &offset)
 		{
-#if 0
-			size_t i = panels->size();
-			while (i > 0) {
-				if (panels->at(i - 1).offset() == offset) {
-					panels->erase(panels->begin() + (i - 1));
-				} else {
-					i--;
-				}
-			}
-#else
 			std::vector<Panel> newpanels;
 			newpanels.reserve(panels->size());
 			for (Panel &panel : *panels) {
@@ -229,7 +219,6 @@ public:
 				}
 			}
 			std::swap(*panels, newpanels);
-#endif
 		}
 
 		static void sort(std::vector<Panel> *panels)

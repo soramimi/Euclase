@@ -1,5 +1,6 @@
 
 #if !defined(_WIN32) && !defined(__APPLE__)
+#include <QDebug>
 #include <x86intrin.h>
 #endif
 
@@ -592,9 +593,16 @@ int euclase::bytesPerPixel(Image::Format format)
 
 void euclase::Image::init(int w, int h, Image::Format format, MemoryType memtype, const Color &color)
 {
+	if (w < 0 || h < 0) {
+		qDebug() << "euclase::Image::init: invalid size" << w << h;
+		w = h = 0;
+	}
+	assert(w > 0 && h > 0);
 	const int datasize = w * h * euclase::bytesPerPixel(format);
 	Data *p = (Data *)malloc(sizeof(Data) + (memtype == Host ? datasize : 0));
-	assert(p);
+	if (!p) {
+		assert(p);
+	}
 	new(p) Data();
 	assign(p);
 	p->memtype_ = memtype;

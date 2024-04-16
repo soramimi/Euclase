@@ -290,24 +290,6 @@ void MainWindow::openFile(QString const &path)
 	setImageFromBytes(ba, true);
 }
 
-void MainWindow::setFilteredImage(euclase::Image const &image)
-{
-	std::lock_guard lock(mutexForCanvas());
-
-	canvas()->current_layer()->alternate_panels.clear();
-
-	Canvas::Layer layer;
-	layer.setImage(QPoint(0, 0), image);
-
-	Canvas::RenderOption opt;
-	opt.blend_mode = Canvas::BlendMode::Normal;
-	canvas()->renderToLayer(canvas()->current_layer(), Canvas::AlternateLayer, layer, nullptr, opt, nullptr);
-
-	canvas()->current_layer()->alternate_blend_mode = Canvas::BlendMode::Replace;
-
-	updateImageViewEntire();
-}
-
 /**
  * @brief フィルタ中のプレビューの有効状態を設定
  * @param enabled
@@ -516,7 +498,7 @@ void MainWindow::filterClose(bool apply)
 		p->close();
 		p.reset();
 		if (apply && result) {
-			setFilteredImage(result);
+			setFilteredImage(result, true);
 		} else {
 			resetCurrentAlternateOption({});
 		}
@@ -697,6 +679,16 @@ void MainWindow::clearCanvas()
 	canvas()->clear();
 }
 
+QPointF MainWindow::mapToCanvasFromViewport(QPointF const &pt) const
+{
+	return ui->widget_image_view->mapToCanvasFromViewport(pt);
+}
+
+QPointF MainWindow::mapToViewportFromCanvas(QPointF const &pt) const
+{
+	return ui->widget_image_view->mapToViewportFromCanvas(pt);
+}
+
 /**
  * @brief MainWindow::updateImageViewEntire
  *
@@ -811,9 +803,13 @@ void MainWindow::resetCurrentAlternateOption(Canvas::BlendMode blendmode)
 	canvas()->current_layer()->setAlternateOption(blendmode);
 }
 
-void MainWindow::applyCurrentAlternateLayer()
+void MainWindow::applyCurrentAlternateLayer(bool lock)
 {
-	std::lock_guard lock(mutexForCanvas());
+	if (lock) {
+		std::lock_guard lock(mutexForCanvas());
+		applyCurrentAlternateLayer(false);
+		return;		
+	}
 	Canvas::RenderOption2 opt = renderOption();
 	canvas()->current_layer()->finishAlternatePanels(true, opt.selection_layer, opt.opt1);
 }
@@ -862,14 +858,26 @@ QPointF MainWindow::pointOnCanvas(int x, int y) const
 	return ui->widget_image_view->mapToCanvasFromViewport(pos);
 }
 
-QPointF MainWindow::mapToCanvasFromViewport(QPointF const &pt) const
+void MainWindow::setFilteredImage(euclase::Image const &image, bool apply)
 {
-	return ui->widget_image_view->mapToCanvasFromViewport(pt);
-}
-
-QPointF MainWindow::mapToViewportFromCanvas(QPointF const &pt) const
-{
-	return ui->widget_image_view->mapToViewportFromCanvas(pt);
+	std::lock_guard lock(mutexForCanvas());
+	
+	canvas()->current_layer()->alternate_panels.clear();
+	
+	Canvas::Layer layer;
+	layer.setImage(QPoint(0, 0), image);
+	
+	Canvas::RenderOption opt;
+	opt.blend_mode = Canvas::BlendMode::Normal;
+	canvas()->renderToLayer(canvas()->current_layer(), Canvas::AlternateLayer, layer, nullptr, opt, nullptr);
+	
+	canvas()->current_layer()->alternate_blend_mode = Canvas::BlendMode::Replace;
+	
+	if (apply) {
+		applyCurrentAlternateLayer(false);
+	}
+	
+	updateImageViewEntire();
 }
 
 MainWindow::RectHandle MainWindow::rectHitTest(QPoint const &pt) const

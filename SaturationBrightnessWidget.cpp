@@ -103,23 +103,8 @@ void SaturationBrightnessWidget::paintEvent(QPaintEvent *)
 		int y = m->rect.y();
 		int w = m->rect.width();
 		int h = m->rect.height();
-#if 0
-		pr.fillRect(0, 0, width(), height(), QColor(128, 128, 128));
-#else
 		pr.fillRect(x - 1, y - 1, w + 2, h + 2, Qt::black);
-#endif
 		pr.drawImage(x, y, m->image);
-
-#if 0
-		pr.drawImage(QRect(0, y, x - 1, h), m->image, QRect(0, 0, 1, h)); // left
-		pr.drawImage(QRect(x, 0, w, y - 1), m->image, QRect(0, 0, w, 1)); // top
-		pr.drawImage(QRect(x + w + 1, y, width() - (x + w) - 1, h), m->image, QRect(w - 1, 0, 1, h)); // right
-		pr.drawImage(QRect(x, y + h + 1, w, height() - (y + h) - 1), m->image, QRect(0, h - 1, h, 1)); // bottom
-		pr.drawImage(QRect(0, 0, x - 1, y - 1), m->image, QRect(0, 0, 1, 1)); // top left
-		pr.drawImage(QRect(x + w + 1, 0, width() - (x + w) - 1, y - 1), m->image, QRect(w - 1, 0, 1, 1)); // top right
-		pr.drawImage(QRect(0, y + h + 1, width() - (x + w) - 1, y - 1), m->image, QRect(0, h - 1, 1, 1)); // bottom left
-		pr.drawImage(QRect(x + w + 1, y + h + 1, width() - (x + w) - 1, height() - (y + h) - 1), m->image, QRect(w - 1, h - 1, 1, 1)); // bottom right
-#endif
 
 		float sat = m->sat / 255.0f;
 		float val = m->val / 255.0f;

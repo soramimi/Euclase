@@ -44,7 +44,7 @@ private:
 
 	void setImage(euclase::Image image, bool fitview);
 	void setImageFromBytes(QByteArray const &ba, bool fitview);
-	void setFilteredImage(const euclase::Image &image);
+	void setFilteredImage(const euclase::Image &image, bool apply);
 
 	enum class Operation {
 		PaintToCurrentLayer,
@@ -77,7 +77,7 @@ private:
 	void filterStart(FilterContext &&context, AbstractFilterForm *form, const std::function<euclase::Image (FilterContext *)> &fn);
 	void filter_xBRZ(int factor);
 	void resetCurrentAlternateOption(Canvas::BlendMode blendmode = Canvas::BlendMode::Normal);
-	void applyCurrentAlternateLayer();
+	void applyCurrentAlternateLayer(bool lock = true);
 	int addNewLayer();
 	void setupBasicLayer(Canvas::Layer *p);
 	void colorCollection();

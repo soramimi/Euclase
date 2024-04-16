@@ -121,7 +121,7 @@ void FilterDialog::timerEvent(QTimerEvent *event)
 
 	if (m->update) {
 		m->update = false;
-		mainwindow->setFilteredImage(m->result_image);
+		mainwindow->setFilteredImage(m->result_image, false);
 		updateImageView();
 	}
 

@@ -769,16 +769,17 @@ SelectionOutline ImageViewWidget::renderSelectionOutline(bool *abort)
 	int dw = canvas()->width();
 	int dh = canvas()->height();
 	if (dw > 0 && dh > 0) {
+		CoordinateMapper mapper = currentCoordinateMapper();
 		QPointF dp0(0, 0);
 		QPointF dp1(width(), height());
-		dp0 = mapToCanvasFromViewport(dp0);
-		dp1 = mapToCanvasFromViewport(dp1);
+		dp0 = mapper.mapToCanvasFromViewport(dp0);
+		dp1 = mapper.mapToCanvasFromViewport(dp1);
 		dp0.rx() = floor(std::max(dp0.rx(), (double)0));
 		dp0.ry() = floor(std::max(dp0.ry(), (double)0));
 		dp1.rx() = ceil(std::min(dp1.rx(), (double)dw));
 		dp1.ry() = ceil(std::min(dp1.ry(), (double)dh));
-		QPointF vp0 = mapToViewportFromCanvas(dp0);
-		QPointF vp1 = mapToViewportFromCanvas(dp1);
+		QPointF vp0 = mapper.mapToViewportFromCanvas(dp0);
+		QPointF vp1 = mapper.mapToViewportFromCanvas(dp1);
 		vp0.rx() = floor(vp0.rx());
 		vp0.ry() = floor(vp0.ry());
 		vp1.rx() = ceil(vp1.rx());
@@ -787,12 +788,12 @@ SelectionOutline ImageViewWidget::renderSelectionOutline(bool *abort)
 		int vy = (int)vp0.y();
 		int vw = (int)vp1.x() - vx;
 		int vh = (int)vp1.y() - vy;
-		QImage selection;
-		{
-			int dx = int(dp0.x());
-			int dy = int(dp0.y());
-			int dw = int(dp1.x()) - dx;
-			int dh = int(dp1.y()) - dy;
+		int dx = int(dp0.x());
+		int dy = int(dp0.y());
+		int dw = int(dp1.x()) - dx;
+		int dh = int(dp1.y()) - dy;
+		if (vw > 0 && vh > 0 && dw > 0 && dh > 0) {
+			QImage selection;
 			euclase::Image sel;
 			{
 				std::lock_guard lock(mainwindow()->mutexForCanvas());
@@ -809,11 +810,11 @@ SelectionOutline ImageViewWidget::renderSelectionOutline(bool *abort)
 			} else { // それ以外はホストメモリで行う
 				selection = sel.qimage().scaled(vw, vh);
 			}
+			QImage outline = generateSelectionOutlineImage(selection, abort); // アウトライン画像を生成
+			if (outline.isNull()) return {};
+			data.bitmap = QBitmap::fromImage(outline);
+			data.point = QPoint(vx, vy);
 		}
-		QImage outline = generateSelectionOutlineImage(selection, abort); // アウトライン画像を生成
-		if (outline.isNull()) return {};
-		data.bitmap = QBitmap::fromImage(outline);
-		data.point = QPoint(vx, vy);
 	}
 	return data;
 }
