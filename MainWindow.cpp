@@ -677,6 +677,7 @@ void MainWindow::on_action_trim_triggered()
 			r = boundsRect();
 			canvas()->trim(r);
 			resetView(true);
+			updateImageViewEntire();
 		}
 	}
 }

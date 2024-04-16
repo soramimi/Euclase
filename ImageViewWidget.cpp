@@ -692,6 +692,8 @@ void ImageViewWidget::scaleFit(double ratio)
 	scrollImage(w * scale() / 2.0, h * scale() / 2.0, false); // 中心にスクロール
 
 	updateCursorAnchorPos(); // ホイールスクロールの基準座標を更新
+	
+	requestRendering({});
 }
 
 /**
