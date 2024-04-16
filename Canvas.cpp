@@ -691,6 +691,7 @@ void Canvas::renderToLayer(Layer *target_layer, ActivePanel activepanel, Layer c
 			for (int y = (s0.y() & ~(PANEL_SIZE - 1)); y < s1.y(); y += PANEL_SIZE) {
 				for (int x = (s0.x() & ~(PANEL_SIZE - 1)); x < s1.x(); x += PANEL_SIZE) {
 					if (abort && *abort) return;
+#if 0
 					{
 						Panel *p = findPanel(targetpanels, QPoint(x, y));
 						if (!p) {
@@ -699,6 +700,21 @@ void Canvas::renderToLayer(Layer *target_layer, ActivePanel activepanel, Layer c
 						}
 						renderToSinglePanel(p, target_layer->offset(), &input_panel, input_layer.offset(), mask_layer, opt, opt.brush_color, 255, abort);
 					}
+#else
+					QPoint d0 = QPoint(x, y) - target_layer->offset();
+					QPoint d1 = d0 + QPoint(PANEL_SIZE, PANEL_SIZE);
+					for (int y2 = (d0.y() & ~(PANEL_SIZE - 1)); y2 < d1.y(); y2 += PANEL_SIZE) {
+						for (int x2 = (d0.x() & ~(PANEL_SIZE - 1)); x2 < d1.x(); x2 += PANEL_SIZE) {
+							QPoint pt(x2, y2);
+							Panel *p = findPanel(targetpanels, pt);
+							if (!p) {
+								p = target_layer->addImagePanel(targetpanels, pt.x(), pt.y(), PANEL_SIZE, PANEL_SIZE, target_layer->format_, target_layer->memtype_);
+								p->imagep()->fill(euclase::k::transparent);
+							}
+							renderToSinglePanel(p, target_layer->offset(), &input_panel, input_layer.offset(), mask_layer, opt, opt.brush_color, 255, abort);
+						}
+					}
+#endif
 				}
 			}
 			if (opt.notify_changed_rect){
