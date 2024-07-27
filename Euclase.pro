@@ -4,8 +4,8 @@ TEMPLATE = app
 CONFIG += c++17
 QT += core gui widgets svg
 
-macx:QMAKE_CXX = aarch64-apple-darwin22-g++-13
-macx:QMAKE_LINK = aarch64-apple-darwin22-g++-13
+macx:QMAKE_CXX = aarch64-apple-darwin23-g++-14
+macx:QMAKE_LINK = aarch64-apple-darwin23-g++-14
 
 CONFIG += nostrip debug_info
 
@@ -20,7 +20,7 @@ DEFINES += USE_CUDA=1
 #win32:LIBS += -lkernel32.lib
 !win32:LIBS += -ldl
 
-macx:LIBS += -L/opt/homebrew/lib -L/opt/homebrew/opt/jpeg/lib
+# macx:LIBS += -L/opt/homebrew/lib -L/opt/homebrew/opt/jpeg/lib
 
 unix:QMAKE_CXXFLAGS += -fopenmp
 #-msse4.1
@@ -35,9 +35,9 @@ win32 {
 	LIBS += C:/develop/libimage/libjpeg/out/x64/Release/libjpeg.lib
 	LIBS += C:/develop/libimage/libz/out/x64/Release/libz.lib
 }
-!win32 {
-	LIBS += -lpng -ljpeg
-}
+# !win32 {
+#     LIBS += -lpng -ljpeg
+# }
 
 
 

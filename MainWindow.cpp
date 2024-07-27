@@ -480,6 +480,8 @@ void MainWindow::filterStart(FilterContext &&context, AbstractFilterForm *form, 
 	canvas()->current_layer()->alternate_blend_mode = Canvas::BlendMode::Replace;
 
 	euclase::Image image = renderFilterTargetImage();
+	if (!image) return;
+
 	context.setSourceImage(image);
 	
 	m->filter_dialog = std::make_unique<FilterDialog>(this, std::move(context), form, fn);
@@ -860,6 +862,9 @@ QPointF MainWindow::pointOnCanvas(int x, int y) const
 
 void MainWindow::setFilteredImage(euclase::Image const &image, bool apply)
 {
+	if (!image) return;
+	// Q_ASSERT(image);
+
 	std::lock_guard lock(mutexForCanvas());
 	
 	canvas()->current_layer()->alternate_panels.clear();

@@ -1,4 +1,6 @@
 
+#include <QDebug>
+
 #if !defined(_WIN32) && !defined(__APPLE__)
 #include <QDebug>
 #include <x86intrin.h>
@@ -660,7 +662,7 @@ euclase::Image euclase::Image::copy(MemoryType memtype) const
 
 euclase::Image &euclase::Image::memconvert(MemoryType memtype)
 {
-	if (ptr_->memtype_ != memtype) {
+	if (ptr_ && ptr_->memtype_ != memtype) {
 		Image newimg = copy(memtype);
 		assign(newimg.ptr_);
 	}

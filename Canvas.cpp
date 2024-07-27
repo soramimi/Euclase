@@ -49,7 +49,7 @@ void Canvas::sortPanels(std::vector<Panel> *panels)
 }
 
 struct Canvas::Private {
-	QSize size;
+	QSize size { 0, 0 };
 	std::vector<LayerPtr> layers;
 	int current_layer_index = 0;
 	Canvas::Layer filtering_layer;
@@ -765,6 +765,8 @@ Canvas::Panel Canvas::renderSelection(const QRect &r, bool *abort) const
 
 Canvas::Panel Canvas::renderToPanel(InputLayerMode input_layer_mode, euclase::Image::Format format, const QRect &r, QRect const &maskrect, ActivePanel activepanel, RenderOption const &opt, bool *abort) const
 {
+	if (r.width() < 1 || r.height() < 1) return {};
+
 	RenderOption opt2 = opt;
 	opt2.mask_rect = maskrect;
 	opt2.active_panel = activepanel;
