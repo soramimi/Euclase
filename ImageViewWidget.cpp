@@ -163,7 +163,7 @@ void ImageViewWidget::init(MainWindow *mainwindow, QScrollBar *vsb, QScrollBar *
 static QImage scale_float_to_uint8_rgba(euclase::Image const &src, int w, int h)
 {
 	if (src.memtype() == euclase::Image::CUDA) {
-		euclase::Image tmp(w, h, euclase::Image::Format_8_RGBA, euclase::Image::CUDA);
+		euclase::Image tmp(w, h, euclase::Image::Format_U8_RGBA, euclase::Image::CUDA);
 		global->cuda->scale_float_to_uint8_rgba(w, h, w, tmp.data(), src.width(), src.height(), src.data());
 		return tmp.qimage();
 	} else {
@@ -802,7 +802,7 @@ SelectionOutline ImageViewWidget::renderSelectionOutline(bool *abort)
 			if (abort && *abort) return {};
 			// 選択領域をスケーリング
 			if (sel.memtype() == euclase::Image::CUDA) { // CUDAメモリの場合はスケーリングをCUDAで行う
-				euclase::Image tmp(vw, vh, euclase::Image::Format_8_Grayscale, euclase::Image::CUDA);
+				euclase::Image tmp(vw, vh, euclase::Image::Format_U8_Grayscale, euclase::Image::CUDA);
 				int sw = sel.width();
 				int sh = sel.height();
 				global->cuda->scale(vw, vh, vw, tmp.data(), sw, sh, sw, sel.data(), 1);
@@ -972,7 +972,7 @@ void ImageViewWidget::runImageRendering()
 				Canvas::Panel newpanel;
 				Canvas::RenderOption opt;
 				opt.use_mask = true;
-				newpanel = m->mainwindow->renderToPanel(Canvas::AllLayers, euclase::Image::Format_F_RGBA, rect, {}, opt, (bool *)&m->render_interrupted);
+				newpanel = m->mainwindow->renderToPanel(Canvas::AllLayers, euclase::Image::Format_F32_RGBA, rect, {}, opt, (bool *)&m->render_interrupted);
 				if (canceled()) continue;
 
 				newpanel = newpanel->toHost();

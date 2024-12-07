@@ -29,6 +29,7 @@
 #include <QShortcut>
 #include <omp.h>
 #include <stdint.h>
+#include <QMessageBox>
 
 
 struct MainWindow::Private {
@@ -244,7 +245,7 @@ euclase::Image::MemoryType MainWindow::preferredMemoryType() const
 void MainWindow::setupBasicLayer(Canvas::Layer *p)
 {
 	p->clear();
-	p->format_ = euclase::Image::Format_F_RGBA;
+	p->format_ = euclase::Image::Format_F32_RGBA;
 	p->memtype_ = preferredMemoryType();
 }
 
@@ -253,6 +254,12 @@ void MainWindow::setImage(euclase::Image image, bool fitview)
 	clearCanvas();
 	ui->widget_image_view->clearRenderCache(true, true);
 
+	// {
+	// 	image = image.convertToFormat(euclase::Image::Format_F16_RGBA);
+	// 	image = image.convertToFormat(euclase::Image::Format_F32_RGBA);
+	// 	image = image.convertToFormat(euclase::Image::Format_F16_RGBA);
+	// 	image = image.convertToFormat(euclase::Image::Format_F32_RGBA);
+	// }
 
 	int w = image.width();
 	int h = image.height();
@@ -265,6 +272,11 @@ void MainWindow::setImage(euclase::Image image, bool fitview)
 		image = image.convertToFormat(canvas()->current_layer()->format_);
 		layer.setImage(QPoint(0, 0), image);
 	}
+	if (layer.format_ == euclase::Image::Format_Invalid) {
+		QMessageBox::critical(this, tr("Error"), tr("Invalid image format"));
+		return;
+	}
+
 	Canvas::RenderOption opt;
 	opt.blend_mode = Canvas::BlendMode::Normal;
 	canvas()->renderToLayer(canvas()->current_layer(), Canvas::Canvas::PrimaryLayer, layer, nullptr, opt, nullptr);
@@ -402,7 +414,7 @@ void MainWindow::on_action_file_save_as_triggered()
 	if (!path.isEmpty()) {
 		QSize sz = canvas()->size();
 		auto activepanel = isPreviewEnabled() ? Canvas::AlternateLayer : Canvas::PrimaryLayer;
-		euclase::Image img = canvas()->renderToPanel(Canvas::AllLayers, euclase::Image::Format_F_RGBA, QRect(0, 0, sz.width(), sz.height()), {}, activepanel, {}, nullptr).image();
+		euclase::Image img = canvas()->renderToPanel(Canvas::AllLayers, euclase::Image::Format_F32_RGBA, QRect(0, 0, sz.width(), sz.height()), {}, activepanel, {}, nullptr).image();
 		img.qimage().save(path);
 	}
 }
@@ -410,7 +422,7 @@ void MainWindow::on_action_file_save_as_triggered()
 euclase::Image MainWindow::renderFilterTargetImage()
 {
 	QSize sz = canvas()->size();
-	return renderToImage(euclase::Image::Format_F_RGBA, QRect(0, 0, sz.width(), sz.height()), {}, nullptr);
+	return renderToImage(euclase::Image::Format_F32_RGBA, QRect(0, 0, sz.width(), sz.height()), {}, nullptr);
 }
 
 Canvas::RenderOption2 MainWindow::renderOption() const
@@ -461,7 +473,7 @@ void MainWindow::filterStart(FilterContext &&context, AbstractFilterForm *form, 
 		QRect r = boundsRect();
 		euclase::Image img;
 		if (canvas()->selection_layer()->primary_panels.empty()) {
-			img = euclase::Image(r.width(), r.height(), euclase::Image::Format_8_Grayscale, canvas()->selection_layer()->memtype_);
+			img = euclase::Image(r.width(), r.height(), euclase::Image::Format_U8_Grayscale, canvas()->selection_layer()->memtype_);
 			img.fill(euclase::k::white);
 		} else {
 			Canvas::Panel panel = canvas()->renderSelection(r, nullptr);
@@ -531,8 +543,8 @@ euclase::Image sepia(euclase::Image const &image, FilterStatus *status)
 #pragma omp parallel for schedule(static, 8)
 		for (int y = 0; y < h; y++) {
 			if (isInterrupted()) continue;
-			euclase::FloatRGBA const *s = (euclase::FloatRGBA const *)image.scanLine(y);
-			euclase::FloatRGBA *d = (euclase::FloatRGBA *)newimage.scanLine(y);
+			euclase::Float32RGBA const *s = (euclase::Float32RGBA const *)image.scanLine(y);
+			euclase::Float32RGBA *d = (euclase::Float32RGBA *)newimage.scanLine(y);
 			for (int x = 0; x < w; x++) {
 				double r = s[x].r;
 				double g = s[x].g;
@@ -1488,7 +1500,7 @@ void MainWindow::on_action_new_triggered()
 		QSize sz = dlg.imageSize();
 		if (dlg.from() == NewDialog::From::New) {
 			euclase::Image image;
-			image.make(sz.width(), sz.height(), euclase::Image::Format_F_RGBA);
+			image.make(sz.width(), sz.height(), euclase::Image::Format_F32_RGBA);
 			image.fill(euclase::k::white);
 			setImage(image, true);
 			return;
@@ -1612,10 +1624,10 @@ euclase::Image filter_color_correction(euclase::Image const &image, ColorCorrect
 #pragma omp parallel for schedule(static, 8)
 		for (int y = 0; y < h; y++) {
 			if (isInterrupted()) continue;
-			euclase::FloatRGBA const *s = (euclase::FloatRGBA const *)srcimage.scanLine(y);
-			euclase::FloatRGBA *d = (euclase::FloatRGBA *)newimage.scanLine(y);
+			euclase::Float32RGBA const *s = (euclase::Float32RGBA const *)srcimage.scanLine(y);
+			euclase::Float32RGBA *d = (euclase::Float32RGBA *)newimage.scanLine(y);
 			for (int x = 0; x < w; x++) {
-				euclase::FloatRGB rgb(s[x].r, s[x].g, s[x].b);
+				euclase::Float32RGB rgb(s[x].r, s[x].g, s[x].b);
 				double A = s[x].a;
 				if (params.hue != 0) {
 					auto hsv = euclase::rgb_to_hsv(rgb);
@@ -1641,7 +1653,7 @@ euclase::Image filter_color_correction(euclase::Image const &image, ColorCorrect
 					rgb.g = 1.0f - (1.0f - rgb.g) * v_hi;
 					rgb.b = 1.0f - (1.0f - rgb.b) * v_hi;
 				}
-				d[x] = euclase::FloatRGBA(rgb.r, rgb.g, rgb.b, A);
+				d[x] = euclase::Float32RGBA(rgb.r, rgb.g, rgb.b, A);
 			}
 			progress((float)++rows / h);
 		}

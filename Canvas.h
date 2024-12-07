@@ -266,6 +266,8 @@ public:
 		void setImage(QPoint const &offset, euclase::Image const &image)
 		{
 			clear();
+			if (image.isNull()) return;
+
 			format_ = image.format();
 			memtype_ = image.memtype();
 

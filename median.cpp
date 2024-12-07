@@ -393,29 +393,29 @@ euclase::Image perform_filter_(Operation op, euclase::Image const &image, int ra
 
 	auto format = image.format();
 
-	if (format == euclase::Image::Format_F_RGBA) {
-		euclase::Image tmpimg = image.convertToFormat(euclase::Image::Format_8_RGBA).toHost();
+	if (format == euclase::Image::Format_F32_RGBA) {
+		euclase::Image tmpimg = image.convertToFormat(euclase::Image::Format_U8_RGBA).toHost();
 		tmpimg = perform_filter_(op, tmpimg, radius, status);
 		return tmpimg.makeFPImage();
 	}
-	if (format == euclase::Image::Format_F_GrayscaleA) {
-		euclase::Image tmpimg = image.convertToFormat(euclase::Image::Format_8_GrayscaleA).toHost();
+	if (format == euclase::Image::Format_F32_GrayscaleA) {
+		euclase::Image tmpimg = image.convertToFormat(euclase::Image::Format_U8_GrayscaleA).toHost();
 		tmpimg = perform_filter_(op, tmpimg, radius, status);
 		return tmpimg.convertToFormat(format);
 	}
 
-	if (format == euclase::Image::Format_8_RGB) {
-		euclase::Image tmpimg = image.convertToFormat(euclase::Image::Format_8_RGBA).toHost();
+	if (format == euclase::Image::Format_U8_RGB) {
+		euclase::Image tmpimg = image.convertToFormat(euclase::Image::Format_U8_RGBA).toHost();
 		tmpimg = perform_filter_(op, tmpimg, radius, status);
 		return tmpimg.convertToFormat(format);
 	}
-	if (format == euclase::Image::Format_8_Grayscale) {
-		euclase::Image tmpimg = image.convertToFormat(euclase::Image::Format_8_GrayscaleA).toHost();
+	if (format == euclase::Image::Format_U8_Grayscale) {
+		euclase::Image tmpimg = image.convertToFormat(euclase::Image::Format_U8_GrayscaleA).toHost();
 		tmpimg = perform_filter_(op, tmpimg, radius, status);
 		return tmpimg.convertToFormat(format);
 	}
 
-	if (format == euclase::Image::Format_8_RGBA) {
+	if (format == euclase::Image::Format_U8_RGBA) {
 		switch (op) {
 		case Median:
 			return Filter<OctetRGBA, median_filter_rgb_t>(image, radius, status);
@@ -424,7 +424,7 @@ euclase::Image perform_filter_(Operation op, euclase::Image const &image, int ra
 		case Minimize:
 			return Filter<OctetRGBA, minimize_filter_rgb_t>(image, radius, status);
 		}
-	} else if (format == euclase::Image::Format_8_GrayscaleA) {
+	} else if (format == euclase::Image::Format_U8_GrayscaleA) {
 		switch (op) {
 		case Median:
 			return Filter<OctetGrayA, median_filter_y_t>(image, radius, status);

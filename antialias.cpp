@@ -303,22 +303,22 @@ bool filter_antialias(euclase::Image *image)
 		return false;
 	}
 
-	if (image->format() == euclase::Image::Format_8_Grayscale) {
+	if (image->format() == euclase::Image::Format_U8_Grayscale) {
 		*image = image->toHost();
 		AntialiasGray8().filter(image);
 		return true;
 	}
 
-	if (image->format() == euclase::Image::Format_8_RGBA) {
+	if (image->format() == euclase::Image::Format_U8_RGBA) {
 		*image = image->toHost();
 		AntialiasRGB888().filter(image);
 		return true;
 	}
 
-	if (image->format() == euclase::Image::Format_F_RGBA) {
-		*image = image->convertToFormat(euclase::Image::Format_8_RGBA);
+	if (image->format() == euclase::Image::Format_F32_RGBA) {
+		*image = image->convertToFormat(euclase::Image::Format_U8_RGBA);
 		if (filter_antialias(image)) {
-			*image = image->convertToFormat(euclase::Image::Format_F_RGBA);
+			*image = image->convertToFormat(euclase::Image::Format_F32_RGBA);
 			return true;
 		}
 		return false;

@@ -10,8 +10,8 @@ public:
 
 	using OctetRGBA = euclase::OctetRGBA;
 	using OctetGrayA = euclase::OctetGrayA;
-	using FloatRGBA = euclase::FloatRGBA;
-	using FloatGrayA= euclase::FloatGrayA;
+	using FloatRGBA = euclase::Float32RGBA;
+	using FloatGrayA= euclase::Float32GrayA;
 
 	static inline int div255(int v)
 	{
