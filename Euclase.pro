@@ -87,6 +87,7 @@ SOURCES += main.cpp\
 	antialias.cpp \
 	charvec.cpp \
 	euclase.cpp \
+	fp/fp.cpp \
 	joinpath.cpp \
 	median.cpp \
 	misc.cpp \
@@ -131,6 +132,8 @@ HEADERS += \
 	antialias.h \
 	charvec.h \
 	euclase.h \
+	fp/f16c.h \
+	fp/fp.h \
 	joinpath.h \
 	libEuclaseCUDA/libeuclasecuda.h \
 	median.h \

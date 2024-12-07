@@ -36,7 +36,7 @@ public:
 	}
 	~uninitialized_vector()
 	{
-		free(d.array);
+		delete[] d.array;
 	}
 	void operator = (uninitialized_vector const &r)
 	{
@@ -379,9 +379,9 @@ public:
 			uninitialized_vector newvec;
 			newvec.d.capacity = (n + 7) & ~7;
 			newvec.d.count = n;
-			newvec.d.array = (T *)malloc(sizeof(T) * newvec.d.capacity);
+			newvec.d.array = (T *)new char[(sizeof(T) * newvec.d.capacity)];
 			memcpy(newvec.d.array, d.array, sizeof(T) * d.count);
-			free(d.array);
+			delete[] d.array;
 			d = newvec.d;
 			newvec.d = {};
 		} else {
@@ -395,9 +395,9 @@ public:
 	void reserve(size_t n)
 	{
 		if (d.capacity < n) {
-			T *newarr = (T *)malloc(sizeof(T) * n);
+			T *newarr = (T *)new char[(sizeof(T) * n)];
 			memcpy(newarr, d.array, sizeof(T) * d.count);
-			free(d.array);
+			delete[] d.array;
 			d.array = newarr;
 			d.capacity = n;
 		}
@@ -489,7 +489,7 @@ public:
 				if (d.array && d.count - i > 0) {
 					newvec.insert(newvec.end(), begin() + i, end());
 				}
-				free(d.array);
+				delete[] d.array;
 				d = newvec.d;
 				newvec.d = {};
 			} else {

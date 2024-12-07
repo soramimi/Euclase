@@ -79,7 +79,7 @@ void euclase::Image::assign(Data *p)
 				global->cuda->free(ptr_->cudamem_);
 			}
 #endif
-			free(ptr_);
+			delete[] ptr_;
 		}
 	}
 	ptr_ = p;
@@ -595,13 +595,13 @@ int euclase::bytesPerPixel(Image::Format format)
 
 void euclase::Image::init(int w, int h, Image::Format format, MemoryType memtype, const Color &color)
 {
-	if (w < 0 || h < 0) {
+	if (w < 1 || h < 1) {
 		qDebug() << "euclase::Image::init: invalid size" << w << h;
 		w = h = 0;
+		return;
 	}
-	assert(w > 0 && h > 0);
 	const int datasize = w * h * euclase::bytesPerPixel(format);
-	Data *p = (Data *)malloc(sizeof(Data) + (memtype == Host ? datasize : 0));
+	Data *p = (Data *)new char[(sizeof(Data) + (memtype == Host ? datasize : 0))];
 	if (!p) {
 		assert(p);
 	}
