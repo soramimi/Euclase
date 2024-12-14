@@ -1,3 +1,4 @@
+QMAKE_PROJECT_DEPTH = 0
 
 TARGET = Euclase
 TEMPLATE = app
