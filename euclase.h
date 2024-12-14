@@ -876,8 +876,7 @@ public:
 		} else if (amount == 0) {
 			return Float16Gray(0);
 		}
-		_float16_t m = 1 / amount;
-		Float16Gray t = *this * m;
+		Float16Gray t((float)v / (float)amount);
 		return t.limit();
 	}
 	OctetGray toPixelGray() const
@@ -1058,25 +1057,25 @@ public:
 	{
 		if (r <= 0) return 0;
 		if (r >= 1) return 255;
-		return (uint8_t)floor(r * 255 + 0.5);
+		return (uint8_t)floorf(r * 255.0f + 0.5f);
 	}
 	uint8_t g8() const
 	{
 		if ((float)g <= 0) return 0;
 		if ((float)g >= 1) return 255;
-		return (uint8_t)floorf((float)g * 255 + 0.5f);
+		return (uint8_t)floorf(g * 255.0f + 0.5f);
 	}
 	uint8_t b8() const
 	{
 		if ((float)b <= 0) return 0;
 		if ((float)b >= 1) return 255;
-		return (uint8_t)floorf((float)b * 255 + 0.5f);
+		return (uint8_t)floorf(b * 255.0f + 0.5f);
 	}
 	uint8_t a8() const
 	{
 		if ((float)a <= 0) return 0;
 		if ((float)a >= 1) return 255;
-		return (uint8_t)floorf((float)a * 255 + 0.5f);
+		return (uint8_t)floorf(a * 255.0f + 0.5f);
 	}
 	Float16RGBA limit() const
 	{

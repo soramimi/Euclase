@@ -124,6 +124,7 @@ MainWindow::MainWindow(QWidget *parent)
 
 MainWindow::~MainWindow()
 {
+	ui->widget_image_view->stopRenderingThread();
 	clearCanvas();
 	delete m;
 	delete ui;
@@ -690,6 +691,7 @@ void MainWindow::onSelectionChanged()
 
 void MainWindow::clearCanvas()
 {
+	std::lock_guard lock(mutexForCanvas());
 	canvas()->clear();
 }
 
