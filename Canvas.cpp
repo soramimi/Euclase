@@ -99,7 +99,17 @@ Canvas::Layer *Canvas::layer(int index)
 	return m->layers[index].get();
 }
 
+Canvas::Layer const *Canvas::layer(int index) const
+{
+	return m->layers[index].get();
+}
+
 Canvas::Layer *Canvas::current_layer()
+{
+	return layer(m->current_layer_index);
+}
+
+Canvas::Layer const *Canvas::current_layer() const
 {
 	return layer(m->current_layer_index);
 }
@@ -140,6 +150,9 @@ void Canvas::renderToSinglePanel(Panel *target_panel, QPoint const &target_offse
 
 	euclase::Image const *input_image = input_panel->imagep();
 
+	const auto srcfmt = input_image->format();
+	const auto dstfmt = target_panel->imagep()->format();
+
 	const int dx = x0 - dst_org.x();
 	const int dy = y0 - dst_org.y();
 	const int sx = x0 - src_org.x();
@@ -158,7 +171,7 @@ void Canvas::renderToSinglePanel(Panel *target_panel, QPoint const &target_offse
 		memset(tmpmask, 255, w);
 	}
 
-	if (input_image->format() == euclase::Image::Format_U8_Grayscale) {
+	if (srcfmt == euclase::Image::Format_U8_Grayscale) {
 		QColor c = brush_color.isValid() ? brush_color : Qt::white;
 
 		uint8_t invert = 0;
@@ -170,7 +183,7 @@ void Canvas::renderToSinglePanel(Panel *target_panel, QPoint const &target_offse
 		auto memtype = target_panel->imagep()->memtype();
 
 		if (input_image->memtype() == euclase::Image::CUDA || target_panel->imagep()->memtype() == euclase::Image::CUDA) {
-			if (target_panel->imagep()->format() == euclase::Image::Format_U8_Grayscale) {
+			if (dstfmt == euclase::Image::Format_U8_Grayscale) {
 #ifdef USE_CUDA
 				euclase::Image in = input_image->toCUDA();
 				euclase::Image *out = target_panel->imagep();
@@ -192,7 +205,7 @@ void Canvas::renderToSinglePanel(Panel *target_panel, QPoint const &target_offse
 		}
 
 		target_panel->imagep()->memconvert(euclase::Image::Host);
-		if (target_panel->imagep()->format() == euclase::Image::Format_U8_RGBA) {
+		if (dstfmt == euclase::Image::Format_U8_RGBA) {
 			euclase::OctetRGBA color(c.red(), c.green(), c.blue());
 			for (int i = 0; i < h; i++) {
 				using Pixel = euclase::OctetRGBA;
@@ -204,7 +217,7 @@ void Canvas::renderToSinglePanel(Panel *target_panel, QPoint const &target_offse
 					dst[dx + j] = AlphaBlend::blend(dst[dx + j], color);
 				}
 			}
-		} else if (target_panel->imagep()->format() == euclase::Image::Format_F32_RGBA) {
+		} else if (dstfmt == euclase::Image::Format_F32_RGBA) {
 			euclase::Float32RGBA color((uint8_t)c.red(), (uint8_t)c.green(), (uint8_t)c.blue());
 			for (int i = 0; i < h; i++) {
 				using Pixel = euclase::Float32RGBA;
@@ -216,7 +229,7 @@ void Canvas::renderToSinglePanel(Panel *target_panel, QPoint const &target_offse
 					dst[dx + j] = AlphaBlend::blend(dst[dx + j], color);
 				}
 			}
-		} else if (target_panel->imagep()->format() == euclase::Image::Format_U8_Grayscale) {
+		} else if (dstfmt == euclase::Image::Format_U8_Grayscale) {
 			for (int y = 0; y < h; y++) {
 				uint8_t const *msk = !maskimg ? tmpmask : maskimg->scanLine(y);
 				uint8_t const *src = input_image->scanLine(sy + y);
@@ -233,7 +246,7 @@ void Canvas::renderToSinglePanel(Panel *target_panel, QPoint const &target_offse
 		return;
 	}
 
-	if (input_image->format() == euclase::Image::Format_F32_Grayscale) {
+	if (srcfmt == euclase::Image::Format_F32_Grayscale) {
 		QColor c = brush_color.isValid() ? brush_color : Qt::white;
 
 		uint8_t invert = 0;
@@ -245,7 +258,7 @@ void Canvas::renderToSinglePanel(Panel *target_panel, QPoint const &target_offse
 		auto memtype = target_panel->imagep()->memtype();
 		target_panel->imagep()->memconvert(euclase::Image::Host);
 
-		if (target_panel->imagep()->format() == euclase::Image::Format_U8_RGBA) {
+		if (dstfmt == euclase::Image::Format_U8_RGBA) {
 			euclase::OctetRGBA color(c.red(), c.green(), c.blue());
 			for (int i = 0; i < h; i++) {
 				using Pixel = euclase::OctetRGBA;
@@ -257,7 +270,7 @@ void Canvas::renderToSinglePanel(Panel *target_panel, QPoint const &target_offse
 					dst[dx + j] = AlphaBlend::blend(dst[dx + j], color);
 				}
 			}
-		} else if (target_panel->imagep()->format() == euclase::Image::Format_F32_RGBA) {
+		} else if (dstfmt == euclase::Image::Format_F32_RGBA) {
 			euclase::Float32RGBA color((uint8_t)c.red(), (uint8_t)c.green(), (uint8_t)c.blue());
 			for (int i = 0; i < h; i++) {
 				using Pixel = euclase::Float32RGBA;
@@ -269,7 +282,7 @@ void Canvas::renderToSinglePanel(Panel *target_panel, QPoint const &target_offse
 					dst[dx + j] = AlphaBlend::blend(dst[dx + j], color);
 				}
 			}
-		} else if (target_panel->imagep()->format() == euclase::Image::Format_U8_Grayscale) {
+		} else if (dstfmt == euclase::Image::Format_U8_Grayscale) {
 			for (int y = 0; y < h; y++) {
 				uint8_t const *msk = !maskimg ? tmpmask : maskimg->scanLine(y);
 				float const *src = (float const *)input_image->scanLine(sy + y);
@@ -287,7 +300,7 @@ void Canvas::renderToSinglePanel(Panel *target_panel, QPoint const &target_offse
 		return;
 	}
 
-	if (target_panel->imagep()->format() == euclase::Image::Format_U8_RGBA) {
+	if (dstfmt == euclase::Image::Format_U8_RGBA) {
 
 		auto RenderRGBA8888 = [](uint8_t *dst, uint8_t const *src, uint8_t const *msk, int w, RenderOption const &opt){
 			for (int j = 0; j < w; j++) {
@@ -315,7 +328,7 @@ void Canvas::renderToSinglePanel(Panel *target_panel, QPoint const &target_offse
 		auto Do = [&](euclase::Image const *inputimg, euclase::Image *outputimg){
 			std::function<void(uint8_t *dst, uint8_t const *src, uint8_t const *msk, int w, RenderOption const &opt)> renderer;
 
-			const int sstep = euclase::bytesPerPixel(input_image->format());
+			const int sstep = euclase::bytesPerPixel(srcfmt);
 			const int dstep = euclase::bytesPerPixel(target_panel->image().format());
 			if (inputimg->memtype() == euclase::Image::Host) {
 				if (inputimg->format() == euclase::Image::Format_U8_RGBA) {
@@ -346,14 +359,17 @@ void Canvas::renderToSinglePanel(Panel *target_panel, QPoint const &target_offse
 		return;
 	}
 
-	if (target_panel->imagep()->format() == euclase::Image::Format_F32_RGBA) {
-
-		if (input_image->format() == euclase::Image::Format_F32_RGBA) {
+	if (dstfmt == euclase::Image::Format_F32_RGBA) {
+		if (srcfmt == euclase::Image::Format_F32_RGBA || srcfmt == euclase::Image::Format_F16_RGBA) {
 			if (target_panel->image().memtype() == euclase::Image::CUDA) {
 #ifdef USE_CUDA
 				auto memtype = target_panel->imagep()->memtype();
-				euclase::Image in = input_image->toCUDA();
+				euclase::Image in = *input_image;
 				euclase::Image *out = target_panel->imagep();
+				if (srcfmt != euclase::Image::Format_F32_RGBA) {
+					in = in.convertToFormat(euclase::Image::Format_F32_RGBA);
+				}
+				in = in.toCUDA();
 				cudamem_t const *src = in.data();
 				int src_w = in.width();
 				int src_h = in.height();
@@ -375,9 +391,9 @@ void Canvas::renderToSinglePanel(Panel *target_panel, QPoint const &target_offse
 			}
 		}
 
-		const int dstep = euclase::bytesPerPixel(target_panel->imagep()->format());
-		const int sstep = euclase::bytesPerPixel(input_image->format());
-		if (input_image->format() == euclase::Image::Format_U8_RGBA) {
+		const int dstep = euclase::bytesPerPixel(dstfmt);
+		const int sstep = euclase::bytesPerPixel(srcfmt);
+		if (srcfmt == euclase::Image::Format_U8_RGBA) {
 			auto render = [](uint8_t *dst, uint8_t const *src, uint8_t const *msk, int w){
 				for (int j = 0; j < w; j++) {
 					euclase::Float32RGBA color = euclase::Float32RGBA::convert(((euclase::OctetRGBA const *)src)[j]);
@@ -393,7 +409,7 @@ void Canvas::renderToSinglePanel(Panel *target_panel, QPoint const &target_offse
 			}
 			return;
 		}
-		if (input_image->format() == euclase::Image::Format_F32_RGBA) {
+		if (srcfmt == euclase::Image::Format_F32_RGBA) {
 			euclase::Image in = *input_image;
 			euclase::Image out = target_panel->image();
 			in = in.toHost();
@@ -462,10 +478,218 @@ void Canvas::renderToSinglePanel(Panel *target_panel, QPoint const &target_offse
 			in = in.toHost();
 			out = out.toHost();
 			return;
+		} else if (srcfmt == euclase::Image::Format_F16_RGBA) {
+			euclase::Image in = *input_image;
+			euclase::Image out = target_panel->image();
+			in = in.toHost();
+			euclase::_float16_t const *src = (euclase::_float16_t const *)in.data();
+			float *dst = (float *)out.data();
+			int src_stride = in.width();
+			int dst_stride = out.width();
+			uint8_t const *mask = maskimg ? (uint8_t const *)maskimg->data() : nullptr;
+			int mask_stride = maskimg ? maskimg->width() : 0;
+			for (int y = 0; y < h; y++) {
+				euclase::_float16_t const *s = src + 4 * (src_stride * (sy + y) + sx);
+				float *d = dst + 4 * (dst_stride * (dy + y) + dx);
+				switch (opt.blend_mode) {
+				case BlendMode::Normal:
+					for (int x = 0; x < w; x++) {
+						uint8_t m = mask ? *(mask + mask_stride * y + x) : 255;
+						euclase::Float32RGBA t = *(euclase::Float32RGBA *)d;
+						euclase::Float32RGBA u = *(euclase::Float16RGBA *)s;
+						u.a = u.a * m / 255;
+						t = AlphaBlend::blend(t, u);
+						d[0] = std::min(std::max((float)t.r, 0.0f), 1.0f);
+						d[1] = std::min(std::max((float)t.g, 0.0f), 1.0f);
+						d[2] = std::min(std::max((float)t.b, 0.0f), 1.0f);
+						d[3] = std::min(std::max((float)t.a, 0.0f), 1.0f);
+						s += 4;
+						d += 4;
+					}
+					break;
+				case BlendMode::Eraser:
+					for (int x = 0; x < w; x++) {
+						uint8_t m = mask ? *(mask + mask_stride * y + x) : 255;
+						float overR = s[0];
+						float overG = s[1];
+						float overB = s[2];
+						float overA = s[3];
+						float v = euclase::grayf(overR, overG, overB) * overA * m / 255;
+						d[3] = (float)d[3] * (1.0f - euclase::clamp_f16(v));
+						s += 4;
+						d += 4;
+					}
+					break;
+				}
+			}
+			in = in.toHost();
+			out = out.toHost();
+			return;
 		}
 	}
 
-	if (target_panel->imagep()->format() == euclase::Image::Format_U8_Grayscale) {
+
+
+
+
+
+
+	if (dstfmt == euclase::Image::Format_F16_RGBA) {
+		if (srcfmt == euclase::Image::Format_F32_RGBA || srcfmt == euclase::Image::Format_F16_RGBA) {
+			if (target_panel->image().memtype() == euclase::Image::CUDA) {
+#ifdef USE_CUDA
+				auto memtype = target_panel->imagep()->memtype();
+				euclase::Image in = *input_image;
+				euclase::Image *out = target_panel->imagep();
+				if (srcfmt != euclase::Image::Format_F16_RGBA) {
+					in = in.convertToFormat(euclase::Image::Format_F16_RGBA);
+				}
+				in = in.toCUDA();
+				cudamem_t const *src = in.data();
+				int src_w = in.width();
+				int src_h = in.height();
+				uint8_t const *mask = nullptr;
+				int mask_w = 0;
+				int mask_h = 0;
+				if (maskimg) {
+					mask = (uint8_t const *)maskimg->data();
+					mask_w = maskimg->width();
+					mask_h = maskimg->height();
+				}
+				cudamem_t *dst = out->data();
+				int dst_w = out->width();
+				int dst_h = out->height();
+				global->cuda->blend_fp16_RGBA(w, h, src, src_w, src_h, sx, sy, mask, mask_w, mask_h, dst, dst_w, dst_h, dx, dy);
+				target_panel->imagep()->memconvert(memtype);
+#endif
+				return;
+			}
+		}
+
+		const int dstep = euclase::bytesPerPixel(dstfmt);
+		const int sstep = euclase::bytesPerPixel(srcfmt);
+		if (srcfmt == euclase::Image::Format_U8_RGBA) {
+			auto render = [](uint8_t *dst, uint8_t const *src, uint8_t const *msk, int w){
+				for (int j = 0; j < w; j++) {
+					euclase::Float16RGBA color = euclase::Float16RGBA::convert(((euclase::OctetRGBA const *)src)[j]);
+					color.a = color.a * msk[j] / 255;
+					((euclase::Float16RGBA *)dst)[j] = AlphaBlend::blend(((euclase::Float16RGBA *)dst)[j], color);
+				}
+			};
+			for (int i = 0; i < h; i++) {
+				uint8_t const *msk = !maskimg ? tmpmask : maskimg->scanLine(i);
+				uint8_t const *src = input_image->scanLine(sy + i);
+				uint8_t *dst = target_panel->imagep()->scanLine(dy + i);
+				render(dst + dstep * dx, src + sstep * sx, msk, w);
+			}
+			return;
+		}
+		if (srcfmt == euclase::Image::Format_F32_RGBA) {
+			euclase::Image in = *input_image;
+			euclase::Image out = target_panel->image();
+			in = in.toHost();
+			float const *src = (float const *)in.data();
+			euclase::_float16_t *dst = (euclase::_float16_t *)out.data();
+			int src_stride = in.width();
+			int dst_stride = out.width();
+			uint8_t const *mask = maskimg ? (uint8_t const *)maskimg->data() : nullptr;
+			int mask_stride = maskimg ? maskimg->width() : 0;
+			for (int y = 0; y < h; y++) {
+				float const *s = src + 4 * (src_stride * (sy + y) + sx);
+				euclase::_float16_t *d = dst + 4 * (dst_stride * (dy + y) + dx);
+				switch (opt.blend_mode) {
+				case BlendMode::Normal:
+					for (int x = 0; x < w; x++) {
+						uint8_t m = mask ? *(mask + mask_stride * y + x) : 255;
+						euclase::Float16RGBA t = *(euclase::Float16RGBA *)d;
+						euclase::Float16RGBA u(*(euclase::Float32RGBA const *)s);
+						u.a = u.a * m / 255;
+						t = AlphaBlend::blend(t, u);
+						d[0] = std::min(std::max((float)t.r, 0.0f), 1.0f);
+						d[1] = std::min(std::max((float)t.g, 0.0f), 1.0f);
+						d[2] = std::min(std::max((float)t.b, 0.0f), 1.0f);
+						d[3] = std::min(std::max((float)t.a, 0.0f), 1.0f);
+						s += 4;
+						d += 4;
+					}
+					break;
+				case BlendMode::Eraser:
+					for (int x = 0; x < w; x++) {
+						uint8_t m = mask ? *(mask + mask_stride * y + x) : 255;
+						float overR = s[0];
+						float overG = s[1];
+						float overB = s[2];
+						float overA = s[3];
+						float v = euclase::grayf(overR, overG, overB) * overA * m / 255;
+						d[3] = (float)d[3] * (1 - euclase::clamp_f16(v));
+						s += 4;
+						d += 4;
+					}
+					break;
+				}
+			}
+			in = in.toHost();
+			out = out.toHost();
+			return;
+		} else if (srcfmt == euclase::Image::Format_F16_RGBA) {
+			euclase::Image in = *input_image;
+			euclase::Image out = target_panel->image();
+			in = in.toHost();
+			euclase::_float16_t const *src = (euclase::_float16_t const *)in.data();
+			euclase::_float16_t *dst = (euclase::_float16_t *)out.data();
+			int src_stride = in.width();
+			int dst_stride = out.width();
+			uint8_t const *mask = maskimg ? (uint8_t const *)maskimg->data() : nullptr;
+			int mask_stride = maskimg ? maskimg->width() : 0;
+			for (int y = 0; y < h; y++) {
+				euclase::_float16_t const *s = src + 4 * (src_stride * (sy + y) + sx);
+				euclase::_float16_t *d = dst + 4 * (dst_stride * (dy + y) + dx);
+				switch (opt.blend_mode) {
+				case BlendMode::Normal:
+					for (int x = 0; x < w; x++) {
+						uint8_t m = mask ? *(mask + mask_stride * y + x) : 255;
+						euclase::Float16RGBA t = *(euclase::Float16RGBA *)d;
+						euclase::Float16RGBA u = *(euclase::Float16RGBA *)s;
+						u.a = u.a * m / 255;
+						t = AlphaBlend::blend(t, u);
+						d[0] = std::min(std::max((float)t.r, 0.0f), 1.0f);
+						d[1] = std::min(std::max((float)t.g, 0.0f), 1.0f);
+						d[2] = std::min(std::max((float)t.b, 0.0f), 1.0f);
+						d[3] = std::min(std::max((float)t.a, 0.0f), 1.0f);
+						s += 4;
+						d += 4;
+					}
+					break;
+				case BlendMode::Eraser:
+					for (int x = 0; x < w; x++) {
+						uint8_t m = mask ? *(mask + mask_stride * y + x) : 255;
+						float overR = s[0];
+						float overG = s[1];
+						float overB = s[2];
+						float overA = s[3];
+						float v = euclase::grayf(overR, overG, overB) * overA * m / 255;
+						d[3] = (float)d[3] * (1.0f - euclase::clamp_f16(v));
+						s += 4;
+						d += 4;
+					}
+					break;
+				}
+			}
+			in = in.toHost();
+			out = out.toHost();
+			return;
+		}
+	}
+
+
+
+
+
+
+
+
+
+	if (dstfmt == euclase::Image::Format_U8_Grayscale) {
 
 		auto RenderRGBA8888 = [](uint8_t *dst, uint8_t const *src, uint8_t const *msk, int w, RenderOption const &opt){
 			for (int j = 0; j < w; j++) {
@@ -480,9 +704,9 @@ void Canvas::renderToSinglePanel(Panel *target_panel, QPoint const &target_offse
 
 		std::function<void(uint8_t *dst, uint8_t const *src, uint8_t const *msk, int w, RenderOption const &opt)> renderer;
 
-		const int dstep = euclase::bytesPerPixel(target_panel->imagep()->format());
-		const int sstep = euclase::bytesPerPixel(input_image->format());
-		if (input_image->format() == euclase::Image::Format_U8_RGBA) {
+		const int dstep = euclase::bytesPerPixel(dstfmt);
+		const int sstep = euclase::bytesPerPixel(srcfmt);
+		if (srcfmt == euclase::Image::Format_U8_RGBA) {
 			renderer = RenderRGBA8888;
 		}
 

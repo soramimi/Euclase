@@ -10,8 +10,10 @@ public:
 
 	using OctetRGBA = euclase::OctetRGBA;
 	using OctetGrayA = euclase::OctetGrayA;
-	using FloatRGBA = euclase::Float32RGBA;
-	using FloatGrayA= euclase::Float32GrayA;
+	using Float32RGBA = euclase::Float32RGBA;
+	using Float32GrayA= euclase::Float32GrayA;
+	using Float16RGBA = euclase::Float16RGBA;
+	using Float16GrayA= euclase::Float16GrayA;
 
 	static inline int div255(int v)
 	{
@@ -28,14 +30,14 @@ public:
 		return v * v;
 	}
 
-	static inline FloatRGBA gamma(FloatRGBA const &pix)
+	static inline Float32RGBA gamma(Float32RGBA const &pix)
 	{
-		return FloatRGBA(gamma(pix.r), gamma(pix.g), gamma(pix.b), pix.a);
+		return Float32RGBA(gamma(pix.r), gamma(pix.g), gamma(pix.b), pix.a);
 	}
 
-	static inline FloatRGBA degamma(FloatRGBA const &pix)
+	static inline Float32RGBA degamma(Float32RGBA const &pix)
 	{
-		return FloatRGBA(degamma(pix.r), degamma(pix.g), degamma(pix.b), pix.a);
+		return Float32RGBA(degamma(pix.r), degamma(pix.g), degamma(pix.b), pix.a);
 	}
 
 	class fixed_t {
@@ -133,7 +135,7 @@ public:
 		return OctetGrayA(y / a, div255(a));
 	}
 
-	static inline FloatRGBA blend(FloatRGBA const &base, FloatRGBA const &over)
+	static inline Float32RGBA blend(Float32RGBA const &base, Float32RGBA const &over)
 	{
 		if (over.a <= 0) return base;
 		if (base.a <= 0 || over.a >= 1) return over;
@@ -141,16 +143,27 @@ public:
 		float g = over.g * over.a + base.g * base.a * (1 - over.a);
 		float b = over.b * over.a + base.b * base.a * (1 - over.a);
 		float a = over.a + base.a * (1 - over.a);
-		return FloatRGBA(r / a, g / a, b / a, a);
+		return Float32RGBA(r / a, g / a, b / a, a);
 	}
 
-	static inline FloatGrayA blend(FloatGrayA const &base, FloatGrayA const &over)
+	static inline Float16RGBA blend(Float16RGBA const &base, Float16RGBA const &over)
+	{
+		if (over.a <= 0) return base;
+		if (base.a <= 0 || over.a >= 1) return over;
+		float r = over.r * over.a + base.r * base.a * (1 - over.a);
+		float g = over.g * over.a + base.g * base.a * (1 - over.a);
+		float b = over.b * over.a + base.b * base.a * (1 - over.a);
+		float a = over.a + base.a * (1 - over.a);
+		return Float16RGBA(r / a, g / a, b / a, a);
+	}
+
+	static inline Float32GrayA blend(Float32GrayA const &base, Float32GrayA const &over)
 	{
 		if (over.a <= 0) return base;
 		if (base.a <= 0 || over.a >= 1) return over;
 		float v = over.v * over.a + base.v * base.a * (1 - over.a);
 		float a = over.a + base.a * (1 - over.a);
-		return FloatGrayA(v / a, a);
+		return Float32GrayA(v / a, a);
 	}
 };
 

@@ -126,7 +126,7 @@ __global__ void cu_fill_fp16_rgba_kernel(int w, int h, float r, float g, float b
 	int y = blockIdx.y * blockDim.y + threadIdx.y;
 
 	if (x < w && y < h) {
-		__half *d = dst + 2 * (dst_w * (dy + y) + dx + x);
+		__half *d = dst + 4 * (dst_w * (dy + y) + dx + x);
 		d[0] = r;
 		d[1] = g;
 		d[2] = b;

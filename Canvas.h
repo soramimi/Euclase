@@ -297,7 +297,9 @@ public:
 	QSize size() const;
 	void setSize(QSize const &s);
 	Layer *layer(int index);
+	Layer const *layer(int index) const;
 	Layer *current_layer();
+	Layer const *current_layer() const;
 	Layer *selection_layer();
 
 	void paintToCurrentLayer(const Layer &source, const RenderOption &opt, bool *abort);

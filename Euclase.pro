@@ -15,8 +15,8 @@ gcc:QMAKE_CXXFLAGS += -std=$$CPP_STD -Wall -Wextra -Werror=return-type -Werror=t
 
 DESTDIR = $$PWD/_bin
 
-DEFINES += USE_QT=1
-DEFINES += USE_CUDA=1
+DEFINES += USE_QT
+DEFINES += USE_CUDA
 
 #win32:LIBS += -lkernel32.lib
 !win32:LIBS += -ldl

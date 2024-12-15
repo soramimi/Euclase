@@ -79,7 +79,7 @@ private:
 	void resetCurrentAlternateOption(Canvas::BlendMode blendmode = Canvas::BlendMode::Normal);
 	void applyCurrentAlternateLayer(bool lock = true);
 	int addNewLayer();
-	void setupBasicLayer(Canvas::Layer *p);
+	void setupBasicLayer(Canvas::Layer *layer);
 	void colorCollection();
 	bool mouseMove_internal(int x, int y, bool leftbutton, bool set_cursor_only);
 	Canvas::RenderOption2 renderOption() const;
@@ -167,6 +167,7 @@ public:
 	bool isPreviewEnabled() const;
 	void setCurrentLayer(int index);
 	euclase::Image::MemoryType preferredMemoryType() const;
+	euclase::Image::Format preferredImageFormat() const;
 	void updateImageView(const QRect &canvasrect); // canvasrect is in canvas coordinate
 	std::mutex &mutexForCanvas() const;
 	euclase::Image renderSelection(const QRect &r, bool *abort) const;

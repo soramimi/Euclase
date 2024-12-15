@@ -899,6 +899,7 @@ public:
 		, a(0)
 	{
 	}
+	Float32RGBA(Float16RGBA const &t);
 	explicit Float32RGBA(float r, float g, float b, float a = 1)
 		: r(r)
 		, g(g)
@@ -1015,6 +1016,13 @@ public:
 		, a(a)
 	{
 	}
+	explicit Float16RGBA(Float32RGBA const &t)
+		: r(t.r)
+		, g(t.g)
+		, b(t.b)
+		, a(t.a)
+	{
+	}
 	static inline Float16RGBA convert(OctetRGBA const &src);
 	static inline Float16RGBA convert(Float32RGBA const &src);
 	Float16RGBA operator + (Float16RGBA const &right) const
@@ -1096,6 +1104,14 @@ public:
 		return OctetRGBA(r8(), g8(), b8(), a8());
 	}
 };
+
+inline Float32RGBA::Float32RGBA(Float16RGBA const &t)
+	: r((float)t.r)
+	, g((float)t.g)
+	, b((float)t.b)
+	, a((float)t.a)
+{
+}
 
 inline OctetRGB OctetRGB::convert(OctetGray const &t)
 {

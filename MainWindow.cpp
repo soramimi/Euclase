@@ -243,11 +243,17 @@ euclase::Image::MemoryType MainWindow::preferredMemoryType() const
 	return global->cuda ? euclase::Image::CUDA : euclase::Image::Host;;
 }
 
-void MainWindow::setupBasicLayer(Canvas::Layer *p)
+euclase::Image::Format MainWindow::preferredImageFormat() const
 {
-	p->clear();
-	p->format_ = euclase::Image::Format_F32_RGBA;
-	p->memtype_ = preferredMemoryType();
+	// return euclase::Image::Format_F32_RGBA;
+	return euclase::Image::Format_F16_RGBA;
+}
+
+void MainWindow::setupBasicLayer(Canvas::Layer *layer)
+{
+	layer->clear();
+	layer->format_ = preferredImageFormat();
+	layer->memtype_ = preferredMemoryType();
 }
 
 void MainWindow::setImage(euclase::Image image, bool fitview)
@@ -255,12 +261,12 @@ void MainWindow::setImage(euclase::Image image, bool fitview)
 	clearCanvas();
 	ui->widget_image_view->clearRenderCache(true, true);
 
-	// {
-	// 	image = image.convertToFormat(euclase::Image::Format_F16_RGBA);
-	// 	image = image.convertToFormat(euclase::Image::Format_F32_RGBA);
-	// 	image = image.convertToFormat(euclase::Image::Format_F16_RGBA);
-	// 	image = image.convertToFormat(euclase::Image::Format_F32_RGBA);
-	// }
+	{
+		// image = image.convertToFormat(euclase::Image::Format_F16_RGBA);
+		// image = image.convertToFormat(euclase::Image::Format_F32_RGBA);
+		// image = image.convertToFormat(euclase::Image::Format_F16_RGBA);
+		// image = image.convertToFormat(euclase::Image::Format_F32_RGBA);
+	}
 
 	int w = image.width();
 	int h = image.height();
