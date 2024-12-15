@@ -92,5 +92,8 @@ uint8_t fp32_to_fp8(float fp32);
 uint16_t fp16_pow2(uint16_t fp16);
 uint16_t fp16_sqrt(uint16_t fp16);
 
+uint16_t fp16_gamma(uint16_t fp16);
+uint16_t fp16_degamma(uint16_t fp16);
+
 #endif // FP_H
 

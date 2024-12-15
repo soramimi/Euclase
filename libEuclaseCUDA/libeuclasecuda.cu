@@ -3,6 +3,9 @@
 #include <cuda_fp16.h>
 
 #define API_FUNC_ENTRY(NAME) cuda_##NAME
+#define GAMMA (2.2f)
+#define gamma(X) powf(X, 1 / GAMMA)
+#define degamma(X) powf(X, GAMMA)
 
 __device__ inline uint8_t clamp_uint8(float x)
 {
@@ -23,7 +26,7 @@ __global__ void cu_round_brush(int w, int h, float cx, float cy, float radius, f
 		float y = j + 0.5 - cy;
 
 		float value = 0;
-		float d = sqrt(x * x + y * y);
+		float d = gamma(x * x + y * y);
 		if (d > radius) {
 			value = 0;
 		} else if (d > blur && mul > 0) {
@@ -449,9 +452,9 @@ __global__ void cu_scale_fp32_to_uint8_rgba_kernel(int dw, int dh, int dstride, 
 		float G = max(0.0f, min(1.0f, s[1]));
 		float B = max(0.0f, min(1.0f, s[2]));
 		float A = max(0.0f, min(1.0f, s[3]));
-		d[0] = int(sqrt(R) * 255 + 0.5f);
-		d[1] = int(sqrt(G) * 255 + 0.5f);
-		d[2] = int(sqrt(B) * 255 + 0.5f);
+		d[0] = int(gamma(R) * 255 + 0.5f);
+		d[1] = int(gamma(G) * 255 + 0.5f);
+		d[2] = int(gamma(B) * 255 + 0.5f);
 		d[3] = int(A * 255 + 0.5f);
 	}
 }
@@ -470,9 +473,9 @@ __global__ void cu_scale_fp16_to_uint8_rgba_kernel(int dw, int dh, int dstride, 
 		float G = max(0.0f, min(1.0f, s[1]));
 		float B = max(0.0f, min(1.0f, s[2]));
 		float A = max(0.0f, min(1.0f, s[3]));
-		d[0] = int(sqrt(R) * 255 + 0.5f);
-		d[1] = int(sqrt(G) * 255 + 0.5f);
-		d[2] = int(sqrt(B) * 255 + 0.5f);
+		d[0] = int(gamma(R) * 255 + 0.5f);
+		d[1] = int(gamma(G) * 255 + 0.5f);
+		d[2] = int(gamma(B) * 255 + 0.5f);
 		d[3] = int(A * 255 + 0.5f);
 	}
 }

@@ -34,6 +34,7 @@ public:
 	{
 		return fp16_to_fp32(v_);
 	}
+
 	_float16_t sqrt() const
 	{
 		_float16_t r;
@@ -45,6 +46,20 @@ public:
 	{
 		_float16_t r;
 		r.v_ = fp16_pow2(v_);
+		return r;
+	}
+
+	_float16_t gamma() const
+	{
+		_float16_t r;
+		r.v_ = fp16_gamma(v_);
+		return r;
+	}
+
+	_float16_t degamma() const
+	{
+		_float16_t r;
+		r.v_ = fp16_degamma(v_);
 		return r;
 	}
 };
@@ -373,24 +388,28 @@ static inline float grayf(float r, float g, float b)
 	return (306 * r + 601 * g + 117 * b) / 1024;
 }
 
+constexpr float GAMMA = 2.2f;
+
 static inline float gamma(float v)
 {
-	return sqrt(v);
+	// return sqrt(v);
+	return pow(v, 1.0 / GAMMA);
 }
 
 static inline float degamma(float v)
 {
-	return v * v;
+	// return v * v;
+	return pow(v, GAMMA);
 }
 
 static inline _float16_t gamma(_float16_t v)
 {
-	return v.sqrt();
+	return v.gamma();
 }
 
 static inline _float16_t degamma(_float16_t v)
 {
-	return v.pow2();
+	return v.degamma();
 }
 
 class Float32RGB;

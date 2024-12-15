@@ -59,13 +59,22 @@ uint8_t fp32_to_fp8(float fp32)
 	return (e << 3) | m | ((t >> 24) & FP8_S_MASK);
 }
 
+uint16_t fp16_sqrt_table[] = {
+#include "fp16_sqrt_table.txt"
+};
+
 uint16_t fp16_pow2_table[] = {
 #include "fp16_pow2_table.txt"
 };
 
-uint16_t fp16_sqrt_table[] = {
-#include "fp16_sqrt_table.txt"
-};
+uint16_t fp16_sqrt(uint16_t fp16)
+{
+	if (fp16_is_zero(fp16)) return FP16_P_ZERO;
+	if (fp16_is_nan(fp16)) return fp16;
+	if (fp16_is_inf(fp16)) return fp16;
+	if (fp16 >= 0x8000) return FP16_N_NAN;
+	return fp16_sqrt_table[fp16];
+}
 
 uint16_t fp16_pow2(uint16_t fp16)
 {
@@ -75,12 +84,28 @@ uint16_t fp16_pow2(uint16_t fp16)
 	return fp16_pow2_table[fp16 & ~FP16_S_MASK];
 }
 
-uint16_t fp16_sqrt(uint16_t fp16)
+uint16_t fp16_degamma_table[] = {
+#include "fp16_degamma_table.txt"
+};
+
+uint16_t fp16_gamma_table[] = {
+#include "fp16_gamma_table.txt"
+};
+
+uint16_t fp16_degamma(uint16_t fp16)
+{
+	if (fp16_is_zero(fp16)) return FP16_P_ZERO;
+	if (fp16_is_nan(fp16)) return fp16;
+	if (fp16_is_inf(fp16)) return fp16;
+	return fp16_degamma_table[fp16];
+}
+
+uint16_t fp16_gamma(uint16_t fp16)
 {
 	if (fp16_is_zero(fp16)) return FP16_P_ZERO;
 	if (fp16_is_nan(fp16)) return fp16;
 	if (fp16_is_inf(fp16)) return fp16;
 	if (fp16 >= 0x8000) return FP16_N_NAN;
-	return fp16_sqrt_table[fp16];
+	return fp16_gamma_table[fp16 & ~FP16_S_MASK];
 }
 

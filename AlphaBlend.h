@@ -22,12 +22,12 @@ public:
 
 	static inline float gamma(float v)
 	{
-		return sqrt(v);
+		return euclase::gamma(v);
 	}
 
 	static inline float degamma(float v)
 	{
-		return v * v;
+		return euclase::degamma(v);
 	}
 
 	static inline Float32RGBA gamma(Float32RGBA const &pix)
