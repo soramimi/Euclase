@@ -1,5 +1,8 @@
 #include <stdio.h>
 #include "libeuclasecuda.h"
+#include <cuda_fp16.h>
+
+#define API_FUNC_ENTRY(NAME) cuda_##NAME
 
 __device__ inline uint8_t clamp_uint8(float x)
 {
@@ -38,7 +41,7 @@ __global__ void cu_round_brush(int w, int h, float cx, float cy, float radius, f
 	}
 }
 
-static void cuda_round_brush(int w, int h, float cx, float cy, float radius, float blur, float mul, cudamem_t *mem)
+void API_FUNC_ENTRY(round_brush)(int w, int h, float cx, float cy, float radius, float blur, float mul, cudamem_t *mem)
 {
 	dim3 blocks((w + 15) / 16, (h + 15) / 16);
 	dim3 threads(16, 16);
@@ -64,7 +67,7 @@ __global__ void cu_saturation_brightness(int w, int h, int red, int green, int b
 	}
 }
 
-static void cuda_saturation_brightness(int w, int h, int red, int green, int blue, cudamem_t *mem)
+void API_FUNC_ENTRY(saturation_brightness)(int w, int h, int red, int green, int blue, cudamem_t *mem)
 {
 	dim3 blocks((w + 15) / 16, (h + 15) / 16);
 	dim3 threads(16, 16);
@@ -85,7 +88,7 @@ __global__ void cu_fill_uint8_rgba_kernel(int w, int h, uint8_t r, uint8_t g, ui
 	}
 }
 
-void cuda_fill_uint8_rgba(int w, int h, uint8_t r, uint8_t g, uint8_t b, uint8_t a, cudamem_t *dst, int dst_w, int dst_h, int dx, int dy)
+void API_FUNC_ENTRY(fill_uint8_rgba)(int w, int h, uint8_t r, uint8_t g, uint8_t b, uint8_t a, cudamem_t *dst, int dst_w, int dst_h, int dx, int dy)
 {
 	uint8_t *d = (uint8_t *)dst;
 
@@ -94,7 +97,7 @@ void cuda_fill_uint8_rgba(int w, int h, uint8_t r, uint8_t g, uint8_t b, uint8_t
 	cu_fill_uint8_rgba_kernel<<<blocks,threads>>>(w, h, r, g, b, a, d, dst_w, dx, dy);
 }
 
-__global__ void cu_fill_float_rgba_kernel(int w, int h, float r, float g, float b, float a, float *dst, int dst_w, int dx, int dy)
+__global__ void cu_fill_fp32_rgba_kernel(int w, int h, float r, float g, float b, float a, float *dst, int dst_w, int dx, int dy)
 {
 	int x = blockIdx.x * blockDim.x + threadIdx.x;
 	int y = blockIdx.y * blockDim.y + threadIdx.y;
@@ -108,16 +111,39 @@ __global__ void cu_fill_float_rgba_kernel(int w, int h, float r, float g, float 
 	}
 }
 
-void cuda_fill_float_rgba(int w, int h, float r, float g, float b, float a, cudamem_t *dst, int dst_w, int dst_h, int dx, int dy)
+void API_FUNC_ENTRY(fill_fp32_rgba)(int w, int h, float r, float g, float b, float a, cudamem_t *dst, int dst_w, int dst_h, int dx, int dy)
 {
 	float *d = (float *)dst;
 
 	dim3 blocks((w + 15) / 16, (h + 15) / 16);
 	dim3 threads(16, 16);
-	cu_fill_float_rgba_kernel<<<blocks,threads>>>(w, h, r, g, b, a, d, dst_w, dx, dy);
+	cu_fill_fp32_rgba_kernel<<<blocks,threads>>>(w, h, r, g, b, a, d, dst_w, dx, dy);
 }
 
-void cuda_copy_uint8_rgba(int w, int h, cudamem_t const *src, int src_w, int src_h, int sx, int sy, cudamem_t *dst, int dst_w, int dst_h, int dx, int dy)
+__global__ void cu_fill_fp16_rgba_kernel(int w, int h, float r, float g, float b, float a, __half *dst, int dst_w, int dx, int dy)
+{
+	int x = blockIdx.x * blockDim.x + threadIdx.x;
+	int y = blockIdx.y * blockDim.y + threadIdx.y;
+
+	if (x < w && y < h) {
+		__half *d = dst + 2 * (dst_w * (dy + y) + dx + x);
+		d[0] = r;
+		d[1] = g;
+		d[2] = b;
+		d[3] = a;
+	}
+}
+
+void API_FUNC_ENTRY(fill_fp16_rgba)(int w, int h, float r, float g, float b, float a, cudamem_t *dst, int dst_w, int dst_h, int dx, int dy)
+{
+	__half *d = (__half *)dst;
+
+	dim3 blocks((w + 15) / 16, (h + 15) / 16);
+	dim3 threads(16, 16);
+	cu_fill_fp16_rgba_kernel<<<blocks,threads>>>(w, h, r, g, b, a, d, dst_w, dx, dy);
+}
+
+void API_FUNC_ENTRY(copy_uint8_rgba)(int w, int h, cudamem_t const *src, int src_w, int src_h, int sx, int sy, cudamem_t *dst, int dst_w, int dst_h, int dx, int dy)
 {
 	uint32_t const *s = (uint32_t const *)src;
 	uint32_t *d = (uint32_t *)dst;
@@ -135,7 +161,7 @@ void cuda_copy_uint8_rgba(int w, int h, cudamem_t const *src, int src_w, int src
 	}
 }
 
-__device__ void alpha_blend_float_RGBA(float *d, float const *s, float m)
+__device__ void alpha_blend_fp32_RGBA(float *d, float const *s, float m)
 {
 	float baseR = d[0];
 	float baseG = d[1];
@@ -162,6 +188,33 @@ __device__ void alpha_blend_float_RGBA(float *d, float const *s, float m)
 	d[3] = a;
 }
 
+__device__ void alpha_blend_fp16_RGBA(__half *d, __half const *s, __half m)
+{
+	__half baseR = d[0];
+	__half baseG = d[1];
+	__half baseB = d[2];
+	__half baseA = d[3];
+	__half overR = s[0];
+	__half overG = s[1];
+	__half overB = s[2];
+	__half overA = s[3];
+	overA = overA * m;
+	__half r = overR * overA + baseR * baseA * ((__half)1 - overA);
+	__half g = overG * overA + baseG * baseA * ((__half)1 - overA);
+	__half b = overB * overA + baseB * baseA * ((__half)1 - overA);
+	__half a = overA + baseA * ((__half)1 - overA);
+	if (a > (__half)0) {
+		__half t = (__half)1 / a;
+		r *= t;
+		g *= t;
+		b *= t;
+	}
+	d[0] = r;
+	d[1] = g;
+	d[2] = b;
+	d[3] = a;
+}
+
 __device__ void alpha_blend_float_GrayA(float *d, float const *s, float m)
 {
 	float baseV = d[0];
@@ -178,7 +231,7 @@ __device__ void alpha_blend_float_GrayA(float *d, float const *s, float m)
 	d[1] = a;
 }
 
-__global__ void cu_blend_float_RGBA_kernel(int w, int h, float const *src, int src_w, int sx, int sy, uint8_t const *mask, int mask_w, float *dst, int dst_w, int dx, int dy)
+__global__ void cu_blend_fp32_RGBA_kernel(int w, int h, float const *src, int src_w, int sx, int sy, uint8_t const *mask, int mask_w, float *dst, int dst_w, int dx, int dy)
 {
 	int x = blockIdx.x * blockDim.x + threadIdx.x;
 	int y = blockIdx.y * blockDim.y + threadIdx.y;
@@ -187,11 +240,24 @@ __global__ void cu_blend_float_RGBA_kernel(int w, int h, float const *src, int s
 		float const *s = src + 4 * (src_w * (sy + y) + sx + x);
 		float *d = dst + 4 * (dst_w * (dy + y) + dx + x);
 		float m = mask ? mask[mask_w * y + x] / 255.0f : 1.0f;
-		alpha_blend_float_RGBA(d, s, m);
+		alpha_blend_fp32_RGBA(d, s, m);
 	}
 }
 
-void cuda_blend_float_RGBA(int w, int h, cudamem_t const *src, int src_w, int src_h, int sx, int sy, cudamem_t const *mask, int mask_w, int mask_h, cudamem_t *dst, int dst_w, int dst_h, int dx, int dy)
+__global__ void cu_blend_fp16_RGBA_kernel(int w, int h, __half const *src, int src_w, int sx, int sy, uint8_t const *mask, int mask_w, __half *dst, int dst_w, int dx, int dy)
+{
+	int x = blockIdx.x * blockDim.x + threadIdx.x;
+	int y = blockIdx.y * blockDim.y + threadIdx.y;
+
+	if (x < w && y < h) {
+		__half const *s = src + 4 * (src_w * (sy + y) + sx + x);
+		__half *d = dst + 4 * (dst_w * (dy + y) + dx + x);
+		__half m = mask ? mask[mask_w * y + x] / 255.0f : 1.0f;
+		alpha_blend_fp16_RGBA(d, s, m);
+	}
+}
+
+void API_FUNC_ENTRY(blend_fp32_RGBA)(int w, int h, cudamem_t const *src, int src_w, int src_h, int sx, int sy, cudamem_t const *mask, int mask_w, int mask_h, cudamem_t *dst, int dst_w, int dst_h, int dx, int dy)
 {
 	float const *s = (float const *)src;
 	float *d = (float *)dst;
@@ -204,14 +270,34 @@ void cuda_blend_float_RGBA(int w, int h, cudamem_t const *src, int src_w, int sr
 
 	dim3 blocks((w + 15) / 16, (h + 15) / 16);
 	dim3 threads(16, 16);
-	cu_blend_float_RGBA_kernel<<<blocks,threads>>>(w, h, s, src_w, sx, sy, buf_mask, mask_w, d, dst_w, dx, dy);
+	cu_blend_fp32_RGBA_kernel<<<blocks,threads>>>(w, h, s, src_w, sx, sy, buf_mask, mask_w, d, dst_w, dx, dy);
 
 	if (mask) {
 		cudaFree(buf_mask);
 	}
 }
 
-__global__ void cu_erase_float_RGBA_kernel(int w, int h, float const *src, int src_w, int sx, int sy, uint8_t const *mask, int mask_w, float *dst, int dst_w, int dx, int dy)
+void API_FUNC_ENTRY(blend_fp16_RGBA)(int w, int h, cudamem_t const *src, int src_w, int src_h, int sx, int sy, cudamem_t const *mask, int mask_w, int mask_h, cudamem_t *dst, int dst_w, int dst_h, int dx, int dy)
+{
+	__half const *s = (__half const *)src;
+	__half *d = (__half *)dst;
+	uint8_t *buf_mask = nullptr;
+
+	if (mask) {
+		cudaMalloc(&buf_mask, sizeof(uint8_t) * mask_w * mask_h);
+		cudaMemcpy(buf_mask, mask, sizeof(uint8_t) * mask_w * mask_h, cudaMemcpyHostToDevice);
+	}
+
+	dim3 blocks((w + 15) / 16, (h + 15) / 16);
+	dim3 threads(16, 16);
+	cu_blend_fp16_RGBA_kernel<<<blocks,threads>>>(w, h, s, src_w, sx, sy, buf_mask, mask_w, d, dst_w, dx, dy);
+
+	if (mask) {
+		cudaFree(buf_mask);
+	}
+}
+
+__global__ void cu_erase_fp32_RGBA_kernel(int w, int h, float const *src, int src_w, int sx, int sy, uint8_t const *mask, int mask_w, float *dst, int dst_w, int dx, int dy)
 {
 	int x = blockIdx.x * blockDim.x + threadIdx.x;
 	int y = blockIdx.y * blockDim.y + threadIdx.y;
@@ -224,7 +310,20 @@ __global__ void cu_erase_float_RGBA_kernel(int w, int h, float const *src, int s
 	}
 }
 
-void cuda_erase_float_RGBA(int w, int h, cudamem_t const *src, int src_w, int src_h, int sx, int sy, cudamem_t const *mask, int mask_w, int mask_h, cudamem_t *dst, int dst_w, int dst_h, int dx, int dy)
+__global__ void cu_erase_fp16_RGBA_kernel(int w, int h, __half const *src, int src_w, int sx, int sy, uint8_t const *mask, int mask_w, __half *dst, int dst_w, int dx, int dy)
+{
+	int x = blockIdx.x * blockDim.x + threadIdx.x;
+	int y = blockIdx.y * blockDim.y + threadIdx.y;
+
+	if (x < w && y < h) {
+		__half const *s = src + 4 * (src_w * (sy + y) + sx + x);
+		__half *d = dst + 4 * (dst_w * (dy + y) + dx + x);
+		__half m = mask ? mask[mask_w * y + x] / 255.0f : 1.0f;
+		d[3] *= 1.0f - clamp_f01(s[3] * m);
+	}
+}
+
+void API_FUNC_ENTRY(erase_fp32_RGBA)(int w, int h, cudamem_t const *src, int src_w, int src_h, int sx, int sy, cudamem_t const *mask, int mask_w, int mask_h, cudamem_t *dst, int dst_w, int dst_h, int dx, int dy)
 {
 	float const *s = (float const *)src;
 	float *d = (float *)dst;
@@ -237,7 +336,27 @@ void cuda_erase_float_RGBA(int w, int h, cudamem_t const *src, int src_w, int sr
 
 	dim3 blocks((w + 15) / 16, (h + 15) / 16);
 	dim3 threads(16, 16);
-	cu_erase_float_RGBA_kernel<<<blocks,threads>>>(w, h, s, src_w, sx, sy, buf_mask, mask_w, d, dst_w, dx, dy);
+	cu_erase_fp32_RGBA_kernel<<<blocks,threads>>>(w, h, s, src_w, sx, sy, buf_mask, mask_w, d, dst_w, dx, dy);
+
+	if (mask) {
+		cudaFree(buf_mask);
+	}
+}
+
+void API_FUNC_ENTRY(erase_fp16_RGBA)(int w, int h, cudamem_t const *src, int src_w, int src_h, int sx, int sy, cudamem_t const *mask, int mask_w, int mask_h, cudamem_t *dst, int dst_w, int dst_h, int dx, int dy)
+{
+	__half const *s = (__half const *)src;
+	__half *d = (__half *)dst;
+	uint8_t *buf_mask = nullptr;
+
+	if (mask) {
+		cudaMalloc(&buf_mask, sizeof(uint8_t) * mask_w * mask_h);
+		cudaMemcpy(buf_mask, mask, sizeof(uint8_t) * mask_w * mask_h, cudaMemcpyHostToDevice);
+	}
+
+	dim3 blocks((w + 15) / 16, (h + 15) / 16);
+	dim3 threads(16, 16);
+	cu_erase_fp16_RGBA_kernel<<<blocks,threads>>>(w, h, s, src_w, sx, sy, buf_mask, mask_w, d, dst_w, dx, dy);
 
 	if (mask) {
 		cudaFree(buf_mask);
@@ -257,7 +376,7 @@ __global__ void cu_blend_uint8_grayscale_kernel(int w, int h, uint8_t const *src
 	}
 }
 
-void cuda_blend_uint8_grayscale(int w, int h, cudamem_t const *src, int src_w, int src_h, int sx, int sy, cudamem_t const *mask, int mask_w, int mask_h, cudamem_t *dst, int dst_w, int dst_h, int dx, int dy)
+void API_FUNC_ENTRY(blend_uint8_grayscale)(int w, int h, cudamem_t const *src, int src_w, int src_h, int sx, int sy, cudamem_t const *mask, int mask_w, int mask_h, cudamem_t *dst, int dst_w, int dst_h, int dx, int dy)
 {
 	uint8_t const *s = (uint8_t const *)src;
 	uint8_t *d = (uint8_t *)dst;
@@ -296,7 +415,7 @@ __global__ void cu_outline_uint8_grayscale_kernel(int w, int h, uint8_t const *s
 	}
 }
 
-void cuda_outline_uint8_grayscale(int w, int h, cudamem_t const *src, cudamem_t *dst)
+void API_FUNC_ENTRY(outline_uint8_grayscale)(int w, int h, cudamem_t const *src, cudamem_t *dst)
 {
 	uint8_t const *s = (uint8_t const *)src;
 	uint8_t *d = (uint8_t *)dst;
@@ -306,12 +425,17 @@ void cuda_outline_uint8_grayscale(int w, int h, cudamem_t const *src, cudamem_t 
 	cu_outline_uint8_grayscale_kernel<<<blocks,threads>>>(w, h, s, d);
 }
 
-void cuda_compose_float_rgba(int w, int h, cudamem_t *dst, cudamem_t const *src, cudamem_t const *mask)
+void API_FUNC_ENTRY(compose_fp32_rgba)(int w, int h, cudamem_t *dst, cudamem_t const *src, cudamem_t const *mask)
 {
-	cuda_blend_float_RGBA(w, h, src, w, h, 0, 0, mask, w, h, dst, w, h, 0, 0);
+	cuda_blend_fp32_RGBA(w, h, src, w, h, 0, 0, mask, w, h, dst, w, h, 0, 0);
 }
 
-__global__ void cu_scale_float_to_uint8_rgba_kernel(int dw, int dh, int dstride, uint8_t *dst, int sw, int sh, float const *src)
+void API_FUNC_ENTRY(compose_fp16_rgba)(int w, int h, cudamem_t *dst, cudamem_t const *src, cudamem_t const *mask)
+{
+	cuda_blend_fp16_RGBA(w, h, src, w, h, 0, 0, mask, w, h, dst, w, h, 0, 0);
+}
+
+__global__ void cu_scale_fp32_to_uint8_rgba_kernel(int dw, int dh, int dstride, uint8_t *dst, int sw, int sh, float const *src)
 {
 	int dx = blockIdx.x * blockDim.x + threadIdx.x;
 	int dy = blockIdx.y * blockDim.y + threadIdx.y;
@@ -332,11 +456,39 @@ __global__ void cu_scale_float_to_uint8_rgba_kernel(int dw, int dh, int dstride,
 	}
 }
 
-void cuda_scale_float_to_uint8_rgba(int dw, int dh, int dstride, cudamem_t *dst, int sw, int sh, cudamem_t const *src)
+__global__ void cu_scale_fp16_to_uint8_rgba_kernel(int dw, int dh, int dstride, uint8_t *dst, int sw, int sh, __half const *src)
+{
+	int dx = blockIdx.x * blockDim.x + threadIdx.x;
+	int dy = blockIdx.y * blockDim.y + threadIdx.y;
+
+	if (dx < dw && dy < dh) {
+		int sx = dx * sw / dw;
+		int sy = dy * sh / dh;
+		__half const *s = src + 4 * (sw * sy + sx);
+		uint8_t *d = dst + 4 * (dstride * dy + dx);
+		float R = max(0.0f, min(1.0f, s[0]));
+		float G = max(0.0f, min(1.0f, s[1]));
+		float B = max(0.0f, min(1.0f, s[2]));
+		float A = max(0.0f, min(1.0f, s[3]));
+		d[0] = int(sqrt(R) * 255 + 0.5f);
+		d[1] = int(sqrt(G) * 255 + 0.5f);
+		d[2] = int(sqrt(B) * 255 + 0.5f);
+		d[3] = int(A * 255 + 0.5f);
+	}
+}
+
+void API_FUNC_ENTRY(scale_fp32_to_uint8_rgba)(int dw, int dh, int dstride, cudamem_t *dst, int sw, int sh, cudamem_t const *src)
 {
 	dim3 blocks((dw + 15) / 16, (dh + 15) / 16);
 	dim3 threads(16, 16);
-	cu_scale_float_to_uint8_rgba_kernel<<<blocks,threads>>>(dw, dh, dstride, (uint8_t *)dst, sw, sh, (float const *)src);
+	cu_scale_fp32_to_uint8_rgba_kernel<<<blocks,threads>>>(dw, dh, dstride, (uint8_t *)dst, sw, sh, (float const *)src);
+}
+
+void API_FUNC_ENTRY(scale_fp16_to_uint8_rgba)(int dw, int dh, int dstride, cudamem_t *dst, int sw, int sh, cudamem_t const *src)
+{
+	dim3 blocks((dw + 15) / 16, (dh + 15) / 16);
+	dim3 threads(16, 16);
+	cu_scale_fp16_to_uint8_rgba_kernel<<<blocks,threads>>>(dw, dh, dstride, (uint8_t *)dst, sw, sh, (__half const *)src);
 }
 
 __global__ void cu_scale_kernel(int dw, int dh, int dstride, uint8_t *dst, int sw, int sh, int sstride, uint8_t const *src, int psize)
@@ -353,46 +505,46 @@ __global__ void cu_scale_kernel(int dw, int dh, int dstride, uint8_t *dst, int s
 	}
 }
 
-void cuda_scale(int dw, int dh, int dstride, cudamem_t *dst, int sw, int sh, int sstride, cudamem_t const *src, int psize)
+void API_FUNC_ENTRY(scale)(int dw, int dh, int dstride, cudamem_t *dst, int sw, int sh, int sstride, cudamem_t const *src, int psize)
 {
 	dim3 blocks((dw + 15) / 16, (dh + 15) / 16);
 	dim3 threads(16, 16);
 	cu_scale_kernel<<<blocks,threads>>>(dw, dh, dstride, (uint8_t *)dst, sw, sh, sstride, (uint8_t const *)src, psize);
 }
 
-cudamem_t *cuda_malloc(int len)
+cudamem_t *API_FUNC_ENTRY(malloc)(int len)
 {
 	cudamem_t *mem = nullptr;
 	cudaMalloc((void **)&mem, len);
 	return mem;
 }
 
-void cuda_free(cudamem_t *mem)
+void API_FUNC_ENTRY(free)(cudamem_t *mem)
 {
 	cudaFree(mem);
 }
 
-void cuda_memcpy_htoh(void *dst_h, void const *src_h, int len)
+void API_FUNC_ENTRY(memcpy_htoh)(void *dst_h, void const *src_h, int len)
 {
 	cudaMemcpy(dst_h, src_h, len, cudaMemcpyHostToHost);
 }
 
-void cuda_memcpy_dtoh(void *dst_h, cudamem_t const *src_d, int len)
+void API_FUNC_ENTRY(memcpy_dtoh)(void *dst_h, cudamem_t const *src_d, int len)
 {
 	cudaMemcpy(dst_h, src_d, len, cudaMemcpyDeviceToHost);
 }
 
-void cuda_memcpy_htod(cudamem_t *dst_d, void const *src_h, int len)
+void API_FUNC_ENTRY(memcpy_htod)(cudamem_t *dst_d, void const *src_h, int len)
 {
 	cudaMemcpy(dst_d, src_h, len, cudaMemcpyHostToDevice);
 }
 
-void cuda_memcpy_dtod(cudamem_t *dst_d, cudamem_t const *src_d, int len)
+void API_FUNC_ENTRY(memcpy_dtod)(cudamem_t *dst_d, cudamem_t const *src_d, int len)
 {
 	cudaMemcpy(dst_d, src_d, len, cudaMemcpyDeviceToDevice);
 }
 
-void cuda_memset(cudamem_t *dst, uint8_t c, int len)
+void API_FUNC_ENTRY(memset)(cudamem_t *dst, uint8_t c, int len)
 {
 	cudaMemset(dst, c, len);
 }
@@ -443,14 +595,19 @@ extern "C" CUDAIMAGE_API const *init_cudaplugin(int n)
 	API_FUNC(saturation_brightness);
 	API_FUNC(round_brush);
 	API_FUNC(fill_uint8_rgba);
-	API_FUNC(fill_float_rgba);
+	API_FUNC(fill_fp32_rgba);
+	API_FUNC(fill_fp16_rgba);
 	API_FUNC(copy_uint8_rgba);
-	API_FUNC(blend_float_RGBA);
-	API_FUNC(erase_float_RGBA);
+	API_FUNC(blend_fp32_RGBA);
+	API_FUNC(blend_fp16_RGBA);
+	API_FUNC(erase_fp32_RGBA);
+	API_FUNC(erase_fp16_RGBA);
 	API_FUNC(blend_uint8_grayscale);
 	API_FUNC(outline_uint8_grayscale);
-	API_FUNC(compose_float_rgba);
-	API_FUNC(scale_float_to_uint8_rgba);
+	API_FUNC(compose_fp32_rgba);
+	API_FUNC(compose_fp16_rgba);
+	API_FUNC(scale_fp32_to_uint8_rgba);
+	API_FUNC(scale_fp16_to_uint8_rgba);
 	API_FUNC(scale);
 
 	return &api;

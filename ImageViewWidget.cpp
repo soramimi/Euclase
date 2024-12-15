@@ -160,11 +160,11 @@ void ImageViewWidget::init(MainWindow *mainwindow, QScrollBar *vsb, QScrollBar *
 	m->h_scroll_bar = hsb;
 }
 
-static QImage scale_float_to_uint8_rgba(euclase::Image const &src, int w, int h)
+static QImage scale_fp32_to_uint8_rgba(euclase::Image const &src, int w, int h)
 {
 	if (src.memtype() == euclase::Image::CUDA) {
 		euclase::Image tmp(w, h, euclase::Image::Format_U8_RGBA, euclase::Image::CUDA);
-		global->cuda->scale_float_to_uint8_rgba(w, h, w, tmp.data(), src.width(), src.height(), src.data());
+		global->cuda->scale_fp32_to_uint8_rgba(w, h, w, tmp.data(), src.width(), src.height(), src.data());
 		return tmp.qimage();
 	} else {
 		QImage qimg = src.qimage();
@@ -1006,7 +1006,7 @@ void ImageViewWidget::runImageRendering()
 				if (canceled()) continue;
 
 				// 拡大縮小
-				QImage qimg = scale_float_to_uint8_rgba(image, dw, dh);
+				QImage qimg = scale_fp32_to_uint8_rgba(image, dw, dh);
 				if (qimg.isNull()) continue;
 
 				if (canceled()) continue;

@@ -157,7 +157,7 @@ void euclase::Image::fill(const Color &color)
 			euclase::Float32RGBA fcolor = euclase::Float32RGBA::convert(icolor);
 #ifdef USE_CUDA
 			if (memtype() == CUDA) {
-				global->cuda->fill_float_rgba(w, h, fcolor.r, fcolor.g, fcolor.b, fcolor.a, data(), width(), height(), 0, 0);
+				global->cuda->fill_fp32_rgba(w, h, fcolor.r, fcolor.g, fcolor.b, fcolor.a, data(), width(), height(), 0, 0);
 				return;
 			}
 #endif
@@ -178,7 +178,7 @@ void euclase::Image::fill(const Color &color)
 			euclase::Float16RGBA fcolor = euclase::Float16RGBA::convert(icolor);
 #ifdef USE_CUDA
 			if (memtype() == CUDA) {
-				global->cuda->fill_float_rgba(w, h, fcolor.r, fcolor.g, fcolor.b, fcolor.a, data(), width(), height(), 0, 0);
+				global->cuda->fill_fp16_rgba(w, h, fcolor.r, fcolor.g, fcolor.b, fcolor.a, data(), width(), height(), 0, 0);
 				return;
 			}
 #endif
@@ -271,7 +271,7 @@ QImage euclase::Image::qimage() const
 #ifdef USE_CUDA
 		if (memtype() == CUDA) {
 			euclase::Image tmpimg(w, h, Format_U8_RGBA, CUDA);
-			global->cuda->scale_float_to_uint8_rgba(w, h, w, tmpimg.data(), w, h, data());
+			global->cuda->scale_fp32_to_uint8_rgba(w, h, w, tmpimg.data(), w, h, data());
 			return tmpimg.qimage();
 		}
 #endif

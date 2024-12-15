@@ -368,7 +368,7 @@ void Canvas::renderToSinglePanel(Panel *target_panel, QPoint const &target_offse
 				cudamem_t *dst = out->data();
 				int dst_w = out->width();
 				int dst_h = out->height();
-				global->cuda->blend_float_RGBA(w, h, src, src_w, src_h, sx, sy, mask, mask_w, mask_h, dst, dst_w, dst_h, dx, dy);
+				global->cuda->blend_fp32_RGBA(w, h, src, src_w, src_h, sx, sy, mask, mask_w, mask_h, dst, dst_w, dst_h, dx, dy);
 				target_panel->imagep()->memconvert(memtype);
 #endif
 				return;
@@ -519,8 +519,8 @@ void Canvas::composePanel(Panel *target_panel, Panel const *alt_panel, Panel con
 				m = mask.data();
 			}
 			auto compose = [](euclase::Image *dst, euclase::Image const *src, cudamem_t const *m){
-				// global->cuda->compose_float_rgba(PANEL_SIZE, PANEL_SIZE, dst->data(), src->data(), alt_mask ? mask.data() : nullptr);
-				global->cuda->blend_float_RGBA(PANEL_SIZE, PANEL_SIZE, src->data(), PANEL_SIZE, PANEL_SIZE, 0, 0, m, PANEL_SIZE, PANEL_SIZE, dst->data(), PANEL_SIZE, PANEL_SIZE, 0, 0);
+				// global->cuda->compose_fp32_rgba(PANEL_SIZE, PANEL_SIZE, dst->data(), src->data(), alt_mask ? mask.data() : nullptr);
+				global->cuda->blend_fp32_RGBA(PANEL_SIZE, PANEL_SIZE, src->data(), PANEL_SIZE, PANEL_SIZE, 0, 0, m, PANEL_SIZE, PANEL_SIZE, dst->data(), PANEL_SIZE, PANEL_SIZE, 0, 0);
 			};
 			compose(dst, src, m);
 			return;
@@ -550,7 +550,7 @@ void Canvas::composePanel(Panel *target_panel, Panel const *alt_panel, Panel con
 				m = mask.data();
 			}
 			auto compose = [](euclase::Image *dst, euclase::Image const *src, cudamem_t const *m){
-				global->cuda->erase_float_RGBA(PANEL_SIZE, PANEL_SIZE, src->data(), PANEL_SIZE, PANEL_SIZE, 0, 0, m, PANEL_SIZE, PANEL_SIZE, dst->data(), PANEL_SIZE, PANEL_SIZE, 0, 0);
+				global->cuda->erase_fp32_RGBA(PANEL_SIZE, PANEL_SIZE, src->data(), PANEL_SIZE, PANEL_SIZE, 0, 0, m, PANEL_SIZE, PANEL_SIZE, dst->data(), PANEL_SIZE, PANEL_SIZE, 0, 0);
 			};
 			compose(dst, src, m);
 			return;
