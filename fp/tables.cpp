@@ -49,6 +49,17 @@ void fp16_degamma_table()
 
 int main()
 {
-	fp16_gamma_table();
+	for (int i = 0; i < 256; i++) {
+		float f = i / 255.0f;
+		uint16_t g = fp32_to_fp16(f);
+		g = fp16_degamma(g);
+		g = fp16_gamma(g);
+		f = fp16_to_fp32(g);
+		printf("0x%02x,", (int)(f * 255.0f + 0.5f));
+		if ((i + 1) % 16 == 0) {
+			putchar('\n');
+		}
+	}
 	return 0;
 }
+
