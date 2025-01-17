@@ -724,9 +724,16 @@ void Canvas::renderToSinglePanel(Panel *target_panel, QPoint const &target_offse
 
 void Canvas::composePanel(Panel *target_panel, Panel const *alt_panel, Panel const *alt_mask, RenderOption const &opt)
 {
+	// TODO:
+	if (target_panel->format() == euclase::Image::Format_F16_RGBA) {
+		target_panel->convertToFormat(euclase::Image::Format_F32_RGBA);
+		composePanel(target_panel, alt_panel, alt_mask, opt);
+		target_panel->convertToFormat(euclase::Image::Format_F16_RGBA);
+		return;
+	}
+
 	//	if (!alt_panel) return;
 	Q_ASSERT(target_panel);
-	Q_ASSERT(target_panel->format() == euclase::Image::Format_F32_RGBA);
 	Q_ASSERT(target_panel->format() == euclase::Image::Format_F32_RGBA);
 	//	Q_ASSERT(alt_mask->format() == euclase::Image::Format_8_Grayscale);
 

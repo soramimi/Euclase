@@ -128,6 +128,11 @@ public:
 			t.data_.extra = data_.extra;
 			return t;
 		}
+
+		void convertToFormat(euclase::Image::Format format)
+		{
+			*imagep() = image().convertToFormat(format);
+		}
 	};
 
 	enum ActivePanel {

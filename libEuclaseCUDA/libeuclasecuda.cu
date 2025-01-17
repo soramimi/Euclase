@@ -26,7 +26,7 @@ __global__ void cu_round_brush(int w, int h, float cx, float cy, float radius, f
 		float y = j + 0.5 - cy;
 
 		float value = 0;
-		float d = gamma(x * x + y * y);
+		float d = sqrtf(x * x + y * y);
 		if (d > radius) {
 			value = 0;
 		} else if (d > blur && mul > 0) {
