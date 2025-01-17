@@ -69,7 +69,7 @@ euclase::Image RoundBrushGenerator::image(int w, int h, float cx, float cy, QCol
 {
 #ifdef USE_CUDA
 	if (global->cuda) {
-		euclase::Image image(w, h, euclase::Image::Format_F32_RGBA, euclase::Image::CUDA);
+		euclase::Image image(w, h, euclase::Image::Format_F16_RGBA, euclase::Image::CUDA);
 		image.fill(color);
 		global->cuda->round_brush(w, h, cx, cy, radius, blur, mul, image.data());
 		return image;
@@ -82,10 +82,10 @@ euclase::Image RoundBrushGenerator::image(int w, int h, float cx, float cy, QCol
 		color.blue()
 		));
 
-	euclase::Image image(w, h, euclase::Image::Format_F32_RGBA);
+	euclase::Image image(w, h, euclase::Image::Format_F16_RGBA);
 	for (int i = 0; i < h; i++) {
 		for (int j = 0; j < w; j++) {
-			euclase::Float32RGBA *dst = (euclase::Float32RGBA *)image.scanLine(i);
+			euclase::Float16RGBA *dst = (euclase::Float16RGBA *)image.scanLine(i);
 			float tx = j + 0.5;
 			float ty = i + 0.5;
 			float x = tx - cx;
@@ -103,8 +103,8 @@ euclase::Image RoundBrushGenerator::image(int w, int h, float cx, float cy, QCol
 			} else {
 				value = 1;
 			}
-			dst[j] = c;
-			dst[j].a = value;
+			c.a = value;
+			dst[j] = euclase::Float16RGBA::convert(c);
 		}
 	}
 	return image;

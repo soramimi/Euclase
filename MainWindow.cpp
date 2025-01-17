@@ -280,7 +280,7 @@ void MainWindow::setImage(euclase::Image image, bool fitview)
 		layer.setImage(QPoint(0, 0), image);
 	}
 	if (layer.format_ == euclase::Image::Format_Invalid) {
-		QMessageBox::critical(this, tr("Error"), tr("Invalid image format"));
+		QMessageBox::critical(this, tr("Error"), tr("Failed to create image"));
 		return;
 	}
 

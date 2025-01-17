@@ -1416,7 +1416,6 @@ OctetGray OctetGray::convert(OctetRGB const &t)
 
 OctetGray OctetGray::convert(Float32RGBA const &t)
 {
-//	auto s = degamma(r);
 	auto y = ::euclase::gray(t.r8(), t.g8(), t.b8());
 	y = gamma(y);
 	return OctetGray(uint8_t(y * t.a));
@@ -1532,7 +1531,7 @@ private:
 private:
 	Data *ptr_ = nullptr;
 	void assign(Data *p);
-	void init(int w, int h, Image::Format format, MemoryType memtype = Host, Color const &color = k::transparent);
+	bool init(int w, int h, Image::Format format, MemoryType memtype = Host, Color const &color = k::transparent);
 public:
 	Image() = default;
 	Image(Image const &r)
@@ -1599,10 +1598,10 @@ public:
 		return ptr_ ? ptr_->format_ : Image::Format_Invalid;
 	}
 
-	void make(int width, int height, Image::Format format, MemoryType memtype = Host, euclase::Color const &color = k::transparent)
+	bool make(int width, int height, Image::Format format, MemoryType memtype = Host, euclase::Color const &color = k::transparent)
 	{
 		assign(nullptr);
-		init(width, height, format, memtype, color);
+		return init(width, height, format, memtype, color);
 	}
 
 	uint8_t *data()
@@ -1632,8 +1631,8 @@ public:
 
 	Size size() const;
 
-	int bytesPerPixel() const;
-	int bytesPerLine() const
+	size_t bytesPerPixel() const;
+	size_t bytesPerLine() const
 	{
 		return bytesPerPixel() * width();
 	}
@@ -1650,14 +1649,15 @@ QImage::Format qimageformat(Image::Format format);
 
 int bytesPerPixel(Image::Format format);
 
-inline int Image::bytesPerPixel() const
+inline size_t Image::bytesPerPixel() const
 {
 	return euclase::bytesPerPixel(format());
 }
 
 inline uint8_t *Image::scanLine(int y)
 {
-	return ptr_ ? (ptr_->data() + bytesPerPixel() * width() * y) : nullptr;
+	if (!ptr_) return nullptr;
+	return ptr_->data() + (size_t)bytesPerPixel() * width() * y;
 }
 
 inline uint8_t const *Image::scanLine(int y) const

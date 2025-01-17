@@ -266,6 +266,30 @@ QImage euclase::Image::qimage() const
 			return newimage;
 		}
 	}
+	if (format() == Image::Format_F16_RGBA) {
+		QImage newimage(w, h, QImage::Format_RGBA8888);
+#ifdef USE_CUDA
+		if (memtype() == CUDA) {
+			euclase::Image tmpimg(w, h, Format_U8_RGBA, CUDA);
+			global->cuda->scale_fp16_to_uint8_rgba(w, h, w, tmpimg.data(), w, h, data());
+			return tmpimg.qimage();
+		}
+#endif
+		if (memtype() == Host) {
+			for (int y = 0; y < h; y++) {
+				euclase::Float16RGBA const *s = (euclase::Float16RGBA const *)scanLine(y);
+				uint8_t *d = newimage.scanLine(y);
+				for (int x = 0; x < w; x++) {
+					auto t = euclase::gamma(s[x]).limit();
+					d[4 * x + 0] = t.r8();
+					d[4 * x + 1] = t.g8();
+					d[4 * x + 2] = t.b8();
+					d[4 * x + 3] = t.a8();
+				}
+			}
+			return newimage;
+		}
+	}
 	if (format() == Image::Format_F32_RGBA) {
 		QImage newimage(w, h, QImage::Format_RGBA8888);
 #ifdef USE_CUDA
@@ -668,15 +692,22 @@ int euclase::bytesPerPixel(Image::Format format)
 	return 0;
 }
 
-void euclase::Image::init(int w, int h, Image::Format format, MemoryType memtype, const Color &color)
+bool euclase::Image::init(int w, int h, Image::Format format, MemoryType memtype, const Color &color)
 {
 	if (w < 1 || h < 1) {
 		qDebug() << "euclase::Image::init: invalid size" << w << h;
 		w = h = 0;
-		return;
+		return false;
 	}
-	const int datasize = w * h * euclase::bytesPerPixel(format);
-	Data *p = (Data *)new char[(sizeof(Data) + (memtype == Host ? datasize : 0))];
+	const size_t datasize = (size_t)w * (size_t)h * euclase::bytesPerPixel(format);
+	Data *p;
+	try {
+		size_t n = sizeof(Data) + (memtype == Host ? datasize : 0);
+		p = (Data *)new char[n];
+	} catch (std::bad_alloc &e) {
+		qDebug() << "euclase::Image::init: bad_alloc" << e.what();
+		return false;
+	}
 	if (!p) {
 		assert(p);
 	}
@@ -693,6 +724,7 @@ void euclase::Image::init(int w, int h, Image::Format format, MemoryType memtype
 	}
 #endif
 	fill(color);
+	return true;
 }
 
 euclase::Image euclase::Image::copy(MemoryType memtype) const
@@ -1171,7 +1203,9 @@ euclase::Image resizeBicubicT(euclase::Image const &image, int dst_w, int dst_h)
 	const int src_w = image.width();
 	const int src_h = image.height();
 	euclase::Image newimg;
-	newimg.make(dst_w, dst_h, (euclase::Image::Format)FORMAT);
+	if (!newimg.make(dst_w, dst_h, (euclase::Image::Format)FORMAT)) {
+		return {}; // bad alloc?
+	}
 
 	std::vector<double> bicubic_lut_x;
 	std::vector<double> bicubic_lut_y;

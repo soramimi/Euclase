@@ -726,16 +726,17 @@ void Canvas::composePanel(Panel *target_panel, Panel const *alt_panel, Panel con
 {
 	// TODO:
 	if (target_panel->format() == euclase::Image::Format_F16_RGBA) {
-		target_panel->convertToFormat(euclase::Image::Format_F32_RGBA);
-		composePanel(target_panel, alt_panel, alt_mask, opt);
-		target_panel->convertToFormat(euclase::Image::Format_F16_RGBA);
-		return;
+		if (alt_panel->format() == euclase::Image::Format_F32_RGBA) {
+			target_panel->convertToFormat(euclase::Image::Format_F32_RGBA);
+			composePanel(target_panel, alt_panel, alt_mask, opt);
+			target_panel->convertToFormat(euclase::Image::Format_F16_RGBA);
+			return;
+		}
 	}
 
 	//	if (!alt_panel) return;
 	Q_ASSERT(target_panel);
-	Q_ASSERT(target_panel->format() == euclase::Image::Format_F32_RGBA);
-	//	Q_ASSERT(alt_mask->format() == euclase::Image::Format_8_Grayscale);
+	Q_ASSERT(target_panel->format() == alt_panel->format());
 
 	if (opt.blend_mode == BlendMode::Normal) {
 #ifdef USE_CUDA
@@ -749,24 +750,44 @@ void Canvas::composePanel(Panel *target_panel, Panel const *alt_panel, Panel con
 				mask = alt_mask->imagep()->toCUDA();
 				m = mask.data();
 			}
-			auto compose = [](euclase::Image *dst, euclase::Image const *src, cudamem_t const *m){
-				// global->cuda->compose_fp32_rgba(PANEL_SIZE, PANEL_SIZE, dst->data(), src->data(), alt_mask ? mask.data() : nullptr);
-				global->cuda->blend_fp32_RGBA(PANEL_SIZE, PANEL_SIZE, src->data(), PANEL_SIZE, PANEL_SIZE, 0, 0, m, PANEL_SIZE, PANEL_SIZE, dst->data(), PANEL_SIZE, PANEL_SIZE, 0, 0);
-			};
-			compose(dst, src, m);
+			if (target_panel->format() == euclase::Image::Format_F16_RGBA) {
+				auto compose_fp16 = [](euclase::Image *dst, euclase::Image const *src, cudamem_t const *m){
+					global->cuda->blend_fp16_RGBA(PANEL_SIZE, PANEL_SIZE, src->data(), PANEL_SIZE, PANEL_SIZE, 0, 0, m, PANEL_SIZE, PANEL_SIZE, dst->data(), PANEL_SIZE, PANEL_SIZE, 0, 0);
+				};
+				compose_fp16(dst, src, m);
+			} else if (target_panel->format() == euclase::Image::Format_F32_RGBA) {
+				auto compose_fp32 = [](euclase::Image *dst, euclase::Image const *src, cudamem_t const *m){
+					global->cuda->blend_fp32_RGBA(PANEL_SIZE, PANEL_SIZE, src->data(), PANEL_SIZE, PANEL_SIZE, 0, 0, m, PANEL_SIZE, PANEL_SIZE, dst->data(), PANEL_SIZE, PANEL_SIZE, 0, 0);
+				};
+				compose_fp32(dst, src, m);
+			}
 			return;
 		}
 #endif
-		euclase::Float32RGBA *dst = (euclase::Float32RGBA *)target_panel->imagep()->data();
-		euclase::Float32RGBA const *src = (euclase::Float32RGBA const *)alt_panel->imagep()->data();
-		uint8_t const *mask = (opt.use_mask && alt_mask) ? (uint8_t const *)(*alt_mask).imagep()->data() : nullptr;
+		if (target_panel->format() == euclase::Image::Format_F16_RGBA) {
+			euclase::Float16RGBA *dst = (euclase::Float16RGBA *)target_panel->imagep()->data();
+			euclase::Float16RGBA const *src = (euclase::Float16RGBA const *)alt_panel->imagep()->data();
+			uint8_t const *mask = (opt.use_mask && alt_mask) ? (uint8_t const *)(*alt_mask).imagep()->data() : nullptr;
 
-		for (int i = 0; i < PANEL_SIZE * PANEL_SIZE; i++) {
-			auto s = src[i];
-			if (mask) {
-				s.a = s.a * mask[i] / 255;
+			for (int i = 0; i < PANEL_SIZE * PANEL_SIZE; i++) {
+				auto s = src[i];
+				if (mask) {
+					s.a = s.a * mask[i] / 255;
+				}
+				dst[i] = AlphaBlend::blend(dst[i], s);
 			}
-			dst[i] = AlphaBlend::blend(dst[i], s);
+		} else if (target_panel->format() == euclase::Image::Format_F32_RGBA) {
+			euclase::Float32RGBA *dst = (euclase::Float32RGBA *)target_panel->imagep()->data();
+			euclase::Float32RGBA const *src = (euclase::Float32RGBA const *)alt_panel->imagep()->data();
+			uint8_t const *mask = (opt.use_mask && alt_mask) ? (uint8_t const *)(*alt_mask).imagep()->data() : nullptr;
+
+			for (int i = 0; i < PANEL_SIZE * PANEL_SIZE; i++) {
+				auto s = src[i];
+				if (mask) {
+					s.a = s.a * mask[i] / 255;
+				}
+				dst[i] = AlphaBlend::blend(dst[i], s);
+			}
 		}
 	} else if (opt.blend_mode == BlendMode::Eraser) {
 #ifdef USE_CUDA
@@ -780,24 +801,46 @@ void Canvas::composePanel(Panel *target_panel, Panel const *alt_panel, Panel con
 				mask = alt_mask->imagep()->toCUDA();
 				m = mask.data();
 			}
-			auto compose = [](euclase::Image *dst, euclase::Image const *src, cudamem_t const *m){
-				global->cuda->erase_fp32_RGBA(PANEL_SIZE, PANEL_SIZE, src->data(), PANEL_SIZE, PANEL_SIZE, 0, 0, m, PANEL_SIZE, PANEL_SIZE, dst->data(), PANEL_SIZE, PANEL_SIZE, 0, 0);
-			};
-			compose(dst, src, m);
+			if (target_panel->format() == euclase::Image::Format_F16_RGBA) {
+				auto compose_fp16 = [](euclase::Image *dst, euclase::Image const *src, cudamem_t const *m){
+					global->cuda->erase_fp16_RGBA(PANEL_SIZE, PANEL_SIZE, src->data(), PANEL_SIZE, PANEL_SIZE, 0, 0, m, PANEL_SIZE, PANEL_SIZE, dst->data(), PANEL_SIZE, PANEL_SIZE, 0, 0);
+				};
+				compose_fp16(dst, src, m);
+			} else if (target_panel->format() == euclase::Image::Format_F32_RGBA) {
+				auto compose_fp32 = [](euclase::Image *dst, euclase::Image const *src, cudamem_t const *m){
+					global->cuda->erase_fp32_RGBA(PANEL_SIZE, PANEL_SIZE, src->data(), PANEL_SIZE, PANEL_SIZE, 0, 0, m, PANEL_SIZE, PANEL_SIZE, dst->data(), PANEL_SIZE, PANEL_SIZE, 0, 0);
+				};
+				compose_fp32(dst, src, m);
+			}
 			return;
 		}
 #endif
-		euclase::Float32RGBA *dst = (euclase::Float32RGBA *)target_panel->imagep()->data();
-		euclase::Float32RGBA const *src = (euclase::Float32RGBA const *)alt_panel->imagep()->data();
-		uint8_t const *mask = alt_mask ? (uint8_t const *)(*alt_mask).imagep()->data() : nullptr;
+		if (target_panel->format() == euclase::Image::Format_F16_RGBA) {
+			euclase::Float16RGBA *dst = (euclase::Float16RGBA *)target_panel->imagep()->data();
+			euclase::Float16RGBA const *src = (euclase::Float16RGBA const *)alt_panel->imagep()->data();
+			uint8_t const *mask = alt_mask ? (uint8_t const *)(*alt_mask).imagep()->data() : nullptr;
 
-		for (int i = 0; i < PANEL_SIZE * PANEL_SIZE; i++) {
-			float s = src[i].a; // 消しゴムはアルファ値のみを使う
-			if (mask) {
-				s = s * mask[i] / 255;
+			for (int i = 0; i < PANEL_SIZE * PANEL_SIZE; i++) {
+				float s = src[i].a; // 消しゴムはアルファ値のみを使う
+				if (mask) {
+					s = s * mask[i] / 255;
+				}
+				s = 1 - euclase::clamp_f16(s);
+				dst[i].a = (float)dst[i].a * s;
 			}
-			s = 1 - euclase::clamp_f32(s);
-			dst[i].a *= s;
+		} else if (target_panel->format() == euclase::Image::Format_F32_RGBA) {
+			euclase::Float32RGBA *dst = (euclase::Float32RGBA *)target_panel->imagep()->data();
+			euclase::Float32RGBA const *src = (euclase::Float32RGBA const *)alt_panel->imagep()->data();
+			uint8_t const *mask = alt_mask ? (uint8_t const *)(*alt_mask).imagep()->data() : nullptr;
+
+			for (int i = 0; i < PANEL_SIZE * PANEL_SIZE; i++) {
+				float s = src[i].a; // 消しゴムはアルファ値のみを使う
+				if (mask) {
+					s = s * mask[i] / 255;
+				}
+				s = 1 - euclase::clamp_f32(s);
+				dst[i].a *= s;
+			}
 		}
 	}
 }

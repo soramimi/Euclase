@@ -52,3 +52,25 @@ QPointF CoordinateMapper::mapToViewportFromCanvas(const QPointF &pos) const
 	double y = pos.y() * scale_ + cy - scroll_offset.y();
 	return QPointF(x, y);
 }
+
+QTransform CoordinateMapper::transformToCanvasFromViewport() const
+{
+	qreal m11 = 1.0 / scale_;
+	qreal m21 = 0;
+	qreal m12 = 0;
+	qreal m22 = 1.0 / scale_;
+	qreal dx = (scroll_offset.x() - viewport_size_.width() / 2.0) / scale_;
+	qreal dy = (scroll_offset.y() - viewport_size_.height() / 2.0) / scale_;
+	return QTransform(m11, m12, m21, m22, dx, dy);
+}
+
+QTransform CoordinateMapper::transformToViewportFromCanvas() const
+{
+	qreal m11 = scale_;
+	qreal m21 = 0;
+	qreal m12 = 0;
+	qreal m22 = scale_;
+	qreal dx = viewport_size_.width() / 2.0 - scroll_offset.x();
+	qreal dy = viewport_size_.height() / 2.0 - scroll_offset.y();
+	return QTransform(m11, m12, m21, m22, dx, dy);
+}

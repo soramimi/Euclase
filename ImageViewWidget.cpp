@@ -21,9 +21,101 @@
 #include <mutex>
 #include <thread>
 #include <condition_variable>
+#include <variant>
 
 const int MAX_SCALE = 32; // 32x
 const int MIN_SCALE = 16; // 1/16x
+
+class EllipseBounds {
+public:
+	EllipseBounds() = default;
+};
+
+
+class BoundsDrawer {
+public:
+	QPainter *painter_;
+	CoordinateMapper mapper_;
+	QColor color_;
+	QPointF rect_start_;
+	QPointF rect_end_;
+	double animation_level_ = 0;
+
+	typedef std::variant<
+		std::monostate,
+		EllipseBounds
+		> variant_t;
+
+	void operator () (std::monostate const &)
+	{
+	}
+
+	void operator () (EllipseBounds const &bounds)
+	{
+		painter_->save();
+		painter_->setPen(color_);
+		painter_->setRenderHint(QPainter::Antialiasing);
+		painter_->setTransform(mapper_.transformToViewportFromCanvas());
+		painter_->drawEllipse(QRectF(rect_start_, rect_end_));
+		painter_->restore();
+	}
+
+	BoundsDrawer(QPainter *painter, CoordinateMapper const &mapper, QPointF rect_start, QPointF rect_end, double animation_level)
+		: painter_(painter)
+		, mapper_(mapper)
+		, rect_start_(rect_start)
+		, rect_end_(rect_end)
+		, animation_level_(animation_level)
+	{
+		int v = (sin(animation_level_) + 1) * 127;
+		color_ = QColor(v, v, v);
+	}
+
+	void draw(variant_t t)
+	{
+		QBrush brush = QBrush(color_);
+		painter_->setOpacity(0.5); // 半透明
+
+		// 枠線
+		double x0 = rect_start_.x();
+		double y0 = rect_start_.y();
+		double x1 = rect_end_.x();
+		double y1 = rect_end_.y();
+		if (x0 > x1) std::swap(x0, x1);
+		if (y0 > y1) std::swap(y0, y1);
+		QPointF pt;
+		pt = mapper_.mapToViewportFromCanvas(QPointF(x0, y0));
+		x0 = floor(pt.x());
+		y0 = floor(pt.y());
+		pt = mapper_.mapToViewportFromCanvas(QPointF(x1, y1));
+		x1 = floor(pt.x());
+		y1 = floor(pt.y());
+		misc::drawFrame(painter_, x0, y0, x1 - x0 + 1, y1 - y0 + 1, brush, brush);
+
+		std::visit(*this, t);
+
+		// ハンドル
+		auto DrawHandle = [&](int x, int y){
+			painter_->fillRect(x - 4, y - 4, 9, 9, brush);
+		};
+
+		// 角
+		DrawHandle(x0, y0);
+		DrawHandle(x1, y0);
+		DrawHandle(x0, y1);
+		DrawHandle(x1, y1);
+
+		// 上下左右
+		DrawHandle((x0 + x1) / 2, y0);
+		DrawHandle((x0 + x1) / 2, y1);
+		DrawHandle(x0, (y0 + y1) / 2);
+		DrawHandle(x1, (y0 + y1) / 2);
+
+		// 中央
+		DrawHandle((x0 + x1) / 2, (y0 + y1) / 2);
+	}
+};
+
 
 struct ImageViewWidget::Private {
 	MainWindow *mainwindow = nullptr;
@@ -51,7 +143,7 @@ struct ImageViewWidget::Private {
 	bool scrolling = false;
 
 	int stripe_animation = 0;
-	int rectangle_animation = 0;
+	int bounds_animation = 0;
 
 	bool rect_visible = false;
 	QPointF rect_start;
@@ -1188,46 +1280,9 @@ void ImageViewWidget::paintEvent(QPaintEvent *)
 
 	// 範囲指定矩形点滅
 	if (m->rect_visible) {
-		double f = m->rectangle_animation * (2 * 3.1416) / 10.0;
-		int v = (sin(f) + 1) * 127;
-		QBrush brush = QBrush(QColor(v, v, v));
-		pr_view.setOpacity(0.5); // 半透明
-
-		// 枠線
-		double x0 = m->rect_start.x();
-		double y0 = m->rect_start.y();
-		double x1 = m->rect_end.x();
-		double y1 = m->rect_end.y();
-		if (x0 > x1) std::swap(x0, x1);
-		if (y0 > y1) std::swap(y0, y1);
-		QPointF pt;
-		pt = mapper.mapToViewportFromCanvas(QPointF(x0, y0));
-		x0 = floor(pt.x());
-		y0 = floor(pt.y());
-		pt = mapper.mapToViewportFromCanvas(QPointF(x1, y1));
-		x1 = floor(pt.x());
-		y1 = floor(pt.y());
-		misc::drawFrame(&pr_view, x0, y0, x1 - x0 + 1, y1 - y0 + 1, brush, brush);
-
-		// ハンドル
-		auto DrawHandle = [&](int x, int y){
-			pr_view.fillRect(x - 4, y - 4, 9, 9, brush);
-		};
-
-		// 角
-		DrawHandle(x0, y0);
-		DrawHandle(x1, y0);
-		DrawHandle(x0, y1);
-		DrawHandle(x1, y1);
-
-		// 上下左右
-		DrawHandle((x0 + x1) / 2, y0);
-		DrawHandle((x0 + x1) / 2, y1);
-		DrawHandle(x0, (y0 + y1) / 2);
-		DrawHandle(x1, (y0 + y1) / 2);
-
-		// 中央
-		DrawHandle((x0 + x1) / 2, (y0 + y1) / 2);
+		double f = m->bounds_animation * (2 * 3.1416) / 10.0;
+		BoundsDrawer drawer(&pr_view, mapper, m->rect_start, m->rect_end, f);
+		drawer.draw(std::monostate());
 	}
 }
 
@@ -1395,7 +1450,7 @@ void ImageViewWidget::onSelectionOutlineReady(const SelectionOutline &data)
 void ImageViewWidget::onTimer()
 {
 	m->stripe_animation = (m->stripe_animation + 1) & 7;
-	m->rectangle_animation = (m->rectangle_animation + 1) % 10;
+	m->bounds_animation = (m->bounds_animation + 1) % 10;
 
 	bool update = true;
 

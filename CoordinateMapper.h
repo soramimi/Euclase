@@ -3,6 +3,7 @@
 
 #include <QPointF>
 #include <QSize>
+#include <QTransform>
 
 class CoordinateMapper {
 private:
@@ -30,6 +31,8 @@ public:
 	}
 	QPointF mapToCanvasFromViewport(QPointF const &pos) const;
 	QPointF mapToViewportFromCanvas(QPointF const &pos) const;
+	QTransform transformToCanvasFromViewport() const;
+	QTransform transformToViewportFromCanvas() const;
 };
 
 #endif // COORDINATEMAPPER_H

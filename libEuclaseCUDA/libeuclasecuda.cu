@@ -17,7 +17,7 @@ __device__ inline float clamp_f01(float x)
 	return max(0.0f, min(1.0f, x));
 }
 
-__global__ void cu_round_brush(int w, int h, float cx, float cy, float radius, float blur, float mul, float *p)
+__global__ void cu_round_brush(int w, int h, float cx, float cy, float radius, float blur, float mul, __half *p)
 {
 	int i = blockIdx.x * blockDim.x + threadIdx.x;
 	int j = blockIdx.y * blockDim.y + threadIdx.y;
@@ -48,7 +48,7 @@ void API_FUNC_ENTRY(round_brush)(int w, int h, float cx, float cy, float radius,
 {
 	dim3 blocks((w + 15) / 16, (h + 15) / 16);
 	dim3 threads(16, 16);
-	cu_round_brush<<<blocks,threads>>>(w, h, cx, cy, radius, blur, mul, (float *)mem);
+	cu_round_brush<<<blocks,threads>>>(w, h, cx, cy, radius, blur, mul, (__half *)mem);
 }
 
 __global__ void cu_saturation_brightness(int w, int h, int red, int green, int blue, uint8_t *p)
@@ -180,10 +180,9 @@ __device__ void alpha_blend_fp32_RGBA(float *d, float const *s, float m)
 	float b = overB * overA + baseB * baseA * (1 - overA);
 	float a = overA + baseA * (1 - overA);
 	if (a > 0) {
-		float t = 1 / a;
-		r *= t;
-		g *= t;
-		b *= t;
+		r /= a;
+		g /= a;
+		b /= a;
 	}
 	d[0] = r;
 	d[1] = g;
@@ -207,10 +206,9 @@ __device__ void alpha_blend_fp16_RGBA(__half *d, __half const *s, __half m)
 	__half b = overB * overA + baseB * baseA * ((__half)1 - overA);
 	__half a = overA + baseA * ((__half)1 - overA);
 	if (a > (__half)0) {
-		__half t = (__half)1 / a;
-		r *= t;
-		g *= t;
-		b *= t;
+		r /= a;
+		g /= a;
+		b /= a;
 	}
 	d[0] = r;
 	d[1] = g;
