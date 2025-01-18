@@ -15,18 +15,49 @@ namespace Ui {
 class MainWindow;
 }
 
-class ScrollTool;
-class BrushTool;
-class EraserBrushTool;
-class RectTool;
+enum class Tool_ {
+	Scroll,
+	Brush,
+	EraserBrush,
+	Bounds,
+};
 
 namespace tool {
 class MouseButtonPress;
 class MouseMove;
 class MouseButtonRelease;
-class ScrollTool;
-class BrushTool;
-class BoundsTool;
+
+class ScrollTool {
+public:
+	Tool_ id() const { return Tool_::Scroll; }
+	bool on(MainWindow *mw, MouseButtonPress const &a);
+	bool on(MainWindow *mw, MouseMove const &a);
+	bool on(MainWindow *mw, MouseButtonRelease const &a);
+};
+
+class BrushTool {
+private:
+	Tool_ kind = Tool_::Brush;
+public:
+	Tool_ id() const { return kind; }
+	bool on(MainWindow *mw, MouseButtonPress const &a);
+	bool on(MainWindow *mw, MouseMove const &a);
+	bool on(MainWindow *mw, MouseButtonRelease const &a);
+	static BrushTool Eraser()
+	{
+		BrushTool ret;
+		ret.kind = Tool_::EraserBrush;
+		return ret;
+	}
+};
+
+class BoundsTool {
+public:
+	Tool_ id() const { return Tool_::Bounds; }
+	bool on(MainWindow *mw, MouseButtonPress const &a);
+	bool on(MainWindow *mw, MouseMove const &a);
+	bool on(MainWindow *mw, MouseButtonRelease const &a);
+};
 
 typedef std::variant<
 	ScrollTool,
@@ -36,6 +67,18 @@ typedef std::variant<
 
 } // namespace tool
 
+class MainTool {
+public:
+	tool::ToolVariant var;
+	MainTool() = default;
+	MainTool(tool::ToolVariant var)
+		: var(var)
+	{
+	}
+};
+Q_DECLARE_METATYPE(MainTool)
+
+
 class MainWindow : public QMainWindow {
 	Q_OBJECT
 	friend class FilterDialog;
@@ -44,12 +87,6 @@ class MainWindow : public QMainWindow {
 	friend class tool::BrushTool;
 	friend class tool::BoundsTool;
 public:
-	enum class Tool {
-		Scroll,
-		Brush,
-		EraserBrush,
-		Bounds,
-	};
 	enum RectHandle {
 		None,
 		Center,
@@ -142,8 +179,9 @@ public:
 	int canvasHeight() const;
 	QColor foregroundColor() const;
 	const Brush &currentBrush() const;
-	void changeTool(Tool tool);
-	MainWindow::Tool currentTool() const;
+	void changeTool(Tool_ tool);
+	void changeTool2(MainTool tool);
+	Tool_ currentTool() const;
 	SelectionOutline renderSelectionOutline(bool *abort);
 	void setColor(QColor primary_color, QColor secondary_color);
 	void updateToolCursor();

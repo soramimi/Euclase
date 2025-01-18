@@ -42,7 +42,8 @@ struct MainWindow::Private {
 	double brush_t = 0;
 	QPointF brush_bezier[4];
 
-	MainWindow::Tool current_tool;
+	Tool_ current_tool;
+	tool::ToolVariant current_tool2;
 	Bounds::variant_t bounds_type;
 
 	bool mouse_moved = false;
@@ -103,8 +104,39 @@ MainWindow::MainWindow(QWidget *parent)
 	setColor(Qt::black, Qt::white);
 
 	{
+		QVBoxLayout *vbox = new QVBoxLayout;
+		ui->main_tool_bar_frame->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Maximum);
+		ui->main_tool_bar_frame->setLayout(vbox);
+		vbox->setContentsMargins(0, 0, 0, 0);
+		auto newToolButton = [](QString text, tool::ToolVariant tool){
+			QToolButton *b = new QToolButton;
+			b->setText(text);
+			b->setFixedSize(40, 40);
+			b->setCheckable(true);
+			b->setToolButtonStyle(Qt::ToolButtonTextUnderIcon);
+			b->setProperty("tool", QVariant::fromValue(MainTool(tool)));
+			return b;
+		};
+		QToolButton *b1 = newToolButton("Hoge", tool::ScrollTool());
+		connect(b1, &QToolButton::clicked, [this, b1](){
+			changeTool2(b1->property("tool").value<MainTool>());
+		});
+		vbox->addWidget(b1);
+		QToolButton *b2 = newToolButton("Fuga", tool::BrushTool());
+		connect(b2, &QToolButton::clicked, [this, b2](){
+			changeTool2(b2->property("tool").value<MainTool>());
+		});
+		vbox->addWidget(b2);
+		QToolButton *b3 = newToolButton("Fuga", tool::BrushTool::Eraser());
+		connect(b3, &QToolButton::clicked, [this, b3](){
+			changeTool2(b3->property("tool").value<MainTool>());
+		});
+		vbox->addWidget(b3);
+	}
+
+	{
 		Brush b;
-		b.size = 85;
+		b.size = 100;
 		b.softness = 1.0;
 		setCurrentBrush(b);
 	}
@@ -445,7 +477,7 @@ Canvas::RenderOption2 MainWindow::renderOption() const
 
 	opt.opt1.blend_mode = Canvas::BlendMode::Normal;
 	switch (currentTool()) {
-	case MainWindow::Tool::EraserBrush:
+	case Tool_::EraserBrush:
 		opt.opt1.blend_mode = Canvas::BlendMode::Eraser;
 		break;
 	}
@@ -847,7 +879,7 @@ void MainWindow::onPenDown(double x, double y)
 {
 	Canvas::BlendMode blendmode = Canvas::BlendMode::Normal;
 	switch (currentTool()) {
-	case MainWindow::Tool::EraserBrush:
+	case Tool_::EraserBrush:
 		blendmode = Canvas::BlendMode::Eraser;
 		break;
 	}
@@ -1039,76 +1071,74 @@ public:
 	{}
 };
 
-class ScrollTool {
-public:
-	bool on(MainWindow *mw, MouseButtonPress const &a)
-	{
-		return false;
-	}
-	bool on(MainWindow *mw, MouseMove const &a)
-	{
-		mw->setToolCursor(Qt::OpenHandCursor);
-		if (!a.set_cursor_only) {
-			mw->doHandScroll();
-		}
-		return true;
-	}
-	bool on(MainWindow *mw, MouseButtonRelease const &a)
-	{
-		return false;
-	}
-};
+bool BoundsTool::on(MainWindow *mw, const MouseButtonPress &a)
+{
+	mw->onBoundsStart();
+	return true;
+}
 
-class BrushTool {
-public:
-	bool on(MainWindow *mw, MouseButtonPress const &a)
-	{
-		QPointF pos = mw->pointOnCanvas(a.x, a.y);
-		mw->onPenDown(pos.x(), pos.y());
-		return true;
-	}
-	bool on(MainWindow *mw, MouseMove const &a)
-	{
-		mw->setToolCursor(Qt::ArrowCursor);
-		if (!a.set_cursor_only) {
-			if (a.left_button) {
-				QPointF pos = mw->pointOnCanvas(a.x, a.y);
-				mw->onPenStroke(pos.x(), pos.y());
-			}
-		}
-		return true;
-	}
-	bool on(MainWindow *mw, MouseButtonRelease const &a)
-	{
+bool BoundsTool::on(MainWindow *mw, const MouseMove &a)
+{
+	mw->onBoundsMove(a);
+	return true;
+}
+
+bool BoundsTool::on(MainWindow *mw, const MouseButtonRelease &a)
+{
+	mw->onBoundsEnd(a);
+	return true;
+}
+
+bool BrushTool::on(MainWindow *mw, const MouseButtonPress &a)
+{
+	QPointF pos = mw->pointOnCanvas(a.x, a.y);
+	mw->onPenDown(pos.x(), pos.y());
+	return true;
+}
+
+bool BrushTool::on(MainWindow *mw, const MouseMove &a)
+{
+	mw->setToolCursor(Qt::ArrowCursor);
+	if (!a.set_cursor_only) {
 		if (a.left_button) {
 			QPointF pos = mw->pointOnCanvas(a.x, a.y);
-			mw->onPenUp(pos.x(), pos.y());
-			return true;
+			mw->onPenStroke(pos.x(), pos.y());
 		}
-		return false;
 	}
-};
+	return true;
+}
 
-class BoundsTool {
-public:
-	bool on(MainWindow *mw, MouseButtonPress const &a)
-	{
-		mw->onBoundsStart();
+bool BrushTool::on(MainWindow *mw, const MouseButtonRelease &a)
+{
+	if (a.left_button) {
+		QPointF pos = mw->pointOnCanvas(a.x, a.y);
+		mw->onPenUp(pos.x(), pos.y());
 		return true;
 	}
-	bool on(MainWindow *mw, MouseMove const &a)
-	{
-		mw->onBoundsMove(a);
-		return true;
+	return false;
+}
+
+bool ScrollTool::on(MainWindow *mw, const MouseButtonPress &a)
+{
+	return false;
+}
+
+bool ScrollTool::on(MainWindow *mw, const MouseMove &a)
+{
+	mw->setToolCursor(Qt::OpenHandCursor);
+	if (!a.set_cursor_only) {
+		mw->doHandScroll();
 	}
-	bool on(MainWindow *mw, MouseButtonRelease const &a)
-	{
-		mw->onBoundsEnd(a);
-		return true;
-	}
-};
+	return true;
+}
+
+bool ScrollTool::on(MainWindow *mw, const MouseButtonRelease &a)
+{
+	return false;
+}
 
 } // namespace tool
+
 
 void MainWindow::setBounds_internal()
 {
@@ -1222,12 +1252,12 @@ void MainWindow::doHandScroll()
 tool::ToolVariant MainWindow::currentToolVariant()
 {
 	switch (currentTool()) {
-	case Tool::Scroll:
+	case Tool_::Scroll:
 		return tool::ScrollTool();
-	case Tool::Brush:
-	case Tool::EraserBrush:
+	case Tool_::Brush:
+	case Tool_::EraserBrush:
 		return tool::BrushTool();
-	case Tool::Bounds:
+	case Tool_::Bounds:
 		return tool::BoundsTool();
 	}
 	return tool::ScrollTool();
@@ -1483,10 +1513,10 @@ bool MainWindow::eventFilter(QObject *watched, QEvent *event)
 				int k = e->key();
 				switch (k) {
 				case Qt::Key_B:
-					changeTool(Tool::Brush);
+					changeTool(Tool_::Brush);
 					return true;
 				case Qt::Key_H:
-					changeTool(Tool::Scroll);
+					changeTool(Tool_::Scroll);
 					return true;
 				case Qt::Key_P:
 					if (ctrl) {
@@ -1520,7 +1550,7 @@ bool MainWindow::eventFilter(QObject *watched, QEvent *event)
 					}
 					return true;
 				case Qt::Key_R:
-					changeTool(Tool::Bounds);
+					changeTool(Tool_::Bounds);
 					return true;
 				case Qt::Key_T:
 					if (ctrl) {
@@ -1554,22 +1584,22 @@ void MainWindow::keyPressEvent(QKeyEvent *event)
 	QMainWindow::keyPressEvent(event);
 }
 
-void MainWindow::changeTool(Tool tool)
+void MainWindow::changeTool(Tool_ tool)
 {
 	if (isFilterDialogActive()) return;
 	
 	m->current_tool = tool;
 
 	struct Button {
-		Tool tool;
+		Tool_ tool;
 		QToolButton *button;
 	};
 
 	Button buttons[] = {
-		{Tool::Scroll, ui->toolButton_scroll},
-		{Tool::Brush, ui->toolButton_paint_brush},
-		{Tool::EraserBrush, ui->toolButton_eraser_brush},
-		{Tool::Bounds, ui->toolButton_rect},
+		{Tool_::Scroll, ui->toolButton_scroll},
+		{Tool_::Brush, ui->toolButton_paint_brush},
+		{Tool_::EraserBrush, ui->toolButton_eraser_brush},
+		{Tool_::Bounds, ui->toolButton_rect},
 	};
 
 	int n = sizeof(buttons) / sizeof(*buttons);
@@ -1581,30 +1611,39 @@ void MainWindow::changeTool(Tool tool)
 	updateToolCursor();
 }
 
-MainWindow::Tool MainWindow::currentTool() const
+void MainWindow::changeTool2(MainTool tool)
 {
-	if (isFilterDialogActive()) return Tool::Scroll;
+	m->current_tool2 = tool.var;
+}
+
+Tool_ MainWindow::currentTool() const
+{
+	if (isFilterDialogActive()) return Tool_::Scroll;
+#if 0
 	return m->current_tool;
+#else
+	return std::visit([](auto const &x){ return x.id(); }, m->current_tool2);
+#endif
 }
 
 void MainWindow::on_toolButton_scroll_clicked()
 {
-	changeTool(Tool::Scroll);
+	changeTool(Tool_::Scroll);
 }
 
 void MainWindow::on_toolButton_paint_brush_clicked()
 {
-	changeTool(Tool::Brush);
+	changeTool(Tool_::Brush);
 }
 
 void MainWindow::on_toolButton_eraser_brush_clicked()
 {
-	changeTool(Tool::EraserBrush);
+	changeTool(Tool_::EraserBrush);
 }
 
 void MainWindow::on_toolButton_rect_clicked()
 {
-	changeTool(Tool::Bounds);
+	changeTool(Tool_::Bounds);
 }
 
 void MainWindow::on_action_edit_copy_triggered()

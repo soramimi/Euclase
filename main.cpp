@@ -98,6 +98,7 @@ int main(int argc, char *argv[])
 #endif
 
 	qRegisterMetaType<SelectionOutline>("SelectionOutline");
+	qRegisterMetaType<MainTool>("MainTool");
 
 	MainWindow w;
 	w.setWindowIcon(QIcon(":/image/icon.png"));
