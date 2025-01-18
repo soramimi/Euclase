@@ -18,7 +18,7 @@ public:
 	typedef std::variant<
 		Rectangle,
 		Ellipse
-		> variant_t;
+		> Type;
 };
 
 #endif // BOUNDS_H

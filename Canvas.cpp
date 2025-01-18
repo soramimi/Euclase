@@ -1260,7 +1260,7 @@ static QImage makeBoundsImage(Bounds::Ellipse const &x, QRect const &rect)
 	return image;
 }
 
-void Canvas::changeSelection(SelectionOperation op, const QRect &rect, Bounds::variant_t bounds_type)
+void Canvas::changeSelection(SelectionOperation op, const QRect &rect, Bounds::Type bounds_type)
 {
 	auto format = euclase::Image::Format_U8_Grayscale;
 	Canvas::Layer layer;

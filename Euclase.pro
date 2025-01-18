@@ -76,6 +76,7 @@ SOURCES += main.cpp\
 	MemoryReader.cpp \
 	MyApplication.cpp \
 	MySettings.cpp \
+	MyToolButton.cpp \
 	NewDialog.cpp \
 	PanelizedImage.cpp \
 	Photoshop.cpp \
@@ -123,6 +124,7 @@ HEADERS += \
 	MemoryReader.h \
 	MyApplication.h \
 	MySettings.h \
+	MyToolButton.h \
 	NewDialog.h \
 	PanelizedImage.h \
 	Photoshop.h \

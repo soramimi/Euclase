@@ -63,7 +63,7 @@ public:
 		color_ = QColor(v, v, v);
 	}
 
-	void draw(Bounds::variant_t t)
+	void draw(Bounds::Type t)
 	{
 		QBrush brush = QBrush(color_);
 		painter_->setOpacity(0.5); // 半透明

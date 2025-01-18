@@ -9,7 +9,9 @@
 
 class Brush;
 
+class QToolButton;
 class FilterContext;
+class MyToolButton;
 
 namespace Ui {
 class MainWindow;
@@ -43,6 +45,7 @@ public:
 	bool on(MainWindow *mw, MouseButtonPress const &a);
 	bool on(MainWindow *mw, MouseMove const &a);
 	bool on(MainWindow *mw, MouseButtonRelease const &a);
+	bool isEraser() const { return kind == Tool_::EraserBrush; }
 	static BrushTool Eraser()
 	{
 		BrushTool ret;
@@ -53,10 +56,23 @@ public:
 
 class BoundsTool {
 public:
+	Bounds::Type bounds_type;
 	Tool_ id() const { return Tool_::Bounds; }
 	bool on(MainWindow *mw, MouseButtonPress const &a);
 	bool on(MainWindow *mw, MouseMove const &a);
 	bool on(MainWindow *mw, MouseButtonRelease const &a);
+	static BoundsTool Rectangle()
+	{
+		BoundsTool ret;
+		ret.bounds_type = Bounds::Rectangle();
+		return ret;
+	}
+	static BoundsTool Ellipse()
+	{
+		BoundsTool ret;
+		ret.bounds_type = Bounds::Ellipse();
+		return ret;
+	}
 };
 
 typedef std::variant<
@@ -86,6 +102,7 @@ class MainWindow : public QMainWindow {
 	friend class tool::ScrollTool;
 	friend class tool::BrushTool;
 	friend class tool::BoundsTool;
+	friend class SetupPropertyBar;
 public:
 	enum RectHandle {
 		None,
@@ -105,11 +122,6 @@ private:
 	struct Private;
 	Private *m;
 	
-	// void operator () (ScrollTool const &tool);
-	// void operator () (BrushTool const &tool);
-	// void operator () (EraserBrushTool const &tool);
-	// void operator () (RectTool const &tool);
-
 	const Document &currentDocument() const;
 
 	void setImage(euclase::Image image, bool fitview);
@@ -161,6 +173,15 @@ private:
 	void onBoundsStart();
 	void onBoundsMove(tool::MouseMove const &a);
 	void onBoundsEnd(tool::MouseButtonRelease const &a);
+	void clearMainToolBar();
+	void clearPropertyBar();
+	void createMainToolBar();
+	void createPropertyBar();
+	static MyToolButton *newMyToolButton(QString text, tool::ToolVariant tool);
+	void addMainToolBarButton(const QString &text, tool::ToolVariant tool);
+	void addPropertyBarButton(const QString &text, tool::ToolVariant tool);
+	Canvas::BlendMode blendMode() const;
+	void changeTool_internal(MainTool tool);
 protected:
 	void keyPressEvent(QKeyEvent *event);
 public:
@@ -179,9 +200,10 @@ public:
 	int canvasHeight() const;
 	QColor foregroundColor() const;
 	const Brush &currentBrush() const;
-	void changeTool(Tool_ tool);
-	void changeTool2(MainTool tool);
-	Tool_ currentTool() const;
+
+	void changeTool(tool::ToolVariant tool);
+	tool::ToolVariant currentTool() const;
+
 	SelectionOutline renderSelectionOutline(bool *abort);
 	void setColor(QColor primary_color, QColor secondary_color);
 	void updateToolCursor();
@@ -251,8 +273,7 @@ public:
 	std::mutex &mutexForCanvas() const;
 	euclase::Image renderSelection(const QRect &r, bool *abort) const;
 	bool isFilterDialogActive() const;
-	tool::ToolVariant currentToolVariant();
-	Bounds::variant_t boundsType() const;
+	Bounds::Type boundsType() const;
 protected:
 	void dragEnterEvent(QDragEnterEvent *event);
 	void dropEvent(QDropEvent *event);
@@ -260,6 +281,8 @@ protected:
 	// QWidget interface
 protected:
 	void closeEvent(QCloseEvent *);
+private slots:
+	void onToolButton(MyToolButton *button);
 };
 
 #endif // MAINWINDOW_H

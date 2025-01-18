@@ -353,7 +353,7 @@ public:
 		~EllipseSelection() override = default;
 		QImage make(QRect const &rect) const override;
 	};
-	void changeSelection(SelectionOperation op, QRect const &rect, Bounds::variant_t bounds_type);
+	void changeSelection(SelectionOperation op, QRect const &rect, Bounds::Type bounds_type);
 };
 
 euclase::Image cropImage(euclase::Image const &srcimg, int sx, int sy, int sw, int sh);
