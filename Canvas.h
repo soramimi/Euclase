@@ -1,6 +1,7 @@
 #ifndef CANVAS_H
 #define CANVAS_H
 
+#include "Bounds.h"
 #include "euclase.h"
 #include <QColor>
 #include <QImage>
@@ -335,13 +336,24 @@ public:
 	void addSelection(const Layer &source, const RenderOption &opt, bool *abort);
 	void subSelection(const Layer &source, const RenderOption &opt, bool *abort);
 	Panel renderSelection(const QRect &r, bool *abort) const;
-	void changeSelection(SelectionOperation op, QRect const &rect);
 	Panel crop(const QRect &r, bool *abort) const;
 	void trim(const QRect &r);
 	void clear();
 	int addNewLayer();
 	static LayerPtr newLayer();
 	void setCurrentLayer(int index);
+
+	class RectangleSelection {
+	public:
+		virtual ~RectangleSelection() = default;
+		virtual QImage make(QRect const &rect) const;
+	};
+	class EllipseSelection : public RectangleSelection {
+	public:
+		~EllipseSelection() override = default;
+		QImage make(QRect const &rect) const override;
+	};
+	void changeSelection(SelectionOperation op, QRect const &rect, Bounds::variant_t bounds_type);
 };
 
 euclase::Image cropImage(euclase::Image const &srcimg, int sx, int sy, int sw, int sh);

@@ -2,7 +2,6 @@
 #include "MainWindow.h"
 #include "ui_MainWindow.h"
 #include "ApplicationGlobal.h"
-#include "Canvas.h"
 #include "FilterDialog.h"
 #include "FilterFormBlur.h"
 #include "FilterFormColorCorrection.h"
@@ -16,6 +15,7 @@
 #include "antialias.h"
 #include "euclase.h"
 #include "median.h"
+#include "Canvas.h"
 #include "xbrz/xbrz.h"
 #include <QBitmap>
 #include <QClipboard>
@@ -43,6 +43,7 @@ struct MainWindow::Private {
 	QPointF brush_bezier[4];
 
 	MainWindow::Tool current_tool;
+	Bounds::variant_t bounds_type;
 
 	bool mouse_moved = false;
 	QPoint start_viewport_pt;
@@ -123,6 +124,8 @@ MainWindow::MainWindow(QWidget *parent)
 	}
 
 	ui->widget_image_view->setFocus();
+
+	m->bounds_type = Bounds::Ellipse();
 
 	qApp->installEventFilter(this);
 }
@@ -1230,6 +1233,11 @@ tool::ToolVariant MainWindow::currentToolVariant()
 	return tool::ScrollTool();
 }
 
+Bounds::variant_t MainWindow::boundsType() const
+{
+	return m->bounds_type;
+}
+
 bool MainWindow::onMouseLeftButtonPress(int x, int y)
 {
 	tool::MouseButtonPress args(x, y);
@@ -1635,7 +1643,7 @@ void MainWindow::on_action_select_rectangle_triggered()
 		QRect r = boundsRect();
 		if (r.width() > 0 && r.height() > 0) {
 			Canvas::SelectionOperation op = Canvas::SelectionOperation::AddSelection;
-			canvas()->changeSelection(op, r);
+			canvas()->changeSelection(op, r, boundsType());
 			onSelectionChanged();
 			updateImageViewEntire();
 		}

@@ -214,6 +214,7 @@ public:
 	euclase::Image renderSelection(const QRect &r, bool *abort) const;
 	bool isFilterDialogActive() const;
 	tool::ToolVariant currentToolVariant();
+	Bounds::variant_t boundsType() const;
 protected:
 	void dragEnterEvent(QDragEnterEvent *event);
 	void dropEvent(QDropEvent *event);

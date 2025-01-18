@@ -7,6 +7,7 @@
 #include "PanelizedImage.h"
 #include "SelectionOutline.h"
 #include "misc.h"
+#include "Bounds.h"
 #include <QBitmap>
 #include <QBuffer>
 #include <QDebug>
@@ -26,11 +27,6 @@
 const int MAX_SCALE = 32; // 32x
 const int MIN_SCALE = 16; // 1/16x
 
-class EllipseBounds {
-public:
-	EllipseBounds() = default;
-};
-
 
 class BoundsDrawer {
 public:
@@ -41,19 +37,15 @@ public:
 	QPointF rect_end_;
 	double animation_level_ = 0;
 
-	typedef std::variant<
-		std::monostate,
-		EllipseBounds
-		> variant_t;
 
-	void operator () (std::monostate const &)
+	void operator () (Bounds::Rectangle const &)
 	{
 	}
 
-	void operator () (EllipseBounds const &bounds)
+	void operator () (Bounds::Ellipse const &bounds)
 	{
 		painter_->save();
-		painter_->setPen(color_);
+		painter_->setPen(QPen(color_, 0));
 		painter_->setRenderHint(QPainter::Antialiasing);
 		painter_->setTransform(mapper_.transformToViewportFromCanvas());
 		painter_->drawEllipse(QRectF(rect_start_, rect_end_));
@@ -71,7 +63,7 @@ public:
 		color_ = QColor(v, v, v);
 	}
 
-	void draw(variant_t t)
+	void draw(Bounds::variant_t t)
 	{
 		QBrush brush = QBrush(color_);
 		painter_->setOpacity(0.5); // 半透明
@@ -1207,7 +1199,6 @@ void ImageViewWidget::paintEvent(QPaintEvent *)
 					pr2.restore();
 				}
 
-
 				// 選択領域点線
 				if (!m->selection_outline.bitmap.isNull()) {
 					QBrush brush = stripeBrush();
@@ -1284,9 +1275,11 @@ void ImageViewWidget::paintEvent(QPaintEvent *)
 	if (m->bounds_visible) {
 		double f = m->bounds_animation * (2 * 3.1416) / 10.0;
 		BoundsDrawer drawer(&pr_view, mapper, m->bounds_start, m->bounds_end, f);
-		drawer.draw(std::monostate());
+		drawer.draw(mainwindow()->boundsType());
 	}
 }
+
+
 
 /**
  * @brief ImageViewWidget::rescaleOffScreen

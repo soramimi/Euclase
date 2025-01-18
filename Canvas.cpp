@@ -1239,14 +1239,40 @@ QRect Canvas::Layer::rect() const
 	return rect;
 }
 
-void Canvas::changeSelection(SelectionOperation op, const QRect &rect)
+static QImage makeBoundsImage(Bounds::Rectangle const &x, QRect const &rect)
+{
+	QImage image(rect.width(), rect.height(), QImage::Format_Grayscale8);
+	image.fill(Qt::white);
+	return image;
+}
+
+static QImage makeBoundsImage(Bounds::Ellipse const &x, QRect const &rect)
+{
+	int w = rect.width();
+	int h = rect.height();
+	QImage image(w, h, QImage::Format_Grayscale8);
+	image.fill(Qt::black);
+	QPainter pr(&image);
+	pr.setPen(Qt::NoPen);
+	pr.setBrush(Qt::white);
+	pr.setRenderHint(QPainter::Antialiasing);
+	pr.drawEllipse(0, 0, w, h);
+	return image;
+}
+
+void Canvas::changeSelection(SelectionOperation op, const QRect &rect, Bounds::variant_t bounds_type)
 {
 	auto format = euclase::Image::Format_U8_Grayscale;
 	Canvas::Layer layer;
 	layer.format_ = format;
 	layer.memtype_ = m->selection_layer.memtype_;
 	Panel *panel = layer.addImagePanel(&layer.primary_panels, rect.x(), rect.y(), rect.width(), rect.height(), layer.format_, layer.memtype_);
-	panel->imagep()->fill(euclase::k::white);
+
+	QImage image = std::visit([&](auto const &x){ return makeBoundsImage(x, rect); }, bounds_type);
+
+	image = image.convertToFormat(QImage::Format_Grayscale8);
+	image = image.scaled(rect.size(), Qt::IgnoreAspectRatio, Qt::SmoothTransformation);
+	panel->imagep()->setImage(image);
 
 	RenderOption opt;
 
@@ -1284,3 +1310,4 @@ euclase::Image cropImage(const euclase::Image &srcimg, int sx, int sy, int sw, i
 	Canvas::renderToSinglePanel(&tmp2, QPoint(0, 0), &tmp1, QPoint(-sx, -sy), nullptr, {}, {});
 	return tmp2.image();
 }
+

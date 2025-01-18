@@ -55,6 +55,7 @@ SOURCES += main.cpp\
 	AlphaBlend.cpp \
 	ApplicationGlobal.cpp \
 	ApplicationSettings.cpp \
+	Bounds.cpp \
 	BrushPreviewWidget.cpp \
 	BrushSlider.cpp \
 	Canvas.cpp \
@@ -101,6 +102,7 @@ HEADERS += \
 	AlphaBlend.h \
 	ApplicationGlobal.h \
 	ApplicationSettings.h \
+	Bounds.h \
 	BrushPreviewWidget.h \
 	BrushSlider.h \
 	Canvas.h \
