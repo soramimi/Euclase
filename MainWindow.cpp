@@ -30,10 +30,9 @@
 #include <omp.h>
 #include <stdint.h>
 #include <QMessageBox>
-
+#include <variant>
 
 struct MainWindow::Private {
-	Canvas doc;
 	QColor primary_color;
 	QColor secondary_color;
 	Brush current_brush;
@@ -46,13 +45,13 @@ struct MainWindow::Private {
 	MainWindow::Tool current_tool;
 
 	bool mouse_moved = false;
-	QPoint start_vpt;
-	QPointF anchor_dpt;
-	QPointF offset_dpt;
-	QPointF topleft_dpt;
-	QPointF bottomright_dpt;
-	QPointF rect_topleft_dpt;
-	QPointF rect_bottomright_dpt;
+	QPoint start_viewport_pt;
+	QPointF anchor_canvas_pt;
+	QPointF offset_canvas_pt;
+	QPointF topleft_canvas_pt;
+	QPointF bottomright_canvas_pt;
+	QPointF rect_topleft_canvas_pt;
+	QPointF rect_bottomright_canvas_pt;
 
 	MainWindow::RectHandle rect_handle = MainWindow::RectHandle::None;
 
@@ -60,8 +59,12 @@ struct MainWindow::Private {
 
 	std::mutex canvas_mutex;
 	
-	std::unique_ptr<FilterDialog> filter_dialog;	
+	std::unique_ptr<FilterDialog> filter_dialog;
+
+	Document document;
+
 };
+
 
 MainWindow::MainWindow(QWidget *parent)
 	: QMainWindow(parent)
@@ -93,6 +96,8 @@ MainWindow::MainWindow(QWidget *parent)
 	connect(ui->widget_image_view, &ImageViewWidget::scaleChanged, [&](double scale){
 		ui->widget_brush->changeScale(scale);
 	});
+
+	connect(ui->widget_image_view, &ImageViewWidget::updateDocInfo, this, &MainWindow::onUpdateDocumentInformation);
 
 	setColor(Qt::black, Qt::white);
 
@@ -132,12 +137,12 @@ MainWindow::~MainWindow()
 
 Canvas *MainWindow::canvas()
 {
-	return &m->doc;
+	return &m->document.canvas_;
 }
 
 Canvas const *MainWindow::canvas() const
 {
-	return &m->doc;
+	return &m->document.canvas_;
 }
 
 std::mutex &MainWindow::mutexForCanvas() const
@@ -207,7 +212,7 @@ Brush const &MainWindow::currentBrush() const
 	return m->current_brush;
 }
 
-void MainWindow::hideRect(bool update)
+void MainWindow::hideBounds(bool update)
 {
 	ui->widget_image_view->hideRect(update);
 }
@@ -219,16 +224,16 @@ bool MainWindow::isRectVisible() const
 
 QRect MainWindow::boundsRect() const
 {
-	int x = m->rect_topleft_dpt.x();
-	int y = m->rect_topleft_dpt.y();
-	int w = m->rect_bottomright_dpt.x() - x;
-	int h = m->rect_bottomright_dpt.y() - y;
+	int x = m->rect_topleft_canvas_pt.x();
+	int y = m->rect_topleft_canvas_pt.y();
+	int w = m->rect_bottomright_canvas_pt.x() - x;
+	int h = m->rect_bottomright_canvas_pt.y() - y;
 	return QRect(x, y, w, h);
 }
 
 void MainWindow::resetView(bool fitview)
 {
-	hideRect(false);
+	hideBounds(false);
 
 	if (fitview) {
 		fitView();
@@ -256,17 +261,15 @@ void MainWindow::setupBasicLayer(Canvas::Layer *layer)
 	layer->memtype_ = preferredMemoryType();
 }
 
+Document const &MainWindow::currentDocument() const
+{
+	return m->document;
+}
+
 void MainWindow::setImage(euclase::Image image, bool fitview)
 {
 	clearCanvas();
 	ui->widget_image_view->clearRenderCache(true, true);
-
-	{
-		// image = image.convertToFormat(euclase::Image::Format_F16_RGBA);
-		// image = image.convertToFormat(euclase::Image::Format_F32_RGBA);
-		// image = image.convertToFormat(euclase::Image::Format_F16_RGBA);
-		// image = image.convertToFormat(euclase::Image::Format_F32_RGBA);
-	}
 
 	int w = image.width();
 	int h = image.height();
@@ -305,6 +308,7 @@ void MainWindow::openFile(QString const &path)
 	QFile file(path);
 	if (file.open(QFile::ReadOnly)) {
 		ba = file.readAll();
+		m->document.setDocumentPath(path);
 	}
 	setImageFromBytes(ba, true);
 }
@@ -911,8 +915,8 @@ MainWindow::RectHandle MainWindow::rectHitTest(QPoint const &pt) const
 
 		const int D = 100;
 
-		QPointF topleft = mapToViewportFromCanvas(m->topleft_dpt);
-		QPointF bottomright = mapToViewportFromCanvas(m->bottomright_dpt);
+		QPointF topleft = mapToViewportFromCanvas(m->topleft_canvas_pt);
+		QPointF bottomright = mapToViewportFromCanvas(m->bottomright_canvas_pt);
 		if (topleft.x() > bottomright.x()) std::swap(topleft.rx(), bottomright.rx());
 		if (topleft.y() > bottomright.y()) std::swap(topleft.ry(), bottomright.ry());
 		int x0 = topleft.x();
@@ -989,76 +993,275 @@ MainWindow::RectHandle MainWindow::rectHitTest(QPoint const &pt) const
 	return RectHandle::None;
 }
 
-void MainWindow::setRect()
+namespace tool {
+
+class MouseButtonPress {
+public:
+	int x;
+	int y;
+	MouseButtonPress() = default;
+	MouseButtonPress(int x, int y)
+		: x(x)
+		, y(y)
+	{}
+};
+
+class MouseMove {
+public:
+	int x;
+	int y;
+	bool left_button;
+	bool set_cursor_only;
+	MouseMove() = default;
+	MouseMove(int x, int y, bool left_button, bool set_cursor_only)
+		: x(x)
+		, y(y)
+		, left_button(left_button)
+		, set_cursor_only(set_cursor_only)
+	{}
+};
+
+class MouseButtonRelease {
+public:
+	int x;
+	int y;
+	bool left_button;
+	bool mouse_moved;
+	MouseButtonRelease() = default;
+	MouseButtonRelease(int x, int y, bool left_button, bool mouse_moved)
+		: x(x)
+		, y(y)
+		, left_button(left_button)
+		, mouse_moved(mouse_moved)
+	{}
+};
+
+class ScrollTool {
+public:
+	bool on(MainWindow *mw, MouseButtonPress const &a)
+	{
+		return false;
+	}
+	bool on(MainWindow *mw, MouseMove const &a)
+	{
+		mw->setToolCursor(Qt::OpenHandCursor);
+		if (!a.set_cursor_only) {
+			mw->doHandScroll();
+		}
+		return true;
+	}
+	bool on(MainWindow *mw, MouseButtonRelease const &a)
+	{
+		return false;
+	}
+};
+
+class BrushTool {
+public:
+	bool on(MainWindow *mw, MouseButtonPress const &a)
+	{
+		QPointF pos = mw->pointOnCanvas(a.x, a.y);
+		mw->onPenDown(pos.x(), pos.y());
+		return true;
+	}
+	bool on(MainWindow *mw, MouseMove const &a)
+	{
+		mw->setToolCursor(Qt::ArrowCursor);
+		if (!a.set_cursor_only) {
+			if (a.left_button) {
+				QPointF pos = mw->pointOnCanvas(a.x, a.y);
+				mw->onPenStroke(pos.x(), pos.y());
+			}
+		}
+		return true;
+	}
+	bool on(MainWindow *mw, MouseButtonRelease const &a)
+	{
+		if (a.left_button) {
+			QPointF pos = mw->pointOnCanvas(a.x, a.y);
+			mw->onPenUp(pos.x(), pos.y());
+			return true;
+		}
+		return false;
+	}
+};
+
+class BoundsTool {
+public:
+	bool on(MainWindow *mw, MouseButtonPress const &a)
+	{
+		mw->onBoundsStart();
+		return true;
+	}
+	bool on(MainWindow *mw, MouseMove const &a)
+	{
+		mw->onBoundsMove(a);
+		return true;
+	}
+	bool on(MainWindow *mw, MouseButtonRelease const &a)
+	{
+		mw->onBoundsEnd(a);
+		return true;
+	}
+};
+
+} // namespace tool
+
+void MainWindow::setBounds_internal()
 {
-	QPointF topleft = m->topleft_dpt + m->offset_dpt;
-	QPointF bottomright = m->bottomright_dpt + m->offset_dpt;
+	QPointF topleft = m->topleft_canvas_pt + m->offset_canvas_pt;
+	QPointF bottomright = m->bottomright_canvas_pt + m->offset_canvas_pt;
 	double x0 = floor(topleft.x());
 	double y0 = floor(topleft.y());
 	double x1 = floor(bottomright.x());
 	double y1 = floor(bottomright.y());
 	if (x0 > x1) std::swap(x0, x1);
 	if (y0 > y1) std::swap(y0, y1);
-	m->rect_topleft_dpt = { x0, y0 };
-	m->rect_bottomright_dpt = { x1 + 1, y1 + 1 };
-	ui->widget_image_view->showRect(m->rect_topleft_dpt, m->rect_bottomright_dpt);
+	m->rect_topleft_canvas_pt = { x0, y0 };
+	m->rect_bottomright_canvas_pt = { x1 + 1, y1 + 1 };
+	ui->widget_image_view->showBounds(m->rect_topleft_canvas_pt, m->rect_bottomright_canvas_pt);
+}
+
+void MainWindow::onBoundsStart()
+{
+	m->rect_handle = rectHitTest(m->start_viewport_pt);
+	if (m->rect_handle != RectHandle::None) {
+		m->topleft_canvas_pt += QPointF(0.01, 0.01);
+		m->bottomright_canvas_pt += QPointF(-0.01, -0.01);
+		double x0 = m->topleft_canvas_pt.x();
+		double y0 = m->topleft_canvas_pt.y();
+		double x1 = m->bottomright_canvas_pt.x();
+		double y1 = m->bottomright_canvas_pt.y();
+		if (m->rect_handle == RectHandle::Center) {
+			m->anchor_canvas_pt = QPointF((x0 + x1) / 2, (y0 + y1) / 2);
+		} else if (m->rect_handle == RectHandle::TopLeft) {
+			m->anchor_canvas_pt = m->topleft_canvas_pt;
+		} else if (m->rect_handle == RectHandle::TopRight) {
+			m->anchor_canvas_pt = QPointF(x1, y0);
+		} else if (m->rect_handle == RectHandle::BottomLeft) {
+			m->anchor_canvas_pt = QPointF(x0, y1);
+		} else if (m->rect_handle == RectHandle::BottomRight) {
+			m->anchor_canvas_pt = m->bottomright_canvas_pt;
+		} else if (m->rect_handle == RectHandle::Top) {
+			m->anchor_canvas_pt = QPointF((x0 + x1) / 2, y0);
+		} else if (m->rect_handle == RectHandle::Left) {
+			m->anchor_canvas_pt = QPointF(x0, (y0 + y1) / 2);
+		} else if (m->rect_handle == RectHandle::Right) {
+			m->anchor_canvas_pt = QPointF(x1, (y0 + y1) / 2);
+		} else if (m->rect_handle == RectHandle::Bottom) {
+			m->anchor_canvas_pt = QPointF((x0 + x1) / 2, y1);
+		}
+	}
+	if (m->rect_handle == RectHandle::None) {
+		m->rect_handle = RectHandle::BottomRight;
+		m->anchor_canvas_pt = mapToCanvasFromViewport(m->start_viewport_pt);
+		m->topleft_canvas_pt = m->bottomright_canvas_pt = m->anchor_canvas_pt;
+		m->offset_canvas_pt = { 0, 0 };
+		setBounds_internal();
+	}
+}
+
+void MainWindow::onBoundsMove(tool::MouseMove const &a)
+{
+	if (!a.set_cursor_only && a.left_button) {
+		m->mouse_moved = true;
+	} else {
+		m->rect_handle = rectHitTest(QPoint(a.x, a.y));
+	}
+	if (m->rect_handle == RectHandle::None) {
+		setToolCursor(Qt::ArrowCursor);
+	} else {
+		setToolCursor(Qt::SizeAllCursor);
+		if (!a.set_cursor_only && a.left_button) {
+			QPointF pt = mapToCanvasFromViewport(mapToViewportFromCanvas(m->anchor_canvas_pt) + QPointF(a.x, a.y) - m->start_viewport_pt);
+			if (m->rect_handle == RectHandle::Center) {
+				m->offset_canvas_pt = { pt.x() - m->anchor_canvas_pt.x(), pt.y() - m->anchor_canvas_pt.y() };
+			} else if (m->rect_handle == RectHandle::TopLeft) {
+				m->topleft_canvas_pt = pt;
+			} else if (m->rect_handle == RectHandle::BottomRight) {
+				m->bottomright_canvas_pt = pt;
+			} else if (m->rect_handle == RectHandle::TopRight) {
+				m->topleft_canvas_pt.ry() = pt.y();
+				m->bottomright_canvas_pt.rx() = pt.x();
+			} else if (m->rect_handle == RectHandle::BottomLeft) {
+				m->topleft_canvas_pt.rx() = pt.x();
+				m->bottomright_canvas_pt.ry() = pt.y();
+			} else if (m->rect_handle == RectHandle::Top) {
+				m->topleft_canvas_pt.ry() = pt.y();
+			} else if (m->rect_handle == RectHandle::Left) {
+				m->topleft_canvas_pt.rx() = pt.x();
+			} else if (m->rect_handle == RectHandle::Right) {
+				m->bottomright_canvas_pt.rx() = pt.x();
+			} else if (m->rect_handle == RectHandle::Bottom) {
+				m->bottomright_canvas_pt.ry() = pt.y();
+			}
+			setBounds_internal();
+		}
+	}
+}
+
+void MainWindow::onBoundsEnd(tool::MouseButtonRelease const &a)
+{
+	if (a.left_button) {
+		m->topleft_canvas_pt = m->rect_topleft_canvas_pt;
+		m->bottomright_canvas_pt = m->rect_bottomright_canvas_pt;
+		if (!a.mouse_moved) {
+			hideBounds(true);
+		}
+	}
+}
+
+void MainWindow::doHandScroll()
+{
+	ui->widget_image_view->doHandScroll();
+}
+
+tool::ToolVariant MainWindow::currentToolVariant()
+{
+	switch (currentTool()) {
+	case Tool::Scroll:
+		return tool::ScrollTool();
+	case Tool::Brush:
+	case Tool::EraserBrush:
+		return tool::BrushTool();
+	case Tool::Bounds:
+		return tool::BoundsTool();
+	}
+	return tool::ScrollTool();
 }
 
 bool MainWindow::onMouseLeftButtonPress(int x, int y)
 {
+	tool::MouseButtonPress args(x, y);
+
 	m->mouse_moved = false;
-	m->start_vpt = QPoint(x, y);
-	m->offset_dpt = { 0, 0 };
+	m->start_viewport_pt = QPoint(x, y);
+	m->offset_canvas_pt = { 0, 0 };
 
-	Tool tool = currentTool();
-	if (tool == Tool::Scroll) return false;
+	auto v = currentToolVariant();
+	return std::visit([&](auto &tool){ return tool.on(this, args); }, v);
+}
 
-	if (tool == Tool::Brush || tool == Tool::EraserBrush) {
-		QPointF pos = pointOnCanvas(x, y);
-		onPenDown(pos.x(), pos.y());
-		return true;
-	}
+bool MainWindow::mouseMove_internal(int x, int y, bool left_button, bool set_cursor_only)
+{
+	tool::MouseMove args(x, y, left_button, set_cursor_only);
 
-	if (tool == Tool::Rect) {
-		m->rect_handle = rectHitTest(m->start_vpt);
-		if (m->rect_handle != RectHandle::None) {
-			m->topleft_dpt += QPointF(0.01, 0.01);
-			m->bottomright_dpt += QPointF(-0.01, -0.01);
-			double x0 = m->topleft_dpt.x();
-			double y0 = m->topleft_dpt.y();
-			double x1 = m->bottomright_dpt.x();
-			double y1 = m->bottomright_dpt.y();
-			if (m->rect_handle == RectHandle::Center) {
-				m->anchor_dpt = QPointF((x0 + x1) / 2, (y0 + y1) / 2);
-			} else if (m->rect_handle == RectHandle::TopLeft) {
-				m->anchor_dpt = m->topleft_dpt;
-			} else if (m->rect_handle == RectHandle::TopRight) {
-				m->anchor_dpt = QPointF(x1, y0);
-			} else if (m->rect_handle == RectHandle::BottomLeft) {
-				m->anchor_dpt = QPointF(x0, y1);
-			} else if (m->rect_handle == RectHandle::BottomRight) {
-				m->anchor_dpt = m->bottomright_dpt;
-			} else if (m->rect_handle == RectHandle::Top) {
-				m->anchor_dpt = QPointF((x0 + x1) / 2, y0);
-			} else if (m->rect_handle == RectHandle::Left) {
-				m->anchor_dpt = QPointF(x0, (y0 + y1) / 2);
-			} else if (m->rect_handle == RectHandle::Right) {
-				m->anchor_dpt = QPointF(x1, (y0 + y1) / 2);
-			} else if (m->rect_handle == RectHandle::Bottom) {
-				m->anchor_dpt = QPointF((x0 + x1) / 2, y1);
-			}
-		}
-		if (m->rect_handle == RectHandle::None) {
-			m->rect_handle = RectHandle::BottomRight;
-			m->anchor_dpt = mapToCanvasFromViewport(m->start_vpt);
-			m->topleft_dpt = m->bottomright_dpt = m->anchor_dpt;
-			m->offset_dpt = { 0, 0 };
-			setRect();
-		}
-		return true;
-	}
+	auto v = currentToolVariant();
+	return std::visit([&](auto &tool){ return tool.on(this, args); }, v);
+}
 
-	return false;
+bool MainWindow::onMouseMove(int x, int y, bool left_button)
+{
+	return mouseMove_internal(x, y, left_button, false);
+}
+
+bool MainWindow::onMouseLeftButtonRelease(int x, int y, bool left_button)
+{
+	tool::MouseButtonRelease args(x, y, left_button, m->mouse_moved);
+	m->mouse_moved = false;
+
+	auto v = currentToolVariant();
+	return std::visit([&](auto &tool){ return tool.on(this, args); }, v);
 }
 
 void MainWindow::setToolCursor(QCursor const &cursor)
@@ -1148,69 +1351,6 @@ void MainWindow::closeEvent(QCloseEvent *)
 	}
 }
 
-bool MainWindow::mouseMove_internal(int x, int y, bool leftbutton, bool set_cursor_only)
-{
-	Tool tool = currentTool();
-	if (tool == Tool::Scroll) {
-		setToolCursor(Qt::OpenHandCursor);
-		if (!set_cursor_only) {
-			ui->widget_image_view->doHandScroll();
-		}
-		return true;
-	}
-
-	if (tool == Tool::Brush || tool == Tool::EraserBrush) {
-		setToolCursor(Qt::ArrowCursor);
-		if (!set_cursor_only) {
-			if (leftbutton) {
-				QPointF pos = pointOnCanvas(x, y);
-				onPenStroke(pos.x(), pos.y());
-			}
-		}
-		return true;
-	}
-
-	if (tool == Tool::Rect) {
-		if (!set_cursor_only && leftbutton) {
-			m->mouse_moved = true;
-		} else {
-			m->rect_handle = rectHitTest(QPoint(x, y));
-		}
-		if (m->rect_handle == RectHandle::None) {
-			setToolCursor(Qt::ArrowCursor);
-		} else {
-			setToolCursor(Qt::SizeAllCursor);
-			if (!set_cursor_only && leftbutton) {
-				QPointF pt = mapToCanvasFromViewport(mapToViewportFromCanvas(m->anchor_dpt) + QPointF(x, y) - m->start_vpt);
-				if (m->rect_handle == RectHandle::Center) {
-					m->offset_dpt = { pt.x() - m->anchor_dpt.x(), pt.y() - m->anchor_dpt.y() };
-				} else if (m->rect_handle == RectHandle::TopLeft) {
-					m->topleft_dpt = pt;
-				} else if (m->rect_handle == RectHandle::BottomRight) {
-					m->bottomright_dpt = pt;
-				} else if (m->rect_handle == RectHandle::TopRight) {
-					m->topleft_dpt.ry() = pt.y();
-					m->bottomright_dpt.rx() = pt.x();
-				} else if (m->rect_handle == RectHandle::BottomLeft) {
-					m->topleft_dpt.rx() = pt.x();
-					m->bottomright_dpt.ry() = pt.y();
-				} else if (m->rect_handle == RectHandle::Top) {
-					m->topleft_dpt.ry() = pt.y();
-				} else if (m->rect_handle == RectHandle::Left) {
-					m->topleft_dpt.rx() = pt.x();
-				} else if (m->rect_handle == RectHandle::Right) {
-					m->bottomright_dpt.rx() = pt.x();
-				} else if (m->rect_handle == RectHandle::Bottom) {
-					m->bottomright_dpt.ry() = pt.y();
-				}
-				setRect();
-			}
-		}
-		return true;
-	}
-
-	return false;
-}
 
 void MainWindow::updateToolCursor()
 {
@@ -1218,45 +1358,9 @@ void MainWindow::updateToolCursor()
 	ui->widget_image_view->updateToolCursor();
 }
 
-bool MainWindow::onMouseMove(int x, int y, bool leftbutton)
-{
-	return mouseMove_internal(x, y, leftbutton, false);
-}
-
 void MainWindow::on_action_clear_bounds_triggered()
 {
-	hideRect(true);
-}
-
-bool MainWindow::onMouseLeftButtonRelase(int x, int y, bool leftbutton)
-{
-	bool mouse_moved = m->mouse_moved;
-	m->mouse_moved = false;
-
-	Tool tool = currentTool();
-	if (tool == Tool::Scroll) return false;
-
-	if (tool == Tool::Brush || tool == Tool::EraserBrush) {
-		if (leftbutton) {
-			QPointF pos = pointOnCanvas(x, y);
-			onPenUp(pos.x(), pos.y());
-			return true;
-		}
-	}
-
-	if (tool == Tool::Rect) {
-
-		if (leftbutton) {
-			m->topleft_dpt = m->rect_topleft_dpt;
-			m->bottomright_dpt = m->rect_bottomright_dpt;
-			if (!mouse_moved) {
-				hideRect(true);
-			}
-		}
-		return true;
-	}
-
-	return false;
+	hideBounds(true);
 }
 
 void MainWindow::setColorRed(int value)
@@ -1408,7 +1512,7 @@ bool MainWindow::eventFilter(QObject *watched, QEvent *event)
 					}
 					return true;
 				case Qt::Key_R:
-					changeTool(Tool::Rect);
+					changeTool(Tool::Bounds);
 					return true;
 				case Qt::Key_T:
 					if (ctrl) {
@@ -1457,7 +1561,7 @@ void MainWindow::changeTool(Tool tool)
 		{Tool::Scroll, ui->toolButton_scroll},
 		{Tool::Brush, ui->toolButton_paint_brush},
 		{Tool::EraserBrush, ui->toolButton_eraser_brush},
-		{Tool::Rect, ui->toolButton_rect},
+		{Tool::Bounds, ui->toolButton_rect},
 	};
 
 	int n = sizeof(buttons) / sizeof(*buttons);
@@ -1492,7 +1596,7 @@ void MainWindow::on_toolButton_eraser_brush_clicked()
 
 void MainWindow::on_toolButton_rect_clicked()
 {
-	changeTool(Tool::Rect);
+	changeTool(Tool::Bounds);
 }
 
 void MainWindow::on_action_edit_copy_triggered()
@@ -1573,15 +1677,15 @@ void MainWindow::on_action_filter_4xBRZ_triggered()
 
 int MainWindow::addNewLayer()
 {
-	int index = m->doc.addNewLayer();
-	Canvas::Layer *p = m->doc.layer(index);
+	int index = canvas()->addNewLayer();
+	Canvas::Layer *p = canvas()->layer(index);
 	setupBasicLayer(p);
 	return index;
 }
 
 void MainWindow::setCurrentLayer(int index)
 {
-	m->doc.setCurrentLayer(index);
+	canvas()->setCurrentLayer(index);
 }
 
 struct ColorCorrectionParams {
@@ -1685,14 +1789,22 @@ void MainWindow::colorCollection()
 	});
 }
 
+void MainWindow::onUpdateDocumentInformation()
+{
+	Document const &doc = currentDocument();
+	QString str("%1 x %2");
+	QSize sz = doc.size();
+	str = str.arg(sz.width()).arg(sz.height());
+	ui->statusBar->showMessage(str);
+
+	setWindowTitle(doc.fileName() + " - " + qApp->applicationName());
+}
+
+
 void MainWindow::test()
 {
-#if 1
-	updateImageViewEntire();
-#else
-	openFile("/mnt/lucy/pub/pictures/favolite/white.png");
-#endif
 }
+
 
 
 

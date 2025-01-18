@@ -145,9 +145,9 @@ struct ImageViewWidget::Private {
 	int stripe_animation = 0;
 	int bounds_animation = 0;
 
-	bool rect_visible = false;
-	QPointF rect_start;
-	QPointF rect_end;
+	bool bounds_visible = false;
+	QPointF bounds_start;
+	QPointF bounds_end;
 
 	QBrush horz_stripe_brush;
 	QBrush vert_stripe_brush;
@@ -332,17 +332,17 @@ QPointF ImageViewWidget::mapToViewportFromCanvas(QPointF const &pos)
 	return currentCoordinateMapper().mapToViewportFromCanvas(pos);
 }
 
-void ImageViewWidget::showRect(QPointF const &start, QPointF const &end)
+void ImageViewWidget::showBounds(QPointF const &start, QPointF const &end)
 {
-	m->rect_start = start;
-	m->rect_end = end;
-	m->rect_visible = true;
+	m->bounds_start = start;
+	m->bounds_end = end;
+	m->bounds_visible = true;
 	update();
 }
 
 void ImageViewWidget::hideRect(bool update)
 {
-	m->rect_visible = false;
+	m->bounds_visible = false;
 
 	if (update) {
 		this->update();
@@ -351,7 +351,7 @@ void ImageViewWidget::hideRect(bool update)
 
 bool ImageViewWidget::isRectVisible() const
 {
-	return m->rect_visible;
+	return m->bounds_visible;
 }
 
 /**
@@ -591,6 +591,8 @@ void ImageViewWidget::scrollImage(double x, double y, bool differential_update)
 		m->v_scroll_bar->setValue((int)m->d.view_scroll_offset.y());
 		m->v_scroll_bar->blockSignals(b);
 	}
+
+	emit updateDocInfo();
 }
 
 /**
@@ -1279,9 +1281,9 @@ void ImageViewWidget::paintEvent(QPaintEvent *)
 	}
 
 	// 範囲指定矩形点滅
-	if (m->rect_visible) {
+	if (m->bounds_visible) {
 		double f = m->bounds_animation * (2 * 3.1416) / 10.0;
-		BoundsDrawer drawer(&pr_view, mapper, m->rect_start, m->rect_end, f);
+		BoundsDrawer drawer(&pr_view, mapper, m->bounds_start, m->bounds_end, f);
 		drawer.draw(std::monostate());
 	}
 }
@@ -1417,7 +1419,7 @@ void ImageViewWidget::mouseReleaseEvent(QMouseEvent *)
 {
 	QPoint pos = mapFromGlobal(QCursor::pos());
 	if (m->left_button && hasFocus()) {
-		mainwindow()->onMouseLeftButtonRelase(pos.x(), pos.y(), true);
+		mainwindow()->onMouseLeftButtonRelease(pos.x(), pos.y(), true);
 
 		if (m->scrolling) {
 			internalUpdateScroll();

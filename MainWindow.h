@@ -3,6 +3,7 @@
 
 #include "AbstractFilterForm.h"
 #include "Canvas.h"
+#include "Document.h"
 #include "SelectionOutline.h"
 #include <QMainWindow>
 
@@ -14,15 +15,40 @@ namespace Ui {
 class MainWindow;
 }
 
+class ScrollTool;
+class BrushTool;
+class EraserBrushTool;
+class RectTool;
+
+namespace tool {
+class MouseButtonPress;
+class MouseMove;
+class MouseButtonRelease;
+class ScrollTool;
+class BrushTool;
+class BoundsTool;
+
+typedef std::variant<
+	ScrollTool,
+	BrushTool,
+	BoundsTool
+	> ToolVariant;
+
+} // namespace tool
+
 class MainWindow : public QMainWindow {
 	Q_OBJECT
 	friend class FilterDialog;
+	friend class MainWindowController;
+	friend class tool::ScrollTool;
+	friend class tool::BrushTool;
+	friend class tool::BoundsTool;
 public:
 	enum class Tool {
 		Scroll,
 		Brush,
 		EraserBrush,
-		Rect,
+		Bounds,
 	};
 	enum RectHandle {
 		None,
@@ -41,6 +67,13 @@ private:
 
 	struct Private;
 	Private *m;
+	
+	// void operator () (ScrollTool const &tool);
+	// void operator () (BrushTool const &tool);
+	// void operator () (EraserBrushTool const &tool);
+	// void operator () (RectTool const &tool);
+
+	const Document &currentDocument() const;
 
 	void setImage(euclase::Image image, bool fitview);
 	void setImageFromBytes(QByteArray const &ba, bool fitview);
@@ -68,9 +101,10 @@ private:
 	QPointF pointOnCanvas(int x, int y) const;
 	QPointF mapToCanvasFromViewport(const QPointF &pt) const;
 	QPointF mapToViewportFromCanvas(const QPointF &pt) const;
-	void setRect();
+
+
 	void clearCanvas();
-	void hideRect(bool update);
+	void hideBounds(bool update);
 	bool isRectVisible() const;
 	QRect boundsRect() const;
 	void resetView(bool fitview);
@@ -84,6 +118,12 @@ private:
 	bool mouseMove_internal(int x, int y, bool leftbutton, bool set_cursor_only);
 	Canvas::RenderOption2 renderOption() const;
 	void setFilerDialogActive(bool active);
+	void doHandScroll();
+private:
+	void setBounds_internal();
+	void onBoundsStart();
+	void onBoundsMove(tool::MouseMove const &a);
+	void onBoundsEnd(tool::MouseButtonRelease const &a);
 protected:
 	void keyPressEvent(QKeyEvent *event);
 public:
@@ -114,8 +154,9 @@ public slots:
 	void onPenStroke(double x, double y);
 	void onPenUp(double x, double y);
 	bool onMouseLeftButtonPress(int x, int y);
-	bool onMouseMove(int x, int y, bool leftbutton);
-	bool onMouseLeftButtonRelase(int x, int y, bool leftbutton);
+	bool onMouseMove(int x, int y, bool left_button);
+	bool onMouseLeftButtonRelease(int x, int y, bool left_button);
+	void onUpdateDocumentInformation();
 private slots:
 	void on_action_file_open_triggered();
 	void on_action_file_save_as_triggered();
@@ -172,6 +213,7 @@ public:
 	std::mutex &mutexForCanvas() const;
 	euclase::Image renderSelection(const QRect &r, bool *abort) const;
 	bool isFilterDialogActive() const;
+	tool::ToolVariant currentToolVariant();
 protected:
 	void dragEnterEvent(QDragEnterEvent *event);
 	void dropEvent(QDropEvent *event);

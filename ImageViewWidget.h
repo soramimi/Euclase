@@ -36,7 +36,6 @@ private:
 	void internalScrollImage(double x, double y, bool differential_update);
 	void scrollImage(double x, double y, bool differential_update);
 	bool setScale(double scale, bool fire_event);
-	double scale() const;
 	void setScrollBarRange(QScrollBar *h, QScrollBar *v);
 	void updateScrollBarRange();
 	bool zoomToCursor(double scale);
@@ -74,11 +73,12 @@ public:
 	QPointF mapToCanvasFromViewport(const QPointF &pos);
 	QPointF mapToViewportFromCanvas(QPointF const &pos);
 
-	void showRect(const QPointF &start, const QPointF &end);
+	void showBounds(const QPointF &start, const QPointF &end);
 	void hideRect(bool update);
 
 	void refrectScrollBar();
 
+	double scale() const;
 	void scaleFit(double ratio = 1.0);
 	void scale100();
 
@@ -96,7 +96,7 @@ public:
 
 	void cancelRendering();
 
-	static constexpr QColor BGCOLOR = QColor(240, 240, 240);
+	static constexpr QColor BGCOLOR = QColor(128, 128, 128);
 
 	void clearRenderCache(bool clear_offscreen, bool lock);
 	void requestUpdateView(const QRect &viewrect, bool lock);
@@ -108,6 +108,7 @@ private slots:
 signals:
 	void notifySelectionOutlineReady(SelectionOutline const &data);
 	void scaleChanged(double scale);
+	void updateDocInfo();
 };
 
 #endif // IMAGEVIEWWIDGET_H
