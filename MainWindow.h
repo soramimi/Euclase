@@ -29,15 +29,25 @@ class MouseButtonPress;
 class MouseMove;
 class MouseButtonRelease;
 
-class ScrollTool {
+class AbstractTool {
+public:
+	virtual Tool_ id() const = 0;
+	virtual bool on(MainWindow *mw, MouseButtonPress const &a) = 0;
+	virtual bool on(MainWindow *mw, MouseMove const &a) = 0;
+	virtual bool on(MainWindow *mw, MouseButtonRelease const &a) = 0;
+	virtual void setupPropertyBar(MainWindow *mw) = 0;
+};
+
+class ScrollTool : public AbstractTool {
 public:
 	Tool_ id() const { return Tool_::Scroll; }
 	bool on(MainWindow *mw, MouseButtonPress const &a);
 	bool on(MainWindow *mw, MouseMove const &a);
 	bool on(MainWindow *mw, MouseButtonRelease const &a);
+	void setupPropertyBar(MainWindow *mw);
 };
 
-class BrushTool {
+class BrushTool : public AbstractTool {
 private:
 	Tool_ kind = Tool_::Brush;
 public:
@@ -45,6 +55,7 @@ public:
 	bool on(MainWindow *mw, MouseButtonPress const &a);
 	bool on(MainWindow *mw, MouseMove const &a);
 	bool on(MainWindow *mw, MouseButtonRelease const &a);
+	void setupPropertyBar(MainWindow *mw);
 	bool isEraser() const { return kind == Tool_::EraserBrush; }
 	static BrushTool Eraser()
 	{
@@ -54,13 +65,14 @@ public:
 	}
 };
 
-class BoundsTool {
+class BoundsTool : public AbstractTool {
 public:
 	Bounds::Type bounds_type;
 	Tool_ id() const { return Tool_::Bounds; }
 	bool on(MainWindow *mw, MouseButtonPress const &a);
 	bool on(MainWindow *mw, MouseMove const &a);
 	bool on(MainWindow *mw, MouseButtonRelease const &a);
+	void setupPropertyBar(MainWindow *mw);
 	static BoundsTool Rectangle()
 	{
 		BoundsTool ret;
@@ -92,6 +104,7 @@ public:
 	{
 	}
 };
+
 Q_DECLARE_METATYPE(MainTool)
 
 
@@ -168,6 +181,8 @@ private:
 	Canvas::RenderOption2 renderOption() const;
 	void setFilerDialogActive(bool active);
 	void doHandScroll();
+public:
+	void addPropertyBarButton(const QString &text, tool::ToolVariant tool);
 private:
 	void setBounds_internal();
 	void onBoundsStart();
@@ -179,7 +194,6 @@ private:
 	void createPropertyBar();
 	static MyToolButton *newMyToolButton(QString text, tool::ToolVariant tool);
 	void addMainToolBarButton(const QString &text, tool::ToolVariant tool);
-	void addPropertyBarButton(const QString &text, tool::ToolVariant tool);
 	Canvas::BlendMode blendMode() const;
 	void changeTool_internal(MainTool tool);
 protected:
@@ -274,6 +288,7 @@ public:
 	euclase::Image renderSelection(const QRect &r, bool *abort) const;
 	bool isFilterDialogActive() const;
 	Bounds::Type boundsType() const;
+	tool::AbstractTool *abstractTool(tool::ToolVariant tool);
 protected:
 	void dragEnterEvent(QDragEnterEvent *event);
 	void dropEvent(QDropEvent *event);

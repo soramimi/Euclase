@@ -66,6 +66,7 @@ struct MainWindow::Private {
 	QHBoxLayout *property_bar_hbox_layout;
 
 	tool::ToolVariant current_tool;
+	tool::AbstractTool *current_tool2 = nullptr;
 
 	tool::ScrollTool tool_scroll;
 	tool::BrushTool tool_brush;
@@ -91,6 +92,8 @@ MainWindow::MainWindow(QWidget *parent)
 		createPropertyBar();
 		clearPropertyBar();
 	}
+
+	m->current_tool2 = &m->tool_scroll;
 
 
 	ui->horizontalSlider_size->setValue(1);
@@ -1179,7 +1182,72 @@ bool ScrollTool::on(MainWindow *mw, const MouseButtonRelease &a)
 	return false;
 }
 
+struct ToolUtil {
+
+	static AbstractTool *toolptr(tool::ScrollTool &t) { return &t; }
+	static AbstractTool *toolptr(tool::BrushTool &t) { return &t; }
+	static AbstractTool *toolptr(tool::BoundsTool &t) { return &t; }
+
+	static void setupPropertyBar(MainWindow *mw, tool::ScrollTool const &)
+	{
+	}
+
+	static void setupPropertyBar(MainWindow *mw, tool::BrushTool const &)
+	{
+		mw->addPropertyBarButton(MainWindow::tr("Brush"), tool::BrushTool());
+		mw->addPropertyBarButton(MainWindow::tr("Eraser"), tool::BrushTool::Eraser());
+	}
+
+	static void setupPropertyBar(MainWindow *mw, tool::BoundsTool const &t)
+	{
+		mw->addPropertyBarButton(MainWindow::tr("Rectangle"), tool::BoundsTool::Rectangle());
+		mw->addPropertyBarButton(MainWindow::tr("Ellipse"), tool::BoundsTool::Ellipse());
+	}
+
+};
+
+void ScrollTool::setupPropertyBar(MainWindow *mw) { ToolUtil::setupPropertyBar(mw, *this); }
+void BrushTool::setupPropertyBar(MainWindow *mw)  { ToolUtil::setupPropertyBar(mw, *this); }
+void BoundsTool::setupPropertyBar(MainWindow *mw) { ToolUtil::setupPropertyBar(mw, *this); }
+
 } // namespace tool
+
+tool::AbstractTool *MainWindow::abstractTool(tool::ToolVariant tool)
+{
+	return std::visit([](auto &x){ return tool::ToolUtil::toolptr(x); }, tool);
+}
+
+void MainWindow::changeTool_internal(MainTool tool)
+{
+	m->current_tool = tool.var;
+	m->current_tool2 = abstractTool(tool.var);
+
+	clearPropertyBar();
+
+	std::visit([this](auto const &x){
+		tool::ToolUtil::setupPropertyBar(this, x);
+	}, m->current_tool);
+}
+
+void MainWindow::changeTool(tool::ToolVariant tool)
+{
+	changeTool_internal(MainTool(tool));
+}
+
+void MainWindow::onToolButton(MyToolButton *button)
+{
+	MainTool t = button->property("tool").value<MainTool>();
+	changeTool_internal(t);
+}
+
+tool::ToolVariant MainWindow::currentTool() const
+{
+	if (isFilterDialogActive()) {
+		return m->tool_scroll;
+	}
+
+	return m->current_tool;
+}
 
 
 void MainWindow::setBounds_internal()
@@ -1611,60 +1679,6 @@ bool MainWindow::eventFilter(QObject *watched, QEvent *event)
 void MainWindow::keyPressEvent(QKeyEvent *event)
 {
 	QMainWindow::keyPressEvent(event);
-}
-
-
-
-struct SetupPropertyBar {
-
-	static void setupPropertyBar(MainWindow *mw, tool::ScrollTool const &)
-	{
-	}
-
-	static void setupPropertyBar(MainWindow *mw, tool::BrushTool const &)
-	{
-		mw->addPropertyBarButton(MainWindow::tr("Brush"), tool::BrushTool());
-		mw->addPropertyBarButton(MainWindow::tr("Eraser"), tool::BrushTool::Eraser());
-	}
-
-	static void setupPropertyBar(MainWindow *mw, tool::BoundsTool const &t)
-	{
-		mw->m->tool_bounds = t;
-		mw->addPropertyBarButton(MainWindow::tr("Rectangle"), tool::BoundsTool::Rectangle());
-		mw->addPropertyBarButton(MainWindow::tr("Ellipse"), tool::BoundsTool::Ellipse());
-	}
-
-};
-
-void MainWindow::changeTool_internal(MainTool tool)
-{
-	m->current_tool = tool.var;
-
-	clearPropertyBar();
-
-	std::visit([this](auto const &x){
-		SetupPropertyBar::setupPropertyBar(this, x);
-	}, m->current_tool);
-}
-
-void MainWindow::changeTool(tool::ToolVariant tool)
-{
-	changeTool_internal(MainTool(tool));
-}
-
-void MainWindow::onToolButton(MyToolButton *button)
-{
-	MainTool t = button->property("tool").value<MainTool>();
-	changeTool_internal(t);
-}
-
-tool::ToolVariant MainWindow::currentTool() const
-{
-	if (isFilterDialogActive()) {
-		return m->tool_scroll;
-	}
-
-	return m->current_tool;
 }
 
 void MainWindow::on_toolButton_scroll_clicked()
