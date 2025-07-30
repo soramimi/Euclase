@@ -17,6 +17,7 @@
 #include "median.h"
 #include "Canvas.h"
 #include "MyToolButton.h"
+#include "misc.h"
 #include "xbrz/xbrz.h"
 #include <QBitmap>
 #include <QClipboard>
@@ -383,6 +384,7 @@ void MainWindow::setImageFromBytes(QByteArray const &ba, bool fitview)
 
 void MainWindow::openFile(QString const &path)
 {
+#if 0
 	QByteArray ba;
 	QFile file(path);
 	if (file.open(QFile::ReadOnly)) {
@@ -390,6 +392,18 @@ void MainWindow::openFile(QString const &path)
 		m->document.setDocumentPath(path);
 	}
 	setImageFromBytes(ba, true);
+#else
+	std::string path_str = path.toLower().toStdString();
+	bool ispng = misc::ends_with(path_str, ".png");
+	// bool isjpeg = misc::ends_with(path_str, ".jpeg") || misc::ends_with(path_str, ".jpg");
+
+	if (ispng) {
+		auto result = euclase::load_png(path.toStdString().c_str());
+		if (result) {
+			setImage(*result, true);
+		}
+	}
+#endif
 }
 
 /**

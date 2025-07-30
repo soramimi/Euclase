@@ -1042,6 +1042,7 @@ public:
 		, a(t.a)
 	{
 	}
+	static inline Float16RGBA convert(OctetRGB const &src);
 	static inline Float16RGBA convert(OctetRGBA const &src);
 	static inline Float16RGBA convert(Float32RGBA const &src);
 	Float16RGBA operator + (Float16RGBA const &right) const
@@ -1383,6 +1384,14 @@ Float32RGBA Float32RGBA::convert(OctetRGBA const &src)
 Float32RGBA Float32RGBA::convert(Float16RGBA const &src)
 {
 	return Float32RGBA((float)src.r, (float)src.g, (float)src.b, (float)src.a);
+}
+
+Float16RGBA Float16RGBA::convert(OctetRGB const &src)
+{
+	float r = src.r / 255.0f;
+	float g = src.g / 255.0f;
+	float b = src.b / 255.0f;
+	return degamma(Float16RGBA(r, g, b, 1.0f));
 }
 
 Float16RGBA Float16RGBA::convert(OctetRGBA const &src)

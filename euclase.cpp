@@ -434,6 +434,16 @@ euclase::Image euclase::Image::convertToFormat(Image::Format newformat) const
 		}
 	} else if (newformat == Image::Format_F16_RGBA) {
 		switch (format()) {
+		case Format_U8_RGB:
+			newimg.make(w, h, newformat);
+			for (int y = 0; y < h; y++) {
+				euclase::OctetRGB const *src = (euclase::OctetRGB const *)scanLine(y);
+				euclase::Float16RGBA *dst = (euclase::Float16RGBA *)newimg.scanLine(y);
+				for (int x = 0; x < w; x++) {
+					dst[x] = euclase::Float16RGBA::convert(src[x]);
+				}
+			}
+			break;
 		case Format_U8_RGBA:
 			newimg.make(w, h, newformat);
 			for (int y = 0; y < h; y++) {
@@ -1635,9 +1645,10 @@ euclase::Image euclase::filter_blur(euclase::Image image, int radius, bool *canc
 #ifdef USE_EUCLASE_IMAGE_READ_WRITE
 // image load/save
 
-#include "png.cpp.h"
-#include "jpeg.cpp.h"
+#include "png.cpph"
+// #include "jpeg.cpph"
 
+#if 0
 std::optional<euclase::Image> euclase::load_jpeg(char const *path)
 {
 	Image image;
@@ -1647,6 +1658,12 @@ std::optional<euclase::Image> euclase::load_jpeg(char const *path)
 	return std::nullopt;
 }
 
+bool euclase::save_jpeg(Image const &image, char const *path)
+{
+	return write_jpeg(image, path);
+}
+#endif
+
 std::optional<euclase::Image> euclase::load_png(char const *path)
 {
 	Image image;
@@ -1654,11 +1671,6 @@ std::optional<euclase::Image> euclase::load_png(char const *path)
 		return image;
 	}
 	return std::nullopt;
-}
-
-bool euclase::save_jpeg(Image const &image, char const *path)
-{
-	return write_jpeg(image, path);
 }
 
 bool euclase::save_png(Image const &image, char const *path)

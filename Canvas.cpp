@@ -572,7 +572,7 @@ void Canvas::renderToSinglePanel(Panel *target_panel, QPoint const &target_offse
 			auto render = [](uint8_t *dst, uint8_t const *src, uint8_t const *msk, int w){
 				for (int j = 0; j < w; j++) {
 					euclase::Float16RGBA color = euclase::Float16RGBA::convert(((euclase::OctetRGBA const *)src)[j]);
-					color.a = color.a * msk[j] / 255;
+					color.a = color.a * (float)msk[j] / 255.0f;
 					((euclase::Float16RGBA *)dst)[j] = AlphaBlend::blend(((euclase::Float16RGBA *)dst)[j], color);
 				}
 			};
@@ -603,7 +603,7 @@ void Canvas::renderToSinglePanel(Panel *target_panel, QPoint const &target_offse
 						uint8_t m = mask ? *(mask + mask_stride * y + x) : 255;
 						euclase::Float16RGBA t = *(euclase::Float16RGBA *)d;
 						euclase::Float16RGBA u(*(euclase::Float32RGBA const *)s);
-						u.a = u.a * m / 255;
+						u.a = u.a * (float)m / 255.0f;
 						t = AlphaBlend::blend(t, u);
 						d[0] = std::min(std::max((float)t.r, 0.0f), 1.0f);
 						d[1] = std::min(std::max((float)t.g, 0.0f), 1.0f);
@@ -650,7 +650,7 @@ void Canvas::renderToSinglePanel(Panel *target_panel, QPoint const &target_offse
 						uint8_t m = mask ? *(mask + mask_stride * y + x) : 255;
 						euclase::Float16RGBA t = *(euclase::Float16RGBA *)d;
 						euclase::Float16RGBA u = *(euclase::Float16RGBA *)s;
-						u.a = u.a * m / 255;
+						u.a = u.a * (float)m / 255.0f;
 						t = AlphaBlend::blend(t, u);
 						d[0] = std::min(std::max((float)t.r, 0.0f), 1.0f);
 						d[1] = std::min(std::max((float)t.g, 0.0f), 1.0f);
@@ -772,7 +772,7 @@ void Canvas::composePanel(Panel *target_panel, Panel const *alt_panel, Panel con
 			for (int i = 0; i < PANEL_SIZE * PANEL_SIZE; i++) {
 				auto s = src[i];
 				if (mask) {
-					s.a = s.a * mask[i] / 255;
+					s.a = s.a * (float)mask[i] / 255.0f;
 				}
 				dst[i] = AlphaBlend::blend(dst[i], s);
 			}

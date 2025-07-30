@@ -8,6 +8,8 @@ QT += core gui widgets svg
 macx:QMAKE_CXX = aarch64-apple-darwin23-g++-14
 macx:QMAKE_LINK = aarch64-apple-darwin23-g++-14
 
+DEFINES += USE_EUCLASE_IMAGE_READ_WRITE
+
 CONFIG += nostrip debug_info
 
 CPP_STD = c++17
@@ -28,13 +30,11 @@ unix:QMAKE_CXXFLAGS += -fopenmp
 unix:QMAKE_LFLAGS += -fopenmp
 msvc:QMAKE_CXXFLAGS += /openmp
 
-win32 {
+msvc {
 	DEFINES += _USE_MATH_DEFINES=1
-	INCLUDEPATH += C:/develop/libimage/libpng/lpng1640
-	INCLUDEPATH += C:/develop/libimage/libjpeg/jpeg-6b
-	LIBS += C:/develop/libimage/libpng/out/x64/Release/libjpeg.lib
-	LIBS += C:/develop/libimage/libjpeg/out/x64/Release/libjpeg.lib
-	LIBS += C:/develop/libimage/libz/out/x64/Release/libz.lib
+	INCLUDEPATH += C:/vcpkg/installed/x64-windows/include
+
+	LIBS += -LC:/vcpkg/installed/x64-windows/lib -llibpng16 -lzlib
 }
 # !win32 {
 #     LIBS += -lpng -ljpeg

@@ -171,6 +171,14 @@ bool misc::starts_with(std::string const &str, std::string const &with)
 	return strncmp(str.c_str(), with.c_str(), with.size()) == 0;
 }
 
+bool misc::ends_with(std::string const &str, std::string const &with)
+{
+	int str_size = (int)str.size();
+	int with_size = (int)with.size();
+	if (str_size < with_size) return false;
+	return strncmp(str.c_str() + str_size - with_size, with.c_str(), with_size) == 0;
+}
+
 std::string misc::mid(std::string const &str, int start, int length)
 {
 	int size = (int)str.size();

@@ -139,10 +139,10 @@ public:
 	{
 		if (over.a <= 0) return base;
 		if (base.a <= 0 || over.a >= 1) return over;
-		float r = over.r * over.a + base.r * base.a * (1 - over.a);
-		float g = over.g * over.a + base.g * base.a * (1 - over.a);
-		float b = over.b * over.a + base.b * base.a * (1 - over.a);
-		float a = over.a + base.a * (1 - over.a);
+		float r = over.r * over.a + base.r * base.a * (1.0f - over.a);
+		float g = over.g * over.a + base.g * base.a * (1.0f - over.a);
+		float b = over.b * over.a + base.b * base.a * (1.0f - over.a);
+		float a = over.a + base.a * (1.0f - over.a);
 		return Float32RGBA(r / a, g / a, b / a, a);
 	}
 
@@ -150,10 +150,10 @@ public:
 	{
 		if (over.a <= 0) return base;
 		if (base.a <= 0 || over.a >= 1) return over;
-		float r = over.r * over.a + base.r * base.a * (1 - over.a);
-		float g = over.g * over.a + base.g * base.a * (1 - over.a);
-		float b = over.b * over.a + base.b * base.a * (1 - over.a);
-		float a = over.a + base.a * (1 - over.a);
+		float r = over.r * over.a + base.r * base.a * (1.0f - over.a);
+		float g = over.g * over.a + base.g * base.a * (1.0f - over.a);
+		float b = over.b * over.a + base.b * base.a * (1.0f - over.a);
+		float a = over.a + base.a * (1.0f - over.a);
 		return Float16RGBA(r / a, g / a, b / a, a);
 	}
 
