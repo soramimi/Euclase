@@ -108,8 +108,8 @@ jpeg_my_dest (j_compress_ptr cinfo, DESTINATION * outfile)
 static bool _write_jpeg(euclase::Image const &src, int quality, DESTINATION *dest)
 {
 	if (!src) return false;
-	if (src.format() != Image::Format_U8_RGB) {
-		Image src2 = src.convertToFormat(euclase::Image::Format_U8_RGB);
+	if (src.memtype() != Image::Host || src.format() != Image::Format_U8_RGB) {
+		Image src2 = src.toHost().convertToFormat(euclase::Image::Format_U8_RGB);
 		return _write_jpeg(src2, quality, dest);
 	}
 
@@ -320,21 +320,20 @@ METHODDEF(boolean)
 fill_input_buffer(j_decompress_ptr cinfo)
 {
 	my_src_ptr src = (my_src_ptr)cinfo->src;
-
+	return true;
 }
 
 METHODDEF(void)
 skip_input_data(j_decompress_ptr cinfo, long num_bytes)
 {
 	my_src_ptr src = (my_src_ptr)cinfo->src;
-
 }
 
 METHODDEF(boolean)
 resync_to_restart(j_decompress_ptr cinfo, int desired)
 {
 	my_src_ptr src = (my_src_ptr)cinfo->src;
-
+	return true;
 }
 
 //

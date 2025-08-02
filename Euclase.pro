@@ -35,9 +35,9 @@ msvc {
 	INCLUDEPATH += C:/vcpkg/installed/x64-windows/include
 	LIBS += -LC:/vcpkg/installed/x64-windows/lib -llibpng16 -ljpeg
 }
-# !win32 {
-#     LIBS += -lpng -ljpeg
-# }
+!win32 {
+	LIBS += -lpng -ljpeg
+}
 
 
 

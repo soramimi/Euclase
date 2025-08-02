@@ -22,8 +22,8 @@ static void *io_ptr(png_struct *png_ptr)
 
 static bool _write_png(euclase::Image const &src, std::function<int (char const *p, int n)> fn)
 {
-	if (src.format() != euclase::Image::Format_U8_RGB) {
-		euclase::Image img = src.convertToFormat(euclase::Image::Format_U8_RGB);
+	if (src.memtype() != euclase::Image::Host || src.format() != euclase::Image::Format_U8_RGB) {
+		euclase::Image img = src.toHost().convertToFormat(euclase::Image::Format_U8_RGB);
 		return _write_png(img, fn);
 	}
 

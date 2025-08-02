@@ -91,6 +91,16 @@ void euclase::Image::fill(const Color &color)
 	int h = height();
 	switch (format()) {
 	case Image::Format_U8_RGB:
+#ifdef USE_CUDA
+		if (memtype() == CUDA) {
+			uint8_t r = color.red();
+			uint8_t g = color.green();
+			uint8_t b = color.blue();
+			uint8_t a = color.alpha();
+			global->cuda->fill_uint8_rgb(w, h, r, g, b, a, data(), width(), height(), 0, 0);
+			return;
+		}
+#endif
 		for (int y = 0; y < h; y++) {
 			uint8_t *p = scanLine(y);
 			for (int x = 0; x < w; x++) {

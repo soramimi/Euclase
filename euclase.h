@@ -5,15 +5,15 @@
 #include <QImage>
 #endif
 
+#include "fp/fp.h"
 #include <algorithm>
+#include <atomic>
+#include <cassert>
 #include <cmath>
 #include <cstdint>
-#include <atomic>
-#include <utility>
-#include <cassert>
 #include <functional>
-#include "fp/fp.h"
-#include "fp/fp.h"
+#include <optional>
+#include <utility>
 
 namespace euclase {
 
