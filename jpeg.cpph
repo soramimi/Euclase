@@ -62,8 +62,7 @@ empty_output_buffer (j_compress_ptr cinfo)
 {
 	my_dest_ptr dest = (my_dest_ptr) cinfo->dest;
 
-	if (MYWRITE(dest->outfile, dest->buffer, OUTPUT_BUF_SIZE) !=
-		(size_t) OUTPUT_BUF_SIZE)
+	if (MYWRITE(dest->outfile, dest->buffer, OUTPUT_BUF_SIZE) != (size_t) OUTPUT_BUF_SIZE)
 		ERREXIT(cinfo, JERR_FILE_WRITE);
 
 	dest->pub.next_output_byte = dest->buffer;
@@ -108,6 +107,7 @@ jpeg_my_dest (j_compress_ptr cinfo, DESTINATION * outfile)
 
 static bool _write_jpeg(euclase::Image const &src, int quality, DESTINATION *dest)
 {
+	if (!src) return false;
 	if (src.format() != Image::Format_U8_RGB) {
 		Image src2 = src.convertToFormat(euclase::Image::Format_U8_RGB);
 		return _write_jpeg(src2, quality, dest);
@@ -457,6 +457,7 @@ bool _load_jpeg(euclase::Image *dst, char const *filename)
 
 	/* Step 5: Start decompressor */
 
+
 	(void) jpeg_start_decompress(&cinfo);
 	/* We can ignore the return value since suspension is not possible
 			* with the stdio data source.
@@ -512,18 +513,9 @@ bool _load_jpeg(euclase::Image *dst, char const *filename)
 				srcptr += 3;
 				dstptr += 3;
 			}
-		} else if (cinfo.output_components == 4) {
-			for (int i = 0; i < width; i++) {
-				int c = srcptr[0];
-				int m = srcptr[1];
-				int y = srcptr[2];
-				int k = srcptr[3];
-				dstptr[0] = k * (c) * (228 + m * 27 / 255) / 255 / 255;
-				dstptr[1] = k * (160 + c * 95 / 255) * (m) * (241 + y * 14 / 255) / 255 / 255 / 255;
-				dstptr[2] = k * (233 + c * 22 / 255) * (127 + m * 128 / 255) * (y) / 255 / 255 / 255;
-				srcptr += 4;
-				dstptr += 3;
-			}
+		} else {
+			fprintf(stderr, "Unsupported JPEG output components: %d\n", cinfo.output_components);
+			return false;
 		}
 
 		/* Assume put_scanline_someplace wants a pointer and sample count. */
@@ -533,7 +525,7 @@ bool _load_jpeg(euclase::Image *dst, char const *filename)
 
 	/* Step 7: Finish decompression */
 
-	(void) jpeg_finish_decompress(&cinfo);
+	jpeg_finish_decompress(&cinfo);
 	/* We can ignore the return value since suspension is not possible
 			* with the stdio data source.
 			*/

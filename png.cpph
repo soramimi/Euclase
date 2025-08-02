@@ -70,7 +70,7 @@ static bool _write_png(euclase::Image const &src, std::function<int (char const 
 
 		// swap the BGR pixels in the DiData structure to RGB
 
-		png_set_bgr(png_ptr);
+		// png_set_bgr(png_ptr);
 
 		// row_bytes is the width x number of channels
 

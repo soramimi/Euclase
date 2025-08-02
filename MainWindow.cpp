@@ -393,18 +393,55 @@ void MainWindow::openFile(QString const &path)
 	}
 	setImageFromBytes(ba, true);
 #else
-	std::string path_str = path.toLower().toStdString();
-	bool ispng = misc::ends_with(path_str, ".png");
-	// bool isjpeg = misc::ends_with(path_str, ".jpeg") || misc::ends_with(path_str, ".jpg");
-
-	if (ispng) {
+	auto i = path.lastIndexOf('.');
+	QString suffix;
+	if (i > 0) {
+		suffix = path.mid(i).toUpper();
+	}
+	if (suffix == ".PNG") {
 		auto result = euclase::load_png(path.toStdString().c_str());
 		if (result) {
 			setImage(*result, true);
 		}
+	} else if (suffix == ".JPEG" || suffix == ".JPG") {
+		auto result = euclase::load_jpeg(path.toStdString().c_str());
+		if (result) {
+			setImage(*result, true);
+		}
+	} else {
+		QMessageBox::critical(this, tr("Error"), tr("Unsupported file format: %1").arg(suffix));
+		return;
 	}
 #endif
 }
+
+void MainWindow::on_action_file_save_as_triggered()
+{
+	QString path = QFileDialog::getSaveFileName(this);
+	if (!path.isEmpty()) {
+		QSize sz = canvas()->size();
+		auto activepanel = isPreviewEnabled() ? Canvas::AlternateLayer : Canvas::PrimaryLayer;
+		euclase::Image img = canvas()->renderToPanel(Canvas::AllLayers, euclase::Image::Format_F32_RGBA, QRect(0, 0, sz.width(), sz.height()), {}, activepanel, {}, nullptr).image();
+		auto i = path.lastIndexOf('.');
+		QString suffix;
+		if (i > 0) {
+			suffix = path.mid(i).toUpper();
+		}
+		// img.qimage().save(path);
+		if (suffix == ".PNG") {
+			if (!euclase::save_png(img, path.toStdString().c_str())) {
+				QMessageBox::critical(this, tr("Error"), tr("Failed to save PNG file"));
+			}
+		} else if (suffix == ".JPEG" || suffix == ".JPG") {
+			if (!euclase::save_jpeg(img, path.toStdString().c_str())) {
+				QMessageBox::critical(this, tr("Error"), tr("Failed to save JPEG file"));
+			}
+		} else {
+			QMessageBox::critical(this, tr("Error"), tr("Unsupported file format: %1").arg(suffix));
+		}
+	}
+}
+
 
 /**
  * @brief フィルタ中のプレビューの有効状態を設定
@@ -509,17 +546,6 @@ void MainWindow::on_action_file_open_triggered()
 		QString dir = QFileInfo(path).absoluteDir().absolutePath();
 		s.setValue(DefaultDirectory, dir);
 		openFile(path);
-	}
-}
-
-void MainWindow::on_action_file_save_as_triggered()
-{
-	QString path = QFileDialog::getSaveFileName(this);
-	if (!path.isEmpty()) {
-		QSize sz = canvas()->size();
-		auto activepanel = isPreviewEnabled() ? Canvas::AlternateLayer : Canvas::PrimaryLayer;
-		euclase::Image img = canvas()->renderToPanel(Canvas::AllLayers, euclase::Image::Format_F32_RGBA, QRect(0, 0, sz.width(), sz.height()), {}, activepanel, {}, nullptr).image();
-		img.qimage().save(path);
 	}
 }
 

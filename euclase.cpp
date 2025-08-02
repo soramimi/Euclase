@@ -395,6 +395,27 @@ euclase::Image euclase::Image::convertToFormat(Image::Format newformat) const
 				}
 			}
 			break;
+		case Format_F32_RGB:
+			newimg.make(w, h, newformat);
+			for (int y = 0; y < h; y++) {
+				euclase::Float32RGB const *src = (euclase::Float32RGB const *)scanLine(y);
+				euclase::OctetRGB *dst = (euclase::OctetRGB *)newimg.scanLine(y);
+				for (int x = 0; x < w; x++) {
+					dst[x] = euclase::OctetRGB::convert(src[x].limit());
+				}
+			}
+			break;
+		case Format_F32_RGBA:
+			newimg.make(w, h, newformat);
+			for (int y = 0; y < h; y++) {
+				euclase::Float32RGBA const *src = (euclase::Float32RGBA const *)scanLine(y);
+				euclase::OctetRGB *dst = (euclase::OctetRGB *)newimg.scanLine(y);
+				for (int x = 0; x < w; x++) {
+					euclase::OctetRGBA pixel = euclase::OctetRGBA::convert(src[x].limit());
+					dst[x] = euclase::OctetRGB(pixel.r, pixel.g, pixel.b);
+				}
+			}
+			break;
 		}
 	} else if (newformat == Image::Format_F32_RGBA) {
 		switch (format()) {
@@ -1646,9 +1667,9 @@ euclase::Image euclase::filter_blur(euclase::Image image, int radius, bool *canc
 // image load/save
 
 #include "png.cpph"
-// #include "jpeg.cpph"
+#include "jpeg.cpph"
 
-#if 0
+#if 1
 std::optional<euclase::Image> euclase::load_jpeg(char const *path)
 {
 	Image image;
