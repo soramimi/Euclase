@@ -77,7 +77,7 @@ public:
 			return !isNull();
 		}
 
-		euclase::Image::Format format() const
+		euclase::ImageFormat format() const
 		{
 			return data_.image.format();
 		}
@@ -130,7 +130,7 @@ public:
 			return t;
 		}
 
-		void convertToFormat(euclase::Image::Format format)
+		void convertToFormat(euclase::ImageFormat format)
 		{
 			*imagep() = image().convertToFormat(format);
 		}
@@ -170,7 +170,7 @@ public:
 		ActivePanel active_panel_ = PrimaryLayer;
 		QPoint offset_;
 		euclase::Image::MemoryType memtype_ = euclase::Image::Host;
-		euclase::Image::Format format_ = euclase::Image::Format_Invalid;
+		euclase::ImageFormat format_ = euclase::ImageFormat::Format_Invalid;
 		std::vector<Panel> primary_panels;
 		std::vector<Panel> alternate_panels;
 		std::vector<Panel> alternate_selection_panels; // grayscale mask
@@ -248,7 +248,7 @@ public:
 			sort(panels);
 		}
 
-		static Panel *addImagePanel(std::vector<Panel> *panels, int x, int y, int w, int h, euclase::Image::Format format, euclase::Image::MemoryType memtype);
+		static Panel *addImagePanel(std::vector<Panel> *panels, int x, int y, int w, int h, euclase::ImageFormat format, euclase::Image::MemoryType memtype);
 
 		Layer() = default;
 
@@ -315,7 +315,7 @@ public:
 		AllLayers,
 		CurrentLayerOnly,
 	};
-	Panel renderToPanel(InputLayerMode input_layer_mode, euclase::Image::Format format, QRect const &r, QRect const &maskrect, ActivePanel activepanel, RenderOption const &opt, bool *abort) const;
+	Panel renderToPanel(InputLayerMode input_layer_mode, euclase::ImageFormat format, QRect const &r, QRect const &maskrect, ActivePanel activepanel, RenderOption const &opt, bool *abort) const;
 
 	static void renderToSinglePanel(Panel *target_panel, const QPoint &target_offset, const Panel *input_panel, const QPoint &input_offset, const Layer *mask_layer, RenderOption const &opt, const QColor &brush_color, int opacity = 255, bool *abort = nullptr);
 	static void renderToLayer(Layer *target_layer, ActivePanel activepanel, const Layer &input_layer, Layer *mask_layer, const RenderOption &opt, bool *abort);

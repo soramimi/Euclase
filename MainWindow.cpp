@@ -328,10 +328,10 @@ euclase::Image::MemoryType MainWindow::preferredMemoryType() const
 	return global->cuda ? euclase::Image::CUDA : euclase::Image::Host;;
 }
 
-euclase::Image::Format MainWindow::preferredImageFormat() const
+euclase::ImageFormat MainWindow::preferredImageFormat() const
 {
-	// return euclase::Image::Format_F32_RGBA;
-	return euclase::Image::Format_F16_RGBA;
+	// return euclase::ImageFormat::Format_F32_RGBA;
+	return euclase::ImageFormat::Format_F16_RGBA;
 }
 
 void MainWindow::setupBasicLayer(Canvas::Layer *layer)
@@ -362,7 +362,7 @@ void MainWindow::setImage(euclase::Image image, bool fitview)
 		image = image.convertToFormat(canvas()->current_layer()->format_);
 		layer.setImage(QPoint(0, 0), image);
 	}
-	if (layer.format_ == euclase::Image::Format_Invalid) {
+	if (layer.format_ == euclase::ImageFormat::Format_Invalid) {
 		QMessageBox::critical(this, tr("Error"), tr("Failed to create image"));
 		return;
 	}
@@ -421,7 +421,7 @@ void MainWindow::on_action_file_save_as_triggered()
 	if (!path.isEmpty()) {
 		QSize sz = canvas()->size();
 		auto activepanel = isPreviewEnabled() ? Canvas::AlternateLayer : Canvas::PrimaryLayer;
-		euclase::Image img = canvas()->renderToPanel(Canvas::AllLayers, euclase::Image::Format_F32_RGBA, QRect(0, 0, sz.width(), sz.height()), {}, activepanel, {}, nullptr).image();
+		euclase::Image img = canvas()->renderToPanel(Canvas::AllLayers, euclase::ImageFormat::Format_F32_RGBA, QRect(0, 0, sz.width(), sz.height()), {}, activepanel, {}, nullptr).image();
 		auto i = path.lastIndexOf('.');
 		QString suffix;
 		if (i > 0) {
@@ -461,7 +461,7 @@ bool MainWindow::isPreviewEnabled() const
 	return m->preview_layer_enabled;
 }
 
-Canvas::Panel MainWindow::renderToPanel(Canvas::InputLayerMode input_layer_mode, euclase::Image::Format format, QRect const &r, QRect const &maskrect, const Canvas::RenderOption &opt, bool *abort) const
+Canvas::Panel MainWindow::renderToPanel(Canvas::InputLayerMode input_layer_mode, euclase::ImageFormat format, QRect const &r, QRect const &maskrect, const Canvas::RenderOption &opt, bool *abort) const
 {
 	std::lock_guard lock(mutexForCanvas());
 	auto activepanel = isPreviewEnabled() ? Canvas::AlternateLayer : Canvas::PrimaryLayer;
@@ -474,7 +474,7 @@ euclase::Image MainWindow::renderSelection(const QRect &r, bool *abort) const
 	return canvas()->renderSelection(r, abort).image();
 }
 
-euclase::Image MainWindow::renderToImage(euclase::Image::Format format, QRect const &r, Canvas::RenderOption const &opt, bool *abort) const
+euclase::Image MainWindow::renderToImage(euclase::ImageFormat format, QRect const &r, Canvas::RenderOption const &opt, bool *abort) const
 {
 	return renderToPanel(Canvas::CurrentLayerOnly, format, r, {}, opt, abort).image();
 }
@@ -552,7 +552,7 @@ void MainWindow::on_action_file_open_triggered()
 euclase::Image MainWindow::renderFilterTargetImage()
 {
 	QSize sz = canvas()->size();
-	return renderToImage(euclase::Image::Format_F32_RGBA, QRect(0, 0, sz.width(), sz.height()), {}, nullptr);
+	return renderToImage(euclase::ImageFormat::Format_F32_RGBA, QRect(0, 0, sz.width(), sz.height()), {}, nullptr);
 }
 
 Canvas::BlendMode MainWindow::blendMode() const
@@ -642,7 +642,7 @@ void MainWindow::filterStart(FilterContext &&context, AbstractFilterForm *form, 
 		QRect r = boundsRect();
 		euclase::Image img;
 		if (canvas()->selection_layer()->primary_panels.empty()) {
-			img = euclase::Image(r.width(), r.height(), euclase::Image::Format_U8_Grayscale, canvas()->selection_layer()->memtype_);
+			img = euclase::Image(r.width(), r.height(), euclase::ImageFormat::Format_U8_Grayscale, canvas()->selection_layer()->memtype_);
 			img.fill(euclase::k::white);
 		} else {
 			Canvas::Panel panel = canvas()->renderSelection(r, nullptr);
@@ -1754,7 +1754,7 @@ void MainWindow::on_action_new_triggered()
 		QSize sz = dlg.imageSize();
 		if (dlg.from() == NewDialog::From::New) {
 			euclase::Image image;
-			image.make(sz.width(), sz.height(), euclase::Image::Format_F32_RGBA);
+			image.make(sz.width(), sz.height(), euclase::ImageFormat::Format_F32_RGBA);
 			image.fill(euclase::k::white);
 			setImage(image, true);
 			return;

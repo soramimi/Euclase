@@ -247,7 +247,7 @@ void ImageViewWidget::init(MainWindow *mainwindow, QScrollBar *vsb, QScrollBar *
 static QImage scale_fp32_to_uint8_rgba(euclase::Image const &src, int w, int h)
 {
 	if (src.memtype() == euclase::Image::CUDA) {
-		euclase::Image tmp(w, h, euclase::Image::Format_U8_RGBA, euclase::Image::CUDA);
+		euclase::Image tmp(w, h, euclase::ImageFormat::Format_U8_RGBA, euclase::Image::CUDA);
 		global->cuda->scale_fp32_to_uint8_rgba(w, h, w, tmp.data(), src.width(), src.height(), src.data());
 		return tmp.qimage();
 	} else {
@@ -888,7 +888,7 @@ SelectionOutline ImageViewWidget::renderSelectionOutline(bool *abort)
 			if (abort && *abort) return {};
 			// 選択領域をスケーリング
 			if (sel.memtype() == euclase::Image::CUDA) { // CUDAメモリの場合はスケーリングをCUDAで行う
-				euclase::Image tmp(vw, vh, euclase::Image::Format_U8_Grayscale, euclase::Image::CUDA);
+				euclase::Image tmp(vw, vh, euclase::ImageFormat::Format_U8_Grayscale, euclase::Image::CUDA);
 				int sw = sel.width();
 				int sh = sel.height();
 				global->cuda->scale(vw, vh, vw, tmp.data(), sw, sh, sw, sel.data(), 1);
@@ -1058,7 +1058,7 @@ void ImageViewWidget::runImageRendering()
 				Canvas::Panel newpanel;
 				Canvas::RenderOption opt;
 				opt.use_mask = true;
-				newpanel = m->mainwindow->renderToPanel(Canvas::AllLayers, euclase::Image::Format_F32_RGBA, rect, {}, opt, (bool *)&m->render_interrupted);
+				newpanel = m->mainwindow->renderToPanel(Canvas::AllLayers, euclase::ImageFormat::Format_F32_RGBA, rect, {}, opt, (bool *)&m->render_interrupted);
 				if (canceled()) continue;
 
 				newpanel = newpanel->toHost();
@@ -1101,13 +1101,13 @@ void ImageViewWidget::runImageRendering()
 
 				// 透明部分の市松模様
 				for (int iy = 0; iy < qimg.height(); iy++) {
-					euclase::OctetRGBA *p = (euclase::OctetRGBA *)qimg.scanLine(iy);
+					euclase::UInt8RGBA *p = (euclase::UInt8RGBA *)qimg.scanLine(iy);
 					for (int ix = 0; ix < qimg.width(); ix++) {
 						if (p->a < 255) { // 透明部分
 							int u = dpos.x() + ix; // 市松模様の座標がずれないように、オフスクリーン系の座標の原点を足す
 							int v = dpos.y() + iy;
 							uint8_t a = ((u ^ v) & 8) ? 255 : 192; // 市松模様パターン
-							euclase::OctetRGBA bg(a, a, a, 255); // 市松模様の背景
+							euclase::UInt8RGBA bg(a, a, a, 255); // 市松模様の背景
 							*p = AlphaBlend::blend(bg, *p); // 背景に合成
 						}
 						p++;

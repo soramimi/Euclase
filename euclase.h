@@ -420,85 +420,138 @@ class Float16RGB;
 class Float16RGBA;
 class Float16Gray;
 class Float16GrayA;
-class OctetRGB;
-class OctetRGBA;
-class OctetGray;
-class OctetGrayA;
+class UInt8RGB;
+class UInt8RGBA;
+class UInt8Gray;
+class UInt8GrayA;
+class UInt16RGB;
+class UInt16RGBA;
+class UInt16Gray;
+class UInt16GrayA;
 
-class OctetRGB {
+class UInt8RGB {
 public:
 	uint8_t r, g, b;
-	OctetRGB()
+	UInt8RGB()
 		: r(0)
 		, g(0)
 		, b(0)
 	{
 	}
-	OctetRGB(uint8_t r, uint8_t g, uint8_t b)
+	UInt8RGB(uint8_t r, uint8_t g, uint8_t b)
 		: r(r)
 		, g(g)
 		, b(b)
 	{
 	}
-	inline OctetRGB(OctetGrayA const &t);
+	inline UInt8RGB(UInt8GrayA const &t);
 	uint8_t gray() const
 	{
 		return euclase::gray(r, g, b);
 	}
-	static OctetRGB convert(OctetGray const &t);
-	static OctetRGB convert(Float32RGB const &t);
+	static UInt8RGB convert(UInt8Gray const &t);
+	static UInt8RGB convert(Float32RGB const &t);
 };
 
-class OctetRGBA {
+class UInt16RGB {
+public:
+	uint16_t r, g, b;
+	UInt16RGB()
+		: r(0)
+		, g(0)
+		, b(0)
+	{
+	}
+	UInt16RGB(uint16_t r, uint16_t g, uint16_t b)
+		: r(r)
+		, g(g)
+		, b(b)
+	{
+	}
+	inline UInt16RGB(UInt16GrayA const &t);
+	uint16_t gray() const
+	{
+		return euclase::gray(r, g, b);
+	}
+	static UInt16RGB convert(UInt16Gray const &t);
+	static UInt16RGB convert(Float32RGB const &t);
+};
+
+class UInt8RGBA {
 public:
 	uint8_t r, g, b, a;
-	OctetRGBA()
+	UInt8RGBA()
 		: r(0)
 		, g(0)
 		, b(0)
 		, a(0)
 	{
 	}
-	OctetRGBA(uint8_t r, uint8_t g, uint8_t b, uint8_t a = 255)
+	UInt8RGBA(uint8_t r, uint8_t g, uint8_t b, uint8_t a = 255)
 		: r(r)
 		, g(g)
 		, b(b)
 		, a(a)
 	{
 	}
-	inline OctetRGBA(OctetGrayA const &t);
+	inline UInt8RGBA(UInt8GrayA const &t);
 	uint8_t gray() const
 	{
 		return euclase::gray(r, g, b);
 	}
-	static OctetRGBA convert(Float32RGBA const &t);
+	static UInt8RGBA convert(Float32RGBA const &t);
 };
 
-class OctetGray {
+class UInt16RGBA {
+public:
+	uint16_t r, g, b, a;
+	UInt16RGBA()
+		: r(0)
+		, g(0)
+		, b(0)
+		, a(0)
+	{
+	}
+	UInt16RGBA(uint16_t r, uint16_t g, uint16_t b, uint16_t a = 255)
+		: r(r)
+		, g(g)
+		, b(b)
+		, a(a)
+	{
+	}
+	inline UInt16RGBA(UInt16GrayA const &t);
+	uint16_t gray() const
+	{
+		return euclase::gray(r, g, b);
+	}
+	static UInt16RGBA convert(Float32RGBA const &t);
+};
+
+class UInt8Gray {
 public:
 	uint8_t v;
-	OctetGray()
+	UInt8Gray()
 		: v(0)
 	{
 	}
-	explicit OctetGray(uint8_t l)
+	explicit UInt8Gray(uint8_t l)
 		: v(l)
 	{
 	}
-	static OctetGray convert(OctetGray const &r, bool ignored)
+	static UInt8Gray convert(UInt8Gray const &r, bool ignored)
 	{
 		(void)ignored;
 		return r;
 	}
-	explicit inline OctetGray(OctetRGBA const &t);
-	static inline OctetGray convert(OctetRGB const &t);
-	static inline OctetGray convert(Float32RGBA const &t);
-	static inline OctetGray convert(OctetRGBA const &r)
+	explicit inline UInt8Gray(UInt8RGBA const &t);
+	static inline UInt8Gray convert(UInt8RGB const &t);
+	static inline UInt8Gray convert(Float32RGBA const &t);
+	static inline UInt8Gray convert(UInt8RGBA const &r)
 	{
 		auto y = ::euclase::gray(r.r, r.g, r.b);
-		return OctetGray(uint8_t((y * r.a + 128) / 255));
+		return UInt8Gray(uint8_t((y * r.a + 128) / 255));
 	}
-	static OctetGray convert(OctetGrayA const &r);
+	static UInt8Gray convert(UInt8GrayA const &r);
 
 	uint8_t gray() const
 	{
@@ -506,39 +559,103 @@ public:
 	}
 };
 
-class OctetGrayA {
+class UInt16Gray {
+public:
+	uint16_t v;
+	UInt16Gray()
+		: v(0)
+	{
+	}
+	explicit UInt16Gray(uint16_t l)
+		: v(l)
+	{
+	}
+	static UInt16Gray convert(UInt16Gray const &r, bool ignored)
+	{
+		(void)ignored;
+		return r;
+	}
+	explicit inline UInt16Gray(UInt16RGBA const &t);
+	static inline UInt16Gray convert(UInt16RGB const &t);
+	static inline UInt16Gray convert(Float32RGBA const &t);
+	static inline UInt16Gray convert(UInt16RGBA const &r)
+	{
+		auto y = ::euclase::gray(r.r, r.g, r.b);
+		return UInt16Gray(uint16_t((y * r.a + 128) / 255));
+	}
+	static UInt16Gray convert(UInt16GrayA const &r);
+
+	uint16_t gray() const
+	{
+		return v;
+	}
+};
+
+class UInt8GrayA {
 public:
 	uint8_t v, a;
-	OctetGrayA()
+	UInt8GrayA()
 		: v(0)
 		, a(0)
 	{
 	}
-	explicit OctetGrayA(uint8_t v, uint8_t a = 255)
+	explicit UInt8GrayA(uint8_t v, uint8_t a = 255)
 		: v(v)
 		, a(a)
 	{
 	}
-	static OctetGrayA convert(OctetGrayA const &r, bool ignored)
+	static UInt8GrayA convert(UInt8GrayA const &r, bool ignored)
 	{
 		(void)ignored;
 		return r;
 	}
-	inline OctetGrayA(OctetRGBA const &t);
+	inline UInt8GrayA(UInt8RGBA const &t);
 	uint8_t gray() const
 	{
 		return v;
 	}
-	static inline OctetGrayA convert(Float32RGBA const &t);
-	static inline OctetGrayA convert(Float32RGB const &t);
-	static inline OctetGrayA convert(Float32GrayA const &t);
-	static inline OctetGrayA convert(Float32Gray const &t);
-	static inline OctetGrayA convert(OctetRGBA const &t);
-	static inline OctetGrayA convert(OctetRGB const &t);
-	static inline OctetGrayA convert(OctetGray const &t);
+	static inline UInt8GrayA convert(Float32RGBA const &t);
+	static inline UInt8GrayA convert(Float32RGB const &t);
+	static inline UInt8GrayA convert(Float32GrayA const &t);
+	static inline UInt8GrayA convert(Float32Gray const &t);
+	static inline UInt8GrayA convert(UInt8RGBA const &t);
+	static inline UInt8GrayA convert(UInt8RGB const &t);
+	static inline UInt8GrayA convert(UInt8Gray const &t);
 };
 
-inline OctetRGBA::OctetRGBA(OctetGrayA const &t)
+class UInt16GrayA {
+public:
+	uint16_t v, a;
+	UInt16GrayA()
+		: v(0)
+		, a(0)
+	{
+	}
+	explicit UInt16GrayA(uint16_t v, uint16_t a = 255)
+		: v(v)
+		, a(a)
+	{
+	}
+	static UInt16GrayA convert(UInt16GrayA const &r, bool ignored)
+	{
+		(void)ignored;
+		return r;
+	}
+	inline UInt16GrayA(UInt16RGBA const &t);
+	uint16_t gray() const
+	{
+		return v;
+	}
+	static inline UInt16GrayA convert(Float32RGBA const &t);
+	static inline UInt16GrayA convert(Float32RGB const &t);
+	static inline UInt16GrayA convert(Float32GrayA const &t);
+	static inline UInt16GrayA convert(Float32Gray const &t);
+	static inline UInt16GrayA convert(UInt16RGBA const &t);
+	static inline UInt16GrayA convert(UInt16RGB const &t);
+	static inline UInt16GrayA convert(UInt16Gray const &t);
+};
+
+inline UInt8RGBA::UInt8RGBA(UInt8GrayA const &t)
 	: r(t.v)
 	, g(t.v)
 	, b(t.v)
@@ -546,7 +663,21 @@ inline OctetRGBA::OctetRGBA(OctetGrayA const &t)
 {
 }
 
-inline OctetGrayA::OctetGrayA(OctetRGBA const &t)
+inline UInt16RGBA::UInt16RGBA(UInt16GrayA const &t)
+	: r(t.v)
+	, g(t.v)
+	, b(t.v)
+	, a(t.a)
+{
+}
+
+inline UInt8GrayA::UInt8GrayA(UInt8RGBA const &t)
+	: v(euclase::gray(t.r, t.g, t.b))
+	, a(t.a)
+{
+}
+
+inline UInt16GrayA::UInt16GrayA(UInt16RGBA const &t)
 	: v(euclase::gray(t.r, t.g, t.b))
 	, a(t.a)
 {
@@ -569,14 +700,14 @@ public:
 		, b(b)
 	{
 	}
-	static Float32RGB convert(OctetRGBA const &src)
+	static Float32RGB convert(UInt8RGBA const &src)
 	{
 		float r = degamma(src.r / 255.0f);
 		float g = degamma(src.g / 255.0f);
 		float b = degamma(src.b / 255.0f);
 		return {r, g, b};
 	}
-	static Float32RGB convert(OctetGrayA const &src)
+	static Float32RGB convert(UInt8GrayA const &src)
 	{
 		float v = degamma(src.v / 255.0f);
 		return {v, v, v};
@@ -632,6 +763,24 @@ public:
 		if (b >= 1) return 255;
 		return (uint8_t)floor(b * 255 + 0.5f);
 	}
+	uint16_t r16() const
+	{
+		if (r <= 0) return 0;
+		if (r >= 1) return 65535;
+		return (uint16_t)floor(r * 65535 + 0.5f);
+	}
+	uint16_t g16() const
+	{
+		if (g <= 0) return 0;
+		if (g >= 1) return 65535;
+		return (uint16_t)floor(g * 65535 + 0.5f);
+	}
+	uint16_t b16() const
+	{
+		if (b <= 0) return 0;
+		if (b >= 1) return 65535;
+		return (uint16_t)floor(b * 65535 + 0.5f);
+	}
 	Float32RGB limit() const
 	{
 		return Float32RGB(clamp_f32(r), clamp_f32(g), clamp_f32(b));
@@ -650,9 +799,13 @@ public:
 		t.b *= m;
 		return t.limit();
 	}
-	operator OctetRGBA () const
+	operator UInt8RGBA () const
 	{
-		return OctetRGBA(r8(), g8(), b8());
+		return UInt8RGBA(r8(), g8(), b8());
+	}
+	operator UInt16RGBA () const
+	{
+		return UInt16RGBA(r16(), g16(), b16());
 	}
 };
 
@@ -673,14 +826,14 @@ public:
 		, b(b)
 	{
 	}
-	static Float16RGB convert(OctetRGBA const &src)
+	static Float16RGB convert(UInt8RGBA const &src)
 	{
 		_float16_t r = degamma(src.r / 255.0f);
 		_float16_t g = degamma(src.g / 255.0f);
 		_float16_t b = degamma(src.b / 255.0f);
 		return {r, g, b};
 	}
-	static Float16RGB convert(OctetGrayA const &src)
+	static Float16RGB convert(UInt8GrayA const &src)
 	{
 		_float16_t v = degamma(src.v / 255.0f);
 		return {v, v, v};
@@ -736,6 +889,24 @@ public:
 		if ((float)b >= 1) return 255;
 		return (uint8_t)floorf((float)b * 255 + 0.5f);
 	}
+	uint16_t r16() const
+	{
+		if ((float)r <= 0) return 0;
+		if ((float)r >= 1) return 65535;
+		return (uint16_t)floorf((float)r * 65535 + 0.5f);
+	}
+	uint16_t g16() const
+	{
+		if ((float)g <= 0) return 0;
+		if ((float)g >= 1) return 65535;
+		return (uint16_t)floorf((float)g * 65535 + 0.5f);
+	}
+	uint16_t b16() const
+	{
+		if ((float)b <= 0) return 0;
+		if ((float)b >= 1) return 65535;
+		return (uint16_t)floorf((float)b * 65535 + 0.5f);
+	}
 	Float16RGB limit() const
 	{
 		return Float16RGB(clamp_f16(r), clamp_f16(g), clamp_f16(b));
@@ -754,9 +925,13 @@ public:
 		t.b = (float)t.b * m;
 		return t.limit();
 	}
-	operator OctetRGBA () const
+	operator UInt8RGBA () const
 	{
-		return OctetRGBA(r8(), g8(), b8());
+		return UInt8RGBA(r8(), g8(), b8());
+	}
+	operator UInt16RGBA () const
+	{
+		return UInt16RGBA(r16(), g16(), b16());
 	}
 };
 
@@ -771,15 +946,24 @@ public:
 		: v(y)
 	{
 	}
-	static Float32Gray convert(OctetGrayA const &src)
+	static Float32Gray convert(UInt8GrayA const &src)
 	{
 		return {src.v / 255.0f};
 	}
-	static Float32Gray convert(OctetGray const &src)
+	static Float32Gray convert(UInt8Gray const &src)
 	{
 		return {src.v / 255.0f};
 	}
-	static inline Float32Gray convert(OctetRGBA const &r);
+	static Float32Gray convert(UInt16GrayA const &src)
+	{
+		return {src.v / 65535.0f};
+	}
+	static Float32Gray convert(UInt16Gray const &src)
+	{
+		return {src.v / 65535.0f};
+	}
+	static inline Float32Gray convert(UInt8RGBA const &r);
+	static inline Float32Gray convert(UInt16RGBA const &r);
 	Float32Gray operator + (Float32Gray const &right) const
 	{
 		return Float32Gray(v + right.v);
@@ -811,6 +995,12 @@ public:
 		if (v >= 1) return 255;
 		return (uint8_t)floor(gamma(v) * 255 + 0.5f);
 	}
+	uint16_t y16() const
+	{
+		if (v <= 0) return 0;
+		if (v >= 1) return 65535;
+		return (uint16_t)floor(gamma(v) * 65535 + 0.5f);
+	}
 	Float32Gray limit() const
 	{
 		return Float32Gray(clamp_f32(v));
@@ -826,9 +1016,13 @@ public:
 		Float32Gray t = *this * m;
 		return t.limit();
 	}
-	OctetGray toPixelGray() const
+	UInt8Gray toPixelGray8() const
 	{
-		return OctetGray(y8());
+		return UInt8Gray(y8());
+	}
+	UInt16Gray toPixelGray16() const
+	{
+		return UInt16Gray(y16());
 	}
 	static inline Float32Gray convert(Float32RGBA const &t);
 };
@@ -844,15 +1038,24 @@ public:
 		: v(y)
 	{
 	}
-	static Float16Gray convert(OctetGrayA const &src)
+	static Float16Gray convert(UInt8GrayA const &src)
 	{
 		return {src.v / 255.0f};
 	}
-	static Float16Gray convert(OctetGray const &src)
+	static Float16Gray convert(UInt16GrayA const &src)
+	{
+		return {src.v / 65535.0f};
+	}
+	static Float16Gray convert(UInt8Gray const &src)
 	{
 		return {src.v / 255.0f};
 	}
-	static inline Float16Gray convert(OctetRGBA const &r);
+	static Float16Gray convert(UInt16Gray const &src)
+	{
+		return {src.v / 65535.0f};
+	}
+	static inline Float16Gray convert(UInt8RGBA const &r);
+	static inline Float16Gray convert(UInt16RGBA const &r);
 	Float16Gray operator + (Float16Gray const &right) const
 	{
 		return Float16Gray(v + right.v);
@@ -884,6 +1087,12 @@ public:
 		if ((float)v >= 1) return 255;
 		return (uint8_t)floorf((float)v * 255 + 0.5f);
 	}
+	uint16_t y16() const
+	{
+		if ((float)v <= 0) return 0;
+		if ((float)v >= 1) return 65535;
+		return (uint16_t)floorf((float)v * 65535 + 0.5f);
+	}
 	Float16Gray limit() const
 	{
 		return Float16Gray(clamp_f16(v));
@@ -898,9 +1107,13 @@ public:
 		Float16Gray t((float)v / (float)amount);
 		return t.limit();
 	}
-	OctetGray toPixelGray() const
+	UInt8Gray toPixelGray8() const
 	{
-		return OctetGray(y8());
+		return UInt8Gray(y8());
+	}
+	UInt16Gray toPixelGray16() const
+	{
+		return UInt16Gray(y16());
 	}
 	static inline Float16Gray convert(Float16RGBA const &t);
 };
@@ -933,7 +1146,8 @@ public:
 		this->b = b / 255.0f;
 		this->a = a / 255.0f;
 	}
-	static inline Float32RGBA convert(OctetRGBA const &src);
+	static inline Float32RGBA convert(UInt8RGBA const &src);
+	static inline Float32RGBA convert(UInt16RGBA const &src);
 	static inline Float32RGBA convert(Float16RGBA const &src);
 	Float32RGBA operator + (Float32RGBA const &right) const
 	{
@@ -977,11 +1191,23 @@ public:
 		if (r >= 1) return 255;
 		return (uint8_t)floorf(r * 255 + 0.5f);
 	}
+	uint16_t r16() const
+	{
+		if (r <= 0) return 0;
+		if (r >= 1) return 65535;
+		return (uint16_t)floorf(r * 65535 + 0.5f);
+	}
 	uint8_t g8() const
 	{
 		if (g <= 0) return 0;
 		if (g >= 1) return 255;
 		return (uint8_t)floorf(g * 255 + 0.5f);
+	}
+	uint16_t g16() const
+	{
+		if (g <= 0) return 0;
+		if (g >= 1) return 65535;
+		return (uint16_t)floorf(g * 65535 + 0.5f);
 	}
 	uint8_t b8() const
 	{
@@ -989,11 +1215,23 @@ public:
 		if (b >= 1) return 255;
 		return (uint8_t)floorf(b * 255 + 0.5f);
 	}
+	uint16_t b16() const
+	{
+		if (b <= 0) return 0;
+		if (b >= 1) return 65535;
+		return (uint16_t)floorf(b * 65535 + 0.5f);
+	}
 	uint8_t a8() const
 	{
 		if (a <= 0) return 0;
 		if (a >= 1) return 255;
 		return (uint8_t)floorf(a * 255 + 0.5f);
+	}
+	uint16_t a16() const
+	{
+		if (a <= 0) return 0;
+		if (a >= 1) return 65535;
+		return (uint16_t)floorf(a * 65535 + 0.5f);
 	}
 	Float32RGBA limit() const
 	{
@@ -1009,9 +1247,13 @@ public:
 		t.a = a / amount;
 		return t;
 	}
-	operator OctetRGBA () const
+	operator UInt8RGBA () const
 	{
-		return OctetRGBA(r8(), g8(), b8(), a8());
+		return UInt8RGBA(r8(), g8(), b8(), a8());
+	}
+	operator UInt16RGBA () const
+	{
+		return UInt16RGBA(r16(), g16(), b16(), a16());
 	}
 };
 
@@ -1042,8 +1284,10 @@ public:
 		, a(t.a)
 	{
 	}
-	static inline Float16RGBA convert(OctetRGB const &src);
-	static inline Float16RGBA convert(OctetRGBA const &src);
+	static inline Float16RGBA convert(UInt8RGB const &src);
+	static inline Float16RGBA convert(UInt8RGBA const &src);
+	static inline Float16RGBA convert(UInt16RGB const &src);
+	static inline Float16RGBA convert(UInt16RGBA const &src);
 	static inline Float16RGBA convert(Float32RGBA const &src);
 	Float16RGBA operator + (Float16RGBA const &right) const
 	{
@@ -1087,11 +1331,23 @@ public:
 		if (r >= 1) return 255;
 		return (uint8_t)floorf(r * 255.0f + 0.5f);
 	}
+	uint16_t r16() const
+	{
+		if (r <= 0) return 0;
+		if (r >= 1) return 65535;
+		return (uint16_t)floorf(r * 65535.0f + 0.5f);
+	}
 	uint8_t g8() const
 	{
 		if ((float)g <= 0) return 0;
 		if ((float)g >= 1) return 255;
 		return (uint8_t)floorf(g * 255.0f + 0.5f);
+	}
+	uint16_t g16() const
+	{
+		if ((float)g <= 0) return 0;
+		if ((float)g >= 1) return 65535;
+		return (uint16_t)floorf(g * 65535.0f + 0.5f);
 	}
 	uint8_t b8() const
 	{
@@ -1099,11 +1355,23 @@ public:
 		if ((float)b >= 1) return 255;
 		return (uint8_t)floorf(b * 255.0f + 0.5f);
 	}
+	uint16_t b16() const
+	{
+		if ((float)b <= 0) return 0;
+		if ((float)b >= 1) return 65535;
+		return (uint16_t)floorf(b * 65535.0f + 0.5f);
+	}
 	uint8_t a8() const
 	{
 		if ((float)a <= 0) return 0;
 		if ((float)a >= 1) return 255;
 		return (uint8_t)floorf(a * 255.0f + 0.5f);
+	}
+	uint16_t a16() const
+	{
+		if ((float)a <= 0) return 0;
+		if ((float)a >= 1) return 65535;
+		return (uint16_t)floorf(a * 65535.0f + 0.5f);
 	}
 	Float16RGBA limit() const
 	{
@@ -1119,9 +1387,13 @@ public:
 		t.a = a / amount;
 		return t;
 	}
-	operator OctetRGBA () const
+	operator UInt8RGBA () const
 	{
-		return OctetRGBA(r8(), g8(), b8(), a8());
+		return UInt8RGBA(r8(), g8(), b8(), a8());
+	}
+	operator UInt16RGBA () const
+	{
+		return UInt16RGBA(r16(), g16(), b16(), a16());
 	}
 };
 
@@ -1133,12 +1405,17 @@ inline Float32RGBA::Float32RGBA(Float16RGBA const &t)
 {
 }
 
-inline OctetRGB OctetRGB::convert(OctetGray const &t)
+inline UInt8RGB UInt8RGB::convert(UInt8Gray const &t)
 {
-	return OctetRGB(t.v, t.v, t.v);
+	return UInt8RGB(t.v, t.v, t.v);
 }
 
-inline OctetRGB OctetRGB::convert(Float32RGB const &t)
+inline UInt16RGB UInt16RGB::convert(UInt16Gray const &t)
+{
+	return UInt16RGB(t.v, t.v, t.v);
+}
+
+inline UInt8RGB UInt8RGB::convert(Float32RGB const &t)
 {
 	auto u8 = [](float v){
 		return (uint8_t)clamp(floorf(gamma(v) * 255 + 0.5), 0.0f, 255.0f);
@@ -1146,10 +1423,21 @@ inline OctetRGB OctetRGB::convert(Float32RGB const &t)
 	auto r = u8(t.r);
 	auto g = u8(t.g);
 	auto b = u8(t.b);
-	return OctetRGB(r, g, b);
+	return UInt8RGB(r, g, b);
 }
 
-inline OctetRGBA OctetRGBA::convert(Float32RGBA const &t)
+inline UInt16RGB UInt16RGB::convert(Float32RGB const &t)
+{
+	auto u16 = [](float v){
+		return (uint16_t)clamp(floorf(gamma(v) * 65535 + 0.5), 0.0f, 65535.0f);
+	};
+	auto r = u16(t.r);
+	auto g = u16(t.g);
+	auto b = u16(t.b);
+	return UInt16RGB(r, g, b);
+}
+
+inline UInt8RGBA UInt8RGBA::convert(Float32RGBA const &t)
 {
 	auto u8 = [](float v){
 		return (uint8_t)clamp(floorf(gamma(v) * 255 + 0.5), 0.0f, 255.0f);
@@ -1157,7 +1445,18 @@ inline OctetRGBA OctetRGBA::convert(Float32RGBA const &t)
 	auto r = u8(t.r);
 	auto g = u8(t.g);
 	auto b = u8(t.b);
-	return OctetRGBA(r, g, b, t.a8());
+	return UInt8RGBA(r, g, b, t.a8());
+}
+
+inline UInt16RGBA UInt16RGBA::convert(Float32RGBA const &t)
+{
+	auto u16 = [](float v){
+		return (uint16_t)clamp(floorf(gamma(v) * 65535 + 0.5), 0.0f, 65535.0f);
+	};
+	auto r = u16(t.r);
+	auto g = u16(t.g);
+	auto b = u16(t.b);
+	return UInt16RGBA(r, g, b, t.a16());
 }
 
 class Float32GrayA {
@@ -1174,12 +1473,12 @@ public:
 		, a(a)
 	{
 	}
-	static Float32GrayA convert(OctetGrayA const &src)
+	static Float32GrayA convert(UInt8GrayA const &src)
 	{
 		float l = src.v / 255.0;
 		return {l, float(src.a / 255.0)};
 	}
-	static Float32GrayA convert(OctetGray const &src)
+	static Float32GrayA convert(UInt8Gray const &src)
 	{
 		float l = src.v / 255.0;
 		return {l, 255};
@@ -1218,11 +1517,23 @@ public:
 		if (v >= 1) return 255;
 		return clamp(int(gamma(v) * 255 + 0.5f), 0, 255);
 	}
+	uint16_t v16() const
+	{
+		if (v <= 0) return 0;
+		if (v >= 1) return 65535;
+		return clamp(int(gamma(v) * 65535 + 0.5f), 0, 65535);
+	}
 	uint8_t a8() const
 	{
 		if (a <= 0) return 0;
 		if (a >= 1) return 255;
 		return (uint8_t)floor(a * 255 + 0.5f);
+	}
+	uint16_t a16() const
+	{
+		if (a <= 0) return 0;
+		if (a >= 1) return 65535;
+		return (uint16_t)floor(a * 65535 + 0.5f);
 	}
 	Float32GrayA limit() const
 	{
@@ -1254,12 +1565,12 @@ public:
 		, a(a)
 	{
 	}
-	static Float16GrayA convert(OctetGrayA const &src)
+	static Float16GrayA convert(UInt8GrayA const &src)
 	{
 		_float16_t l = src.v / 255.0;
 		return {l, _float16_t(src.a / 255.0)};
 	}
-	static Float16GrayA convert(OctetGray const &src)
+	static Float16GrayA convert(UInt8Gray const &src)
 	{
 		_float16_t l = src.v / 255.0;
 		return {l, 255};
@@ -1298,11 +1609,23 @@ public:
 		if ((float)v >= 1) return 255;
 		return (uint8_t)floorf((float)v * 255 + 0.5f);
 	}
+	uint16_t v16() const
+	{
+		if ((float)v <= 0) return 0;
+		if ((float)v >= 1) return 65535;
+		return (uint16_t)floorf((float)v * 65535 + 0.5f);
+	}
 	uint8_t a8() const
 	{
 		if ((float)a <= 0) return 0;
 		if ((float)a >= 1) return 255;
 		return (uint8_t)floorf((float)a * 255 + 0.5f);
+	}
+	uint16_t a16() const
+	{
+		if ((float)a <= 0) return 0;
+		if ((float)a >= 1) return 65535;
+		return (uint16_t)floorf((float)a * 65535 + 0.5f);
 	}
 	Float16GrayA limit() const
 	{
@@ -1321,7 +1644,11 @@ public:
 };
 
 template <typename D, typename S> D pixel_cast(S const &src);
-template <> inline OctetRGBA pixel_cast<OctetRGBA>(OctetRGBA const &src)
+template <> inline UInt8RGBA pixel_cast<UInt8RGBA>(UInt8RGBA const &src)
+{
+	return src;
+}
+template <> inline UInt16RGBA pixel_cast<UInt16RGBA>(UInt16RGBA const &src)
 {
 	return src;
 }
@@ -1333,9 +1660,13 @@ template <> inline Float32RGBA pixel_cast<Float32RGBA>(Float32RGBA const &src)
 {
 	return src;
 }
-template <> inline OctetRGBA pixel_cast<OctetRGBA>(Float32RGBA const &src)
+template <> inline UInt8RGBA pixel_cast<UInt8RGBA>(Float32RGBA const &src)
 {
-	return OctetRGBA::convert(src);
+	return UInt8RGBA::convert(src);
+}
+template <> inline UInt16RGBA pixel_cast<UInt16RGBA>(Float32RGBA const &src)
+{
+	return UInt16RGBA::convert(src);
 }
 template <> inline Float32Gray pixel_cast<Float32Gray>(Float32Gray const &src)
 {
@@ -1345,7 +1676,7 @@ template <> inline Float32GrayA pixel_cast<Float32GrayA>(Float32GrayA const &src
 {
 	return src;
 }
-template <> inline Float32GrayA pixel_cast<Float32GrayA>(OctetGrayA const &src)
+template <> inline Float32GrayA pixel_cast<Float32GrayA>(UInt8GrayA const &src)
 {
 	return Float32GrayA::convert(src);
 }
@@ -1371,13 +1702,20 @@ static inline Float16RGBA degamma(Float16RGBA const &pix)
 	return Float16RGBA(degamma(pix.r), degamma(pix.g), degamma(pix.b), pix.a);
 }
 
-
-Float32RGBA Float32RGBA::convert(OctetRGBA const &src)
+Float32RGBA Float32RGBA::convert(UInt8RGBA const &src)
 {
 	float r = src.r / 255.0f;
 	float g = src.g / 255.0f;
 	float b = src.b / 255.0f;
-	float a = src.a / 255.0f;
+	return degamma(Float32RGBA(r, g, b, 1.0f));
+}
+
+Float32RGBA Float32RGBA::convert(UInt16RGBA const &src)
+{
+	float r = src.r / 65535.0f;
+	float g = src.g / 65535.0f;
+	float b = src.b / 65535.0f;
+	float a = src.a / 65535.0f;
 	return degamma(Float32RGBA(r, g, b, a));
 }
 
@@ -1386,7 +1724,7 @@ Float32RGBA Float32RGBA::convert(Float16RGBA const &src)
 	return Float32RGBA((float)src.r, (float)src.g, (float)src.b, (float)src.a);
 }
 
-Float16RGBA Float16RGBA::convert(OctetRGB const &src)
+Float16RGBA Float16RGBA::convert(UInt8RGB const &src)
 {
 	float r = src.r / 255.0f;
 	float g = src.g / 255.0f;
@@ -1394,12 +1732,29 @@ Float16RGBA Float16RGBA::convert(OctetRGB const &src)
 	return degamma(Float16RGBA(r, g, b, 1.0f));
 }
 
-Float16RGBA Float16RGBA::convert(OctetRGBA const &src)
+Float16RGBA Float16RGBA::convert(UInt16RGB const &src)
+{
+	float r = src.r / 65535.0f;
+	float g = src.g / 65535.0f;
+	float b = src.b / 65535.0f;
+	return degamma(Float16RGBA(r, g, b, 1.0f));
+}
+
+Float16RGBA Float16RGBA::convert(UInt8RGBA const &src)
 {
 	float r = src.r / 255.0f;
 	float g = src.g / 255.0f;
 	float b = src.b / 255.0f;
 	float a = src.a / 255.0f;
+	return degamma(Float16RGBA(r, g, b, a));
+}
+
+Float16RGBA Float16RGBA::convert(UInt16RGBA const &src)
+{
+	float r = src.r / 65535.0f;
+	float g = src.g / 65535.0f;
+	float b = src.b / 65535.0f;
+	float a = src.a / 65535.0f;
 	return degamma(Float16RGBA(r, g, b, a));
 }
 
@@ -1418,69 +1773,118 @@ Float16Gray Float16Gray::convert(Float16RGBA const &t)
 	return Float16Gray(grayf(t.r, t.g, t.b) * t.a);
 }
 
-OctetGray OctetGray::convert(OctetRGB const &t)
+UInt8Gray UInt8Gray::convert(UInt8RGB const &t)
 {
-	return OctetGray(::euclase::gray(t.r, t.g, t.b));
+	return UInt8Gray(::euclase::gray(t.r, t.g, t.b));
 }
 
-OctetGray OctetGray::convert(Float32RGBA const &t)
+UInt16Gray UInt16Gray::convert(UInt16RGB const &t)
+{
+	return UInt16Gray(::euclase::gray(t.r, t.g, t.b));
+}
+
+UInt8Gray UInt8Gray::convert(Float32RGBA const &t)
 {
 	auto y = ::euclase::gray(t.r8(), t.g8(), t.b8());
 	y = gamma(y);
-	return OctetGray(uint8_t(y * t.a));
+	return UInt8Gray(uint8_t(y * t.a));
 }
 
-inline OctetGray OctetGray::convert(const OctetGrayA &r)
+inline UInt8Gray UInt8Gray::convert(const UInt8GrayA &r)
 {
-	return OctetGray(r.v);
+	return UInt8Gray(r.v);
 }
 
-Float32Gray Float32Gray::convert(OctetRGBA const &r)
+inline UInt16Gray UInt16Gray::convert(const UInt16GrayA &r)
+{
+	return UInt16Gray(r.v);
+}
+
+Float32Gray Float32Gray::convert(UInt8RGBA const &r)
 {
 	auto s = Float32RGBA::convert(r);
 	return Float32Gray(grayf(s.r, s.g, s.b) * s.a);
 }
 
-OctetGrayA OctetGrayA::convert(const Float32RGBA &t)
+Float32Gray Float32Gray::convert(UInt16RGBA const &r)
 {
-	return OctetGrayA(::euclase::gray(t.r, t.g, t.b), 255);
+	auto s = Float32RGBA::convert(r);
+	return Float32Gray(grayf(s.r, s.g, s.b) * s.a);
 }
 
-OctetGrayA OctetGrayA::convert(const Float32RGB &t)
+UInt8GrayA UInt8GrayA::convert(const Float32RGBA &t)
+{
+	return UInt8GrayA(::euclase::gray(t.r, t.g, t.b), 255);
+}
+
+UInt16GrayA UInt16GrayA::convert(const Float32RGBA &t)
+{
+	return UInt16GrayA(::euclase::gray(t.r, t.g, t.b), 65535);
+}
+
+UInt8GrayA UInt8GrayA::convert(const Float32RGB &t)
 {
 	float y = ::euclase::grayf(t.r, t.g, t.b);
-	return OctetGrayA(clamp(int(gamma(y) * 255 + 0.5), 0, 255), 255);
+	return UInt8GrayA(clamp(int(gamma(y) * 255 + 0.5), 0, 255), 255);
 }
 
-OctetGrayA OctetGrayA::convert(const Float32GrayA &t)
+UInt16GrayA UInt16GrayA::convert(const Float32RGB &t)
+{
+	float y = ::euclase::grayf(t.r, t.g, t.b);
+	return UInt16GrayA(clamp(int(gamma(y) * 65535 + 0.5), 0, 65535), 65535);
+}
+
+UInt8GrayA UInt8GrayA::convert(const Float32GrayA &t)
 {
 	int y = t.v8();
 	int a = clamp(int(t.a * 255 + 0.5), 0, 255);
-	return OctetGrayA(y, a);
+	return UInt8GrayA(y, a);
 }
 
-OctetGrayA OctetGrayA::convert(const Float32Gray &t)
+UInt16GrayA UInt16GrayA::convert(const Float32GrayA &t)
 {
-	return OctetGrayA(clamp(int(gamma(t.v) * 255 + 0.5), 0, 255), 255);
+	int y = t.v16();
+	int a = clamp(int(t.a * 65535 + 0.5), 0, 65535);
+	return UInt16GrayA(y, a);
 }
 
-OctetGrayA OctetGrayA::convert(const OctetRGBA &t)
+UInt8GrayA UInt8GrayA::convert(const Float32Gray &t)
 {
-	uint8_t v = ::euclase::gray(t.r, t.g, t.b);
-	return OctetGrayA(v, t.a);
+	return UInt8GrayA(clamp(int(gamma(t.v) * 255 + 0.5), 0, 255), 255);
 }
 
-OctetGrayA OctetGrayA::convert(const OctetRGB &t)
+UInt16GrayA UInt16GrayA::convert(const Float32Gray &t)
 {
-	uint8_t v = ::euclase::gray(t.r, t.g, t.b);
-	return OctetGrayA(v, 255);
+	return UInt16GrayA(clamp(int(gamma(t.v) * 65535 + 0.5), 0, 65535), 65535);
 }
 
-OctetGrayA OctetGrayA::convert(const OctetGray &t)
+UInt8GrayA UInt8GrayA::convert(const UInt8RGBA &t)
 {
-	return OctetGrayA(t.gray(), 255);
+	uint8_t v = (uint8_t)::euclase::gray(t.r, t.g, t.b);
+	return UInt8GrayA(v, t.a);
 }
 
+UInt16GrayA UInt16GrayA::convert(const UInt16RGBA &t)
+{
+	uint16_t v = (uint16_t)::euclase::gray(t.r, t.g, t.b);
+	return UInt16GrayA(v, t.a);
+}
+
+UInt8GrayA UInt8GrayA::convert(const UInt8RGB &t)
+{
+	uint8_t v = (uint8_t)::euclase::gray(t.r, t.g, t.b);
+	return UInt8GrayA(v, 255);
+}
+
+UInt8GrayA UInt8GrayA::convert(const UInt8Gray &t)
+{
+	return UInt8GrayA(t.gray(), 255);
+}
+
+UInt16GrayA UInt16GrayA::convert(const UInt16Gray &t)
+{
+	return UInt16GrayA(t.gray(), 65535);
+}
 
 template <typename T> static inline T limit(T const &t)
 {
@@ -1489,23 +1893,46 @@ template <typename T> static inline T limit(T const &t)
 
 // image
 
-class Image {
+enum ImageFormat {
+	Format_Invalid,
+	Format_U8_RGB,
+	Format_U8_RGBA,
+	Format_U8_Grayscale,
+	Format_U8_GrayscaleA,
+	Format_U16_RGB,
+	Format_U16_RGBA,
+	Format_U16_Grayscale,
+	Format_U16_GrayscaleA,
+	Format_F32_RGB,
+	Format_F32_RGBA,
+	Format_F32_Grayscale,
+	Format_F32_GrayscaleA,
+	Format_F16_RGB,
+	Format_F16_RGBA,
+	Format_F16_Grayscale,
+	Format_F16_GrayscaleA,
+};
+
+class AbstractImage { // Inspired by QImage
 public:
-	enum Format {
-		Format_Invalid,
-		Format_U8_RGB,
-		Format_U8_RGBA,
-		Format_U8_Grayscale,
-		Format_U8_GrayscaleA,
-		Format_F32_RGB,
-		Format_F32_RGBA,
-		Format_F32_Grayscale,
-		Format_F32_GrayscaleA,
-		Format_F16_RGB,
-		Format_F16_RGBA,
-		Format_F16_Grayscale,
-		Format_F16_GrayscaleA,
-	};
+	virtual ~AbstractImage() = default;
+	virtual int width() const = 0;
+	virtual int height() const = 0;
+	virtual ImageFormat format() const = 0;
+	virtual int bytesPerPixel() const = 0;
+	virtual int bytesPerLine() const = 0;
+	virtual uint8_t *bits() = 0;
+	virtual uint8_t const *bits() const = 0;
+	virtual uint8_t *scanLine(int y) = 0;
+	virtual uint8_t const *scanLine(int y) const = 0;
+};
+
+class Image;
+
+Image convertToFormat(AbstractImage const &source, ImageFormat newformat);
+
+class Image : public AbstractImage {
+public:
 	enum MemoryType {
 		Host,
 		CUDA,
@@ -1513,7 +1940,7 @@ public:
 private:
 	struct Data {
 		RefCounter ref;
-		Image::Format format_ = Image::Format_U8_RGBA;
+		ImageFormat format_ = ImageFormat::Format_U8_RGBA;
 		int width_ = 0;
 		int height_ = 0;
 		MemoryType memtype_ = Host;
@@ -1540,7 +1967,7 @@ private:
 private:
 	Data *ptr_ = nullptr;
 	void assign(Data *p);
-	bool init(int w, int h, Image::Format format, MemoryType memtype = Host, Color const &color = k::transparent);
+	bool init(int w, int h, ImageFormat format, MemoryType memtype = Host, Color const &color = k::transparent);
 public:
 	Image() = default;
 	Image(Image const &r)
@@ -1557,7 +1984,7 @@ public:
 		assign(nullptr);
 	}
 
-	Image(int width, int height, Image::Format format, MemoryType memtype = Host);
+	Image(int width, int height, ImageFormat format, MemoryType memtype = Host);
 
 	void assign(Image const &img)
 	{
@@ -1602,12 +2029,12 @@ public:
 		return ptr_ ? ptr_->memtype_: Host;
 	}
 
-	Image::Format format() const
+	ImageFormat format() const
 	{
-		return ptr_ ? ptr_->format_ : Image::Format_Invalid;
+		return ptr_ ? ptr_->format_ : ImageFormat::Format_Invalid;
 	}
 
-	bool make(int width, int height, Image::Format format, MemoryType memtype = Host, euclase::Color const &color = k::transparent)
+	bool make(int width, int height, ImageFormat format, MemoryType memtype = Host, euclase::Color const &color = k::transparent)
 	{
 		assign(nullptr);
 		return init(width, height, format, memtype, color);
@@ -1640,25 +2067,28 @@ public:
 
 	Size size() const;
 
-	size_t bytesPerPixel() const;
-	size_t bytesPerLine() const
+	int bytesPerPixel() const;
+	int bytesPerLine() const
 	{
 		return bytesPerPixel() * width();
 	}
 
-	Image convertToFormat(Image::Format newformat) const;
+	Image convertToFormat(ImageFormat newformat) const;
 	Image makeFPImage() const;
 
 	void swap(Image &other);
+
+	uint8_t *bits();
+	const uint8_t *bits() const;
 };
 
 #ifdef USE_QT
-QImage::Format qimageformat(Image::Format format);
+QImage::Format qimageformat(ImageFormat format);
 #endif
 
-int bytesPerPixel(Image::Format format);
+int bytesPerPixel(ImageFormat format);
 
-inline size_t Image::bytesPerPixel() const
+inline int Image::bytesPerPixel() const
 {
 	return euclase::bytesPerPixel(format());
 }
@@ -1672,6 +2102,18 @@ inline uint8_t *Image::scanLine(int y)
 inline uint8_t const *Image::scanLine(int y) const
 {
 	return const_cast<Image *>(this)->scanLine(y);
+}
+
+inline uint8_t *Image::bits()
+{
+	if (!ptr_) return nullptr;
+	return ptr_->data();
+}
+
+inline const uint8_t *Image::bits() const
+{
+	if (!ptr_) return nullptr;
+	return ptr_->data();
 }
 
 // cubic bezier curve
@@ -1713,6 +2155,94 @@ std::optional<Image> load_png(char const *path);
 bool save_jpeg(Image const &image, char const *path);
 bool save_png(Image const &image, char const *path);
 #endif
+
+class ImageView : public AbstractImage { // Inspired by QImage
+private:
+	uint8_t *data_;
+	ImageFormat format_;
+	int width_;
+	int height_;
+	int bytesPerLine_;
+public:
+	ImageView(uint8_t *data, int width, int height, ImageFormat format, int bytesPerLine = 0)
+		: data_(data)
+		, width_(width)
+		, height_(height)
+		, format_(format)
+		, bytesPerLine_(bytesPerLine != 0 ? bytesPerLine : (width * bytesPerPixel()))
+	{
+	}
+	int width() const
+	{
+		return width_;
+	}
+	int height() const
+	{
+		return height_;
+	}
+	ImageFormat format() const
+	{
+		return format_;
+	}
+	int bytesPerPixel() const
+	{
+		switch (format_) {
+		case Format_U8_Grayscale:
+			return 1;
+		case Format_U8_GrayscaleA:
+			return 2;
+		case Format_U8_RGB:
+			return 3;
+		case Format_U8_RGBA:
+			return 4;
+		case Format_U16_Grayscale:
+			return 2;
+		case Format_U16_GrayscaleA:
+			return 4;
+		case Format_U16_RGB:
+			return 6;
+		case Format_U16_RGBA:
+			return 8;
+		case Format_F16_Grayscale:
+			return 2;
+		case Format_F16_GrayscaleA:
+			return 4;
+		case Format_F16_RGB:
+			return 6;
+		case Format_F16_RGBA:
+			return 8;
+		case Format_F32_Grayscale:
+			return 4;
+		case Format_F32_GrayscaleA:
+			return 8;
+		case Format_F32_RGB:
+			return 12;
+		case Format_F32_RGBA:
+			return 16;
+		}
+		return 0;
+	}
+	int bytesPerLine() const
+	{
+		return bytesPerLine_;
+	}
+	uint8_t *bits()
+	{
+		return data_;
+	}
+	uint8_t const *bits() const
+	{
+		return data_;
+	}
+	uint8_t *scanLine(int y)
+	{
+		return data_ + (y * bytesPerLine_);
+	}
+	uint8_t const *scanLine(int y) const
+	{
+		return data_ + (y * bytesPerLine_);
+	}
+};
 
 } // namespace euclase
 
