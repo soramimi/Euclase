@@ -16,6 +16,7 @@ struct CUDAIMAGE_API {
 	void (*memset)(cudamem_t *dst, uint8_t c, int len);
 	void (*saturation_brightness)(int w, int h, int red, int green, int blue, cudamem_t *mem);
 	void (*round_brush)(int w, int h, float cx, float cy, float radius, float blur, float mul, cudamem_t *mem);
+	void (*fill_uint8_rgb)(int w, int h, uint8_t r, uint8_t g, uint8_t b, uint8_t a, cudamem_t *dst, int dst_w, int dst_h, int dx, int dy);
 	void (*fill_uint8_rgba)(int w, int h, uint8_t r, uint8_t g, uint8_t b, uint8_t a, cudamem_t *dst, int dst_w, int dst_h, int dx, int dy);
 	void (*fill_fp32_rgba)(int w, int h, float r, float g, float b, float a, cudamem_t *dst, int dst_w, int dst_h, int dx, int dy);
 	void (*fill_fp16_rgba)(int w, int h, float r, float g, float b, float a, cudamem_t *dst, int dst_w, int dst_h, int dx, int dy);

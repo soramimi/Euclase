@@ -77,6 +77,28 @@ void API_FUNC_ENTRY(saturation_brightness)(int w, int h, int red, int green, int
 	cu_saturation_brightness<<<blocks,threads>>>(w, h, red, green, blue, (uint8_t *)mem);
 }
 
+__global__ void cu_fill_uint8_rgb_kernel(int w, int h, uint8_t r, uint8_t g, uint8_t b, uint8_t a, uint8_t *dst, int dst_w, int dx, int dy)
+{
+	int x = blockIdx.x * blockDim.x + threadIdx.x;
+	int y = blockIdx.y * blockDim.y + threadIdx.y;
+
+	if (x < w && y < h) {
+		uint8_t *d = dst + 3 * (dst_w * (dy + y) + dx + x);
+		d[0] = r;
+		d[1] = g;
+		d[2] = b;
+	}
+}
+
+void API_FUNC_ENTRY(fill_uint8_rgb)(int w, int h, uint8_t r, uint8_t g, uint8_t b, uint8_t a, cudamem_t *dst, int dst_w, int dst_h, int dx, int dy)
+{
+	uint8_t *d = (uint8_t *)dst;
+
+	dim3 blocks((w + 15) / 16, (h + 15) / 16);
+	dim3 threads(16, 16);
+	cu_fill_uint8_rgb_kernel<<<blocks,threads>>>(w, h, r, g, b, a, d, dst_w, dx, dy);
+}
+
 __global__ void cu_fill_uint8_rgba_kernel(int w, int h, uint8_t r, uint8_t g, uint8_t b, uint8_t a, uint8_t *dst, int dst_w, int dx, int dy)
 {
 	int x = blockIdx.x * blockDim.x + threadIdx.x;
@@ -595,6 +617,7 @@ extern "C" CUDAIMAGE_API const *init_cudaplugin(int n)
 	API_FUNC(memset);
 	API_FUNC(saturation_brightness);
 	API_FUNC(round_brush);
+	API_FUNC(fill_uint8_rgb);
 	API_FUNC(fill_uint8_rgba);
 	API_FUNC(fill_fp32_rgba);
 	API_FUNC(fill_fp16_rgba);

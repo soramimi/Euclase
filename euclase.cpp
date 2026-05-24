@@ -91,6 +91,16 @@ void euclase::Image::fill(const Color &color)
 	int h = height();
 	switch (format()) {
 	case Image::Format_U8_RGB:
+#ifdef USE_CUDA
+		if (memtype() == CUDA) {
+			uint8_t r = color.red();
+			uint8_t g = color.green();
+			uint8_t b = color.blue();
+			uint8_t a = color.alpha();
+			global->cuda->fill_uint8_rgb(w, h, r, g, b, a, data(), width(), height(), 0, 0);
+			return;
+		}
+#endif
 		for (int y = 0; y < h; y++) {
 			uint8_t *p = scanLine(y);
 			for (int x = 0; x < w; x++) {
@@ -392,6 +402,27 @@ euclase::Image euclase::Image::convertToFormat(Image::Format newformat) const
 				euclase::OctetRGB *dst = (euclase::OctetRGB *)newimg.scanLine(y);
 				for (int x = 0; x < w; x++) {
 					dst[x] = euclase::OctetRGB::convert(src[x]);
+				}
+			}
+			break;
+		case Format_F32_RGB:
+			newimg.make(w, h, newformat);
+			for (int y = 0; y < h; y++) {
+				euclase::Float32RGB const *src = (euclase::Float32RGB const *)scanLine(y);
+				euclase::OctetRGB *dst = (euclase::OctetRGB *)newimg.scanLine(y);
+				for (int x = 0; x < w; x++) {
+					dst[x] = euclase::OctetRGB::convert(src[x].limit());
+				}
+			}
+			break;
+		case Format_F32_RGBA:
+			newimg.make(w, h, newformat);
+			for (int y = 0; y < h; y++) {
+				euclase::Float32RGBA const *src = (euclase::Float32RGBA const *)scanLine(y);
+				euclase::OctetRGB *dst = (euclase::OctetRGB *)newimg.scanLine(y);
+				for (int x = 0; x < w; x++) {
+					euclase::OctetRGBA pixel = euclase::OctetRGBA::convert(src[x].limit());
+					dst[x] = euclase::OctetRGB(pixel.r, pixel.g, pixel.b);
 				}
 			}
 			break;
@@ -1646,9 +1677,9 @@ euclase::Image euclase::filter_blur(euclase::Image image, int radius, bool *canc
 // image load/save
 
 #include "png.cpph"
-// #include "jpeg.cpph"
+#include "jpeg.cpph"
 
-#if 0
+#if 1
 std::optional<euclase::Image> euclase::load_jpeg(char const *path)
 {
 	Image image;
