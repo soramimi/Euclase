@@ -8,8 +8,8 @@
 class AlphaBlend {
 public:
 
-	using OctetRGBA = euclase::OctetRGBA;
-	using OctetGrayA = euclase::OctetGrayA;
+	using OctetRGBA = euclase::UInt8RGBA;
+	using OctetGrayA = euclase::UInt8GrayA;
 	using Float32RGBA = euclase::Float32RGBA;
 	using Float32GrayA= euclase::Float32GrayA;
 	using Float16RGBA = euclase::Float16RGBA;

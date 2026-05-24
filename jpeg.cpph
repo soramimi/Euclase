@@ -108,8 +108,8 @@ jpeg_my_dest (j_compress_ptr cinfo, DESTINATION * outfile)
 static bool _write_jpeg(euclase::Image const &src, int quality, DESTINATION *dest)
 {
 	if (!src) return false;
-	if (src.memtype() != Image::Host || src.format() != Image::Format_U8_RGB) {
-		Image src2 = src.toHost().convertToFormat(euclase::Image::Format_U8_RGB);
+	if (src.memtype() != Image::Host || src.format() != ImageFormat::Format_U8_RGB) {
+		Image src2 = src.toHost().convertToFormat(euclase::ImageFormat::Format_U8_RGB);
 		return _write_jpeg(src2, quality, dest);
 	}
 
@@ -482,7 +482,7 @@ bool _load_jpeg(euclase::Image *dst, char const *filename)
 
 	std::vector<uint8_t> tmp_rgb(row_stride);
 
-	*dst = euclase::Image(width, height, euclase::Image::Format_U8_RGB);
+	*dst = euclase::Image(width, height, euclase::ImageFormat::Format_U8_RGB);
 
 	/* Here we use the library's state variable cinfo.output_scanline as the
 			* loop counter, so that we don't have to keep track ourselves.

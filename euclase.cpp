@@ -1,5 +1,5 @@
 
-#include <QDebug>
+// #include <QDebug>
 
 #if !defined(_WIN32) && !defined(__APPLE__)
 #include <QDebug>
@@ -57,9 +57,281 @@ void euclase::cubicBezierSplit(PointF *p0, PointF *p1, PointF *p2, PointF *p3, P
 	*q0 = *p3;
 }
 
+//
+
+euclase::Image euclase::convertToFormat(AbstractImage const &source, ImageFormat newformat)
+{
+	int w = source.width();
+	int h = source.height();
+	euclase::Image newimg;
+	if (newformat == ImageFormat::Format_U8_RGBA) {
+		switch (source.format()) {
+		case Format_F32_RGBA:
+			newimg.make(w, h, newformat);
+			for (int y = 0; y < h; y++) {
+				euclase::Float32RGBA const *src = (euclase::Float32RGBA const *)source.scanLine(y);
+				euclase::UInt8RGBA *dst = (euclase::UInt8RGBA *)newimg.scanLine(y);
+				for (int x = 0; x < w; x++) {
+					dst[x] = euclase::UInt8RGBA::convert(src[x].limit());
+				}
+			}
+			break;
+		}
+	} else if (newformat == ImageFormat::Format_U8_RGB) {
+		switch (source.format()) {
+		case Format_U8_Grayscale:
+			newimg.make(w, h, newformat);
+			for (int y = 0; y < h; y++) {
+				euclase::UInt8Gray const *src = (euclase::UInt8Gray const *)source.scanLine(y);
+				euclase::UInt8RGB *dst = (euclase::UInt8RGB *)newimg.scanLine(y);
+				for (int x = 0; x < w; x++) {
+					dst[x] = euclase::UInt8RGB::convert(src[x]);
+				}
+			}
+			break;
+		case Format_F32_RGB:
+			newimg.make(w, h, newformat);
+			for (int y = 0; y < h; y++) {
+				euclase::Float32RGB const *src = (euclase::Float32RGB const *)source.scanLine(y);
+				euclase::UInt8RGB *dst = (euclase::UInt8RGB *)newimg.scanLine(y);
+				for (int x = 0; x < w; x++) {
+					dst[x] = euclase::UInt8RGB::convert(src[x].limit());
+				}
+			}
+			break;
+		case Format_F32_RGBA:
+			newimg.make(w, h, newformat);
+			for (int y = 0; y < h; y++) {
+				euclase::Float32RGBA const *src = (euclase::Float32RGBA const *)source.scanLine(y);
+				euclase::UInt8RGB *dst = (euclase::UInt8RGB *)newimg.scanLine(y);
+				for (int x = 0; x < w; x++) {
+					euclase::UInt8RGBA pixel = euclase::UInt8RGBA::convert(src[x].limit());
+					dst[x] = euclase::UInt8RGB(pixel.r, pixel.g, pixel.b);
+				}
+			}
+			break;
+		}
+	} else if (newformat == ImageFormat::Format_F32_RGBA) {
+		switch (source.format()) {
+		case Format_U8_RGBA:
+			newimg.make(w, h, newformat);
+			for (int y = 0; y < h; y++) {
+				euclase::UInt8RGBA const *src = (euclase::UInt8RGBA const *)source.scanLine(y);
+				euclase::Float32RGBA *dst = (euclase::Float32RGBA *)newimg.scanLine(y);
+				for (int x = 0; x < w; x++) {
+					dst[x] = euclase::Float32RGBA::convert(src[x]);
+				}
+			}
+			break;
+		case Format_F16_RGBA:
+			newimg.make(w, h, newformat);
+			for (int y = 0; y < h; y++) {
+				euclase::Float16RGBA const *src = (euclase::Float16RGBA const *)source.scanLine(y);
+				euclase::Float32RGBA *dst = (euclase::Float32RGBA *)newimg.scanLine(y);
+				for (int x = 0; x < w; x++) {
+					dst[x] = euclase::Float32RGBA::convert(src[x]);
+				}
+			}
+			break;
+		}
+	} else if (newformat == ImageFormat::Format_F32_RGB) {
+		switch (source.format()) {
+		case Format_U8_RGB:
+			newimg.make(w, h, newformat);
+			for (int y = 0; y < h; y++) {
+				uint8_t const *s = source.scanLine(y);
+				Float32RGB *d = (Float32RGB *)newimg.scanLine(y);
+				for (int x = 0; x < w; x++) {
+					d[x] = Float32RGB::convert(UInt8RGBA(s[3 * x + 0], s[3 * x + 1], s[3 * x + 2], 255));
+				}
+			}
+			break;
+		}
+	} else if (newformat == ImageFormat::Format_F16_RGBA) {
+		switch (source.format()) {
+		case Format_U8_RGB:
+			newimg.make(w, h, newformat);
+			for (int y = 0; y < h; y++) {
+				euclase::UInt8RGB const *src = (euclase::UInt8RGB const *)source.scanLine(y);
+				euclase::Float16RGBA *dst = (euclase::Float16RGBA *)newimg.scanLine(y);
+				for (int x = 0; x < w; x++) {
+					dst[x] = euclase::Float16RGBA::convert(src[x]);
+				}
+			}
+			break;
+		case Format_U8_RGBA:
+			newimg.make(w, h, newformat);
+			for (int y = 0; y < h; y++) {
+				euclase::UInt8RGBA const *src = (euclase::UInt8RGBA const *)source.scanLine(y);
+				euclase::Float16RGBA *dst = (euclase::Float16RGBA *)newimg.scanLine(y);
+				for (int x = 0; x < w; x++) {
+					dst[x] = euclase::Float16RGBA::convert(src[x]);
+				}
+			}
+			break;
+		case Format_F32_RGBA:
+			newimg.make(w, h, newformat);
+			for (int y = 0; y < h; y++) {
+				euclase::Float32RGBA const *src = (euclase::Float32RGBA const *)source.scanLine(y);
+				euclase::Float16RGBA *dst = (euclase::Float16RGBA *)newimg.scanLine(y);
+				for (int x = 0; x < w; x++) {
+					dst[x] = euclase::Float16RGBA::convert(src[x]);
+				}
+			}
+			break;
+		}
+	} else if (newformat == ImageFormat::Format_F16_RGB) {
+		switch (source.format()) {
+		case Format_U8_RGB:
+			newimg.make(w, h, newformat);
+			for (int y = 0; y < h; y++) {
+				uint8_t const *s = source.scanLine(y);
+				Float16RGB *d = (Float16RGB *)newimg.scanLine(y);
+				for (int x = 0; x < w; x++) {
+					d[x] = Float16RGB::convert(UInt8RGBA(s[3 * x + 0], s[3 * x + 1], s[3 * x + 2], 255));
+				}
+			}
+			break;
+		}
+	} else if (newformat == ImageFormat::Format_U8_GrayscaleA) {
+		switch (source.format()) {
+		case Format_F32_RGBA:
+			newimg.make(w, h, newformat);
+			for (int y = 0; y < h; y++) {
+				Float32RGBA const *s = (Float32RGBA const *)source.scanLine(y);
+				UInt8GrayA *d = (UInt8GrayA *)newimg.scanLine(y);
+				for (int x = 0; x < w; x++) {
+					d[x] = UInt8GrayA::convert(s[x].limit());
+				}
+			}
+			break;
+		case Format_U8_RGBA:
+			newimg.make(w, h, newformat);
+			for (int y = 0; y < h; y++) {
+				UInt8RGBA const *s = (UInt8RGBA const *)source.scanLine(y);
+				UInt8GrayA *d = (UInt8GrayA *)newimg.scanLine(y);
+				for (int x = 0; x < w; x++) {
+					d[x] = UInt8GrayA::convert(s[x]);
+				}
+			}
+			break;
+		case Format_U8_RGB:
+			newimg.make(w, h, newformat);
+			for (int y = 0; y < h; y++) {
+				UInt8RGB const *s = (UInt8RGB const *)source.scanLine(y);
+				UInt8GrayA *d = (UInt8GrayA *)newimg.scanLine(y);
+				for (int x = 0; x < w; x++) {
+					d[x] = UInt8GrayA::convert(s[x]);
+				}
+			}
+			break;
+		case Format_U8_Grayscale:
+			newimg.make(w, h, newformat);
+			for (int y = 0; y < h; y++) {
+				UInt8Gray const *s = (UInt8Gray const *)source.scanLine(y);
+				UInt8GrayA *d = (UInt8GrayA *)newimg.scanLine(y);
+				for (int x = 0; x < w; x++) {
+					d[x] = UInt8GrayA::convert(s[x]);
+				}
+			}
+			break;
+		}
+	} else if (newformat == ImageFormat::Format_U8_Grayscale) {
+		switch (source.format()) {
+		case Format_F32_RGBA:
+			newimg.make(w, h, newformat);
+			for (int y = 0; y < h; y++) {
+				Float32RGBA const *s = (Float32RGBA const *)source.scanLine(y);
+				UInt8Gray *d = (UInt8Gray *)newimg.scanLine(y);
+				for (int x = 0; x < w; x++) {
+					d[x] = UInt8Gray::convert(s[x].limit());
+				}
+			}
+			break;
+		case Format_U8_RGBA:
+			newimg.make(w, h, newformat);
+			for (int y = 0; y < h; y++) {
+				UInt8RGBA const *s = (UInt8RGBA const *)source.scanLine(y);
+				UInt8Gray *d = (UInt8Gray *)newimg.scanLine(y);
+				for (int x = 0; x < w; x++) {
+					d[x] = UInt8Gray::convert(s[x]);
+				}
+			}
+			break;
+		case Format_U8_RGB:
+			newimg.make(w, h, newformat);
+			for (int y = 0; y < h; y++) {
+				UInt8RGB const *s = (UInt8RGB const *)source.scanLine(y);
+				UInt8Gray *d = (UInt8Gray *)newimg.scanLine(y);
+				for (int x = 0; x < w; x++) {
+					d[x] = UInt8Gray::convert(s[x]);
+				}
+			}
+			break;
+		case Format_U8_GrayscaleA:
+			newimg.make(w, h, newformat);
+			for (int y = 0; y < h; y++) {
+				UInt8GrayA const *s = (UInt8GrayA const *)source.scanLine(y);
+				UInt8Gray *d = (UInt8Gray *)newimg.scanLine(y);
+				for (int x = 0; x < w; x++) {
+					d[x] = UInt8Gray::convert(s[x]);
+				}
+			}
+			break;
+		}
+	} else if (newformat == ImageFormat::Format_F32_Grayscale) {
+		switch (source.format()) {
+		case Format_U8_Grayscale:
+			newimg.make(w, h, newformat);
+			for (int y = 0; y < h; y++) {
+				Float32RGBA const *s = (Float32RGBA const *)source.scanLine(y);
+				Float32Gray *d = (Float32Gray *)newimg.scanLine(y);
+				for (int x = 0; x < w; x++) {
+					d[x] = Float32Gray::convert(s[x]);
+				}
+			}
+			break;
+		case Format_F32_RGBA:
+			newimg.make(w, h, newformat);
+			for (int y = 0; y < h; y++) {
+				Float32RGBA const *s = (Float32RGBA const *)source.scanLine(y);
+				Float32Gray *d = (Float32Gray *)newimg.scanLine(y);
+				for (int x = 0; x < w; x++) {
+					d[x] = Float32Gray::convert(s[x]);
+				}
+			}
+			break;
+		case Format_U8_RGBA:
+			newimg.make(w, h, newformat);
+			for (int y = 0; y < h; y++) {
+				UInt8RGBA const *s = (UInt8RGBA const *)source.scanLine(y);
+				Float32Gray *d = (Float32Gray *)newimg.scanLine(y);
+				for (int x = 0; x < w; x++) {
+					d[x] = Float32Gray::convert(s[x]);
+				}
+			}
+			break;
+		}
+	} else if (newformat == ImageFormat::Format_F32_GrayscaleA) {
+		switch (source.format()) {
+		case Format_U8_GrayscaleA:
+			newimg.make(w, h, newformat);
+			for (int y = 0; y < h; y++) {
+				UInt8GrayA const *s = (UInt8GrayA const *)source.scanLine(y);
+				Float32GrayA *d = (Float32GrayA *)newimg.scanLine(y);
+				for (int x = 0; x < w; x++) {
+					d[x] = Float32GrayA::convert(s[x]);
+				}
+			}
+			break;
+		}
+	}
+	return newimg;
+}
+
 // Image
 
-euclase::Image::Image(int width, int height, Format format, MemoryType memtype)
+euclase::Image::Image(int width, int height, ImageFormat format, MemoryType memtype)
 {
 	init(width, height, format, memtype);
 }
@@ -90,7 +362,7 @@ void euclase::Image::fill(const Color &color)
 	int w = width();
 	int h = height();
 	switch (format()) {
-	case Image::Format_U8_RGB:
+	case ImageFormat::Format_U8_RGB:
 #ifdef USE_CUDA
 		if (memtype() == CUDA) {
 			uint8_t r = color.red();
@@ -110,7 +382,7 @@ void euclase::Image::fill(const Color &color)
 			}
 		}
 		return;
-	case Image::Format_U8_RGBA:
+	case ImageFormat::Format_U8_RGBA:
 #ifdef USE_CUDA
 		if (memtype() == CUDA) {
 			uint8_t r = color.red();
@@ -141,9 +413,9 @@ void euclase::Image::fill(const Color &color)
 			return;
 		}
 		break;
-	case Image::Format_U8_Grayscale:
+	case ImageFormat::Format_U8_Grayscale:
 		{
-			uint8_t k = euclase::gray(color.red(), color.green(), color.blue());
+			uint8_t k = (uint8_t)euclase::gray(color.red(), color.green(), color.blue());
 #ifdef USE_CUDA
 			if (memtype() == CUDA) {
 				global->cuda->memset(data(), k, w * h);
@@ -161,9 +433,9 @@ void euclase::Image::fill(const Color &color)
 			}
 		}
 		break;
-	case Image::Format_F32_RGBA:
+	case ImageFormat::Format_F32_RGBA:
 		{
-			euclase::OctetRGBA icolor(color.red(), color.green(), color.blue(), color.alpha());
+			euclase::UInt8RGBA icolor(color.red(), color.green(), color.blue(), color.alpha());
 			euclase::Float32RGBA fcolor = euclase::Float32RGBA::convert(icolor);
 #ifdef USE_CUDA
 			if (memtype() == CUDA) {
@@ -182,9 +454,9 @@ void euclase::Image::fill(const Color &color)
 			}
 		}
 		break;
-	case Image::Format_F16_RGBA:
+	case ImageFormat::Format_F16_RGBA:
 		{
-			euclase::OctetRGBA icolor(color.red(), color.green(), color.blue(), color.alpha());
+			euclase::UInt8RGBA icolor(color.red(), color.green(), color.blue(), color.alpha());
 			euclase::Float16RGBA fcolor = euclase::Float16RGBA::convert(icolor);
 #ifdef USE_CUDA
 			if (memtype() == CUDA) {
@@ -217,7 +489,7 @@ void euclase::Image::fill(const Color &color)
 #ifdef USE_QT
 void euclase::Image::setImage(const QImage &image)
 {
-	Image::Format f = Image::Format_Invalid;
+	ImageFormat f = ImageFormat::Format_Invalid;
 	int w = image.width();
 	int h = image.height();
 
@@ -227,32 +499,32 @@ void euclase::Image::setImage(const QImage &image)
 	case QImage::Format_Grayscale8:
 	case QImage::Format_Grayscale16:
 		srcimage = image.convertToFormat(QImage::Format_Grayscale8);
-		f = Image::Format_U8_Grayscale;
+		f = ImageFormat::Format_U8_Grayscale;
 		break;
 	case QImage::Format_RGB888:
 	case QImage::Format_RGB32:
 	case QImage::Format_RGBA8888:
 	case QImage::Format_ARGB32:
 		srcimage = image.convertToFormat(QImage::Format_RGBA8888);
-		f = Image::Format_U8_RGBA;
+		f = ImageFormat::Format_U8_RGBA;
 		break;
 	}
 
 	make(w, h, f);
 
-	if (srcimage.format() == QImage::Format_RGBA8888 && format() == Image::Format_U8_RGBA) {
+	if (srcimage.format() == QImage::Format_RGBA8888 && format() == ImageFormat::Format_U8_RGBA) {
 		for (int y = 0; y < h; y++) {
 			uint8_t const *s = srcimage.scanLine(y);
 			uint8_t *d = scanLine(y);
 			memcpy(d, s, w * 4);
 		}
-	} else if (srcimage.format() == QImage::Format_RGB888 && format() == Image::Format_U8_RGB) {
+	} else if (srcimage.format() == QImage::Format_RGB888 && format() == ImageFormat::Format_U8_RGB) {
 		for (int y = 0; y < h; y++) {
 			uint8_t const *s = srcimage.scanLine(y);
 			uint8_t *d = scanLine(y);
 			memcpy(d, s, w * 3);
 		}
-	} else if (srcimage.format() == QImage::Format_Grayscale8 && format() == Image::Format_U8_Grayscale) {
+	} else if (srcimage.format() == QImage::Format_Grayscale8 && format() == ImageFormat::Format_U8_Grayscale) {
 		for (int y = 0; y < h; y++) {
 			uint8_t const *s = srcimage.scanLine(y);
 			uint8_t *d = scanLine(y);
@@ -265,7 +537,7 @@ QImage euclase::Image::qimage() const
 {
 	int w = width();
 	int h = height();
-	if (format() == Image::Format_U8_RGB) {
+	if (format() == ImageFormat::Format_U8_RGB) {
 		QImage newimage(w, h, QImage::Format_RGB888);
 		if (memtype() == Host) {
 			for (int y = 0; y < h; y++) {
@@ -276,7 +548,7 @@ QImage euclase::Image::qimage() const
 			return newimage;
 		}
 	}
-	if (format() == Image::Format_F16_RGBA) {
+	if (format() == ImageFormat::Format_F16_RGBA) {
 		QImage newimage(w, h, QImage::Format_RGBA8888);
 #ifdef USE_CUDA
 		if (memtype() == CUDA) {
@@ -300,7 +572,7 @@ QImage euclase::Image::qimage() const
 			return newimage;
 		}
 	}
-	if (format() == Image::Format_F32_RGBA) {
+	if (format() == ImageFormat::Format_F32_RGBA) {
 		QImage newimage(w, h, QImage::Format_RGBA8888);
 #ifdef USE_CUDA
 		if (memtype() == CUDA) {
@@ -324,7 +596,7 @@ QImage euclase::Image::qimage() const
 			return newimage;
 		}
 	}
-	if (format() == Image::Format_U8_RGBA) {
+	if (format() == ImageFormat::Format_U8_RGBA) {
 		QImage newimage(w, h, QImage::Format_RGBA8888);
 #ifdef USE_CUDA
 		if (memtype() == CUDA) {
@@ -341,7 +613,7 @@ QImage euclase::Image::qimage() const
 			return newimage;
 		}
 	}
-	if (format() == Image::Format_U8_Grayscale) {
+	if (format() == ImageFormat::Format_U8_Grayscale) {
 		QImage newimage(w, h, QImage::Format_Grayscale8);
 #ifdef USE_CUDA
 		if (memtype() == CUDA) {
@@ -365,43 +637,43 @@ QImage euclase::Image::qimage() const
 
 #endif
 
-euclase::Image euclase::Image::convertToFormat(Image::Format newformat) const
+Image Image::convertToFormat(ImageFormat newformat) const
 {
-	if (format() == newformat) {
-		return *this;
-	}
-
 #ifdef USE_CUDA
 	if (memtype() == CUDA) {
 		return toHost().convertToFormat(newformat).toCUDA();
 	}
 #endif
 
+	if (format() == newformat) {
+		return *this;
+	}
+
 	int w = width();
 	int h = height();
 	euclase::Image newimg;
-	if (newformat == Image::Format_U8_RGBA) {
+	if (newformat == ImageFormat::Format_U8_RGBA) {
 		switch (format()) {
 		case Format_F32_RGBA:
 			newimg.make(w, h, newformat);
 			for (int y = 0; y < h; y++) {
 				euclase::Float32RGBA const *src = (euclase::Float32RGBA const *)scanLine(y);
-				euclase::OctetRGBA *dst = (euclase::OctetRGBA *)newimg.scanLine(y);
+				euclase::UInt8RGBA *dst = (euclase::UInt8RGBA *)newimg.scanLine(y);
 				for (int x = 0; x < w; x++) {
-					dst[x] = euclase::OctetRGBA::convert(src[x].limit());
+					dst[x] = euclase::UInt8RGBA::convert(src[x].limit());
 				}
 			}
 			break;
 		}
-	} else if (newformat == Image::Format_U8_RGB) {
+	} else if (newformat == ImageFormat::Format_U8_RGB) {
 		switch (format()) {
 		case Format_U8_Grayscale:
 			newimg.make(w, h, newformat);
 			for (int y = 0; y < h; y++) {
-				euclase::OctetGray const *src = (euclase::OctetGray const *)scanLine(y);
-				euclase::OctetRGB *dst = (euclase::OctetRGB *)newimg.scanLine(y);
+				euclase::UInt8Gray const *src = (euclase::UInt8Gray const *)scanLine(y);
+				euclase::UInt8RGB *dst = (euclase::UInt8RGB *)newimg.scanLine(y);
 				for (int x = 0; x < w; x++) {
-					dst[x] = euclase::OctetRGB::convert(src[x]);
+					dst[x] = euclase::UInt8RGB::convert(src[x]);
 				}
 			}
 			break;
@@ -409,9 +681,9 @@ euclase::Image euclase::Image::convertToFormat(Image::Format newformat) const
 			newimg.make(w, h, newformat);
 			for (int y = 0; y < h; y++) {
 				euclase::Float32RGB const *src = (euclase::Float32RGB const *)scanLine(y);
-				euclase::OctetRGB *dst = (euclase::OctetRGB *)newimg.scanLine(y);
+				euclase::UInt8RGB *dst = (euclase::UInt8RGB *)newimg.scanLine(y);
 				for (int x = 0; x < w; x++) {
-					dst[x] = euclase::OctetRGB::convert(src[x].limit());
+					dst[x] = euclase::UInt8RGB::convert(src[x].limit());
 				}
 			}
 			break;
@@ -419,20 +691,20 @@ euclase::Image euclase::Image::convertToFormat(Image::Format newformat) const
 			newimg.make(w, h, newformat);
 			for (int y = 0; y < h; y++) {
 				euclase::Float32RGBA const *src = (euclase::Float32RGBA const *)scanLine(y);
-				euclase::OctetRGB *dst = (euclase::OctetRGB *)newimg.scanLine(y);
+				euclase::UInt8RGB *dst = (euclase::UInt8RGB *)newimg.scanLine(y);
 				for (int x = 0; x < w; x++) {
-					euclase::OctetRGBA pixel = euclase::OctetRGBA::convert(src[x].limit());
-					dst[x] = euclase::OctetRGB(pixel.r, pixel.g, pixel.b);
+					euclase::UInt8RGBA pixel = euclase::UInt8RGBA::convert(src[x].limit());
+					dst[x] = euclase::UInt8RGB(pixel.r, pixel.g, pixel.b);
 				}
 			}
 			break;
 		}
-	} else if (newformat == Image::Format_F32_RGBA) {
+	} else if (newformat == ImageFormat::Format_F32_RGBA) {
 		switch (format()) {
 		case Format_U8_RGBA:
 			newimg.make(w, h, newformat);
 			for (int y = 0; y < h; y++) {
-				euclase::OctetRGBA const *src = (euclase::OctetRGBA const *)scanLine(y);
+				euclase::UInt8RGBA const *src = (euclase::UInt8RGBA const *)scanLine(y);
 				euclase::Float32RGBA *dst = (euclase::Float32RGBA *)newimg.scanLine(y);
 				for (int x = 0; x < w; x++) {
 					dst[x] = euclase::Float32RGBA::convert(src[x]);
@@ -450,7 +722,7 @@ euclase::Image euclase::Image::convertToFormat(Image::Format newformat) const
 			}
 			break;
 		}
-	} else if (newformat == Image::Format_F32_RGB) {
+	} else if (newformat == ImageFormat::Format_F32_RGB) {
 		switch (format()) {
 		case Format_U8_RGB:
 			newimg.make(w, h, newformat);
@@ -458,17 +730,17 @@ euclase::Image euclase::Image::convertToFormat(Image::Format newformat) const
 				uint8_t const *s = scanLine(y);
 				Float32RGB *d = (Float32RGB *)newimg.scanLine(y);
 				for (int x = 0; x < w; x++) {
-					d[x] = Float32RGB::convert(OctetRGBA(s[3 * x + 0], s[3 * x + 1], s[3 * x + 2], 255));
+					d[x] = Float32RGB::convert(UInt8RGBA(s[3 * x + 0], s[3 * x + 1], s[3 * x + 2], 255));
 				}
 			}
 			break;
 		}
-	} else if (newformat == Image::Format_F16_RGBA) {
+	} else if (newformat == ImageFormat::Format_F16_RGBA) {
 		switch (format()) {
 		case Format_U8_RGB:
 			newimg.make(w, h, newformat);
 			for (int y = 0; y < h; y++) {
-				euclase::OctetRGB const *src = (euclase::OctetRGB const *)scanLine(y);
+				euclase::UInt8RGB const *src = (euclase::UInt8RGB const *)scanLine(y);
 				euclase::Float16RGBA *dst = (euclase::Float16RGBA *)newimg.scanLine(y);
 				for (int x = 0; x < w; x++) {
 					dst[x] = euclase::Float16RGBA::convert(src[x]);
@@ -478,7 +750,7 @@ euclase::Image euclase::Image::convertToFormat(Image::Format newformat) const
 		case Format_U8_RGBA:
 			newimg.make(w, h, newformat);
 			for (int y = 0; y < h; y++) {
-				euclase::OctetRGBA const *src = (euclase::OctetRGBA const *)scanLine(y);
+				euclase::UInt8RGBA const *src = (euclase::UInt8RGBA const *)scanLine(y);
 				euclase::Float16RGBA *dst = (euclase::Float16RGBA *)newimg.scanLine(y);
 				for (int x = 0; x < w; x++) {
 					dst[x] = euclase::Float16RGBA::convert(src[x]);
@@ -496,7 +768,7 @@ euclase::Image euclase::Image::convertToFormat(Image::Format newformat) const
 			}
 			break;
 		}
-	} else if (newformat == Image::Format_F16_RGB) {
+	} else if (newformat == ImageFormat::Format_F16_RGB) {
 		switch (format()) {
 		case Format_U8_RGB:
 			newimg.make(w, h, newformat);
@@ -504,98 +776,98 @@ euclase::Image euclase::Image::convertToFormat(Image::Format newformat) const
 				uint8_t const *s = scanLine(y);
 				Float16RGB *d = (Float16RGB *)newimg.scanLine(y);
 				for (int x = 0; x < w; x++) {
-					d[x] = Float16RGB::convert(OctetRGBA(s[3 * x + 0], s[3 * x + 1], s[3 * x + 2], 255));
+					d[x] = Float16RGB::convert(UInt8RGBA(s[3 * x + 0], s[3 * x + 1], s[3 * x + 2], 255));
 				}
 			}
 			break;
 		}
-	} else if (newformat == Image::Format_U8_GrayscaleA) {
+	} else if (newformat == ImageFormat::Format_U8_GrayscaleA) {
 		switch (format()) {
 		case Format_F32_RGBA:
 			newimg.make(w, h, newformat);
 			for (int y = 0; y < h; y++) {
 				Float32RGBA const *s = (Float32RGBA const *)scanLine(y);
-				OctetGrayA *d = (OctetGrayA *)newimg.scanLine(y);
+				UInt8GrayA *d = (UInt8GrayA *)newimg.scanLine(y);
 				for (int x = 0; x < w; x++) {
-					d[x] = OctetGrayA::convert(s[x].limit());
+					d[x] = UInt8GrayA::convert(s[x].limit());
 				}
 			}
 			break;
 		case Format_U8_RGBA:
 			newimg.make(w, h, newformat);
 			for (int y = 0; y < h; y++) {
-				OctetRGBA const *s = (OctetRGBA const *)scanLine(y);
-				OctetGrayA *d = (OctetGrayA *)newimg.scanLine(y);
+				UInt8RGBA const *s = (UInt8RGBA const *)scanLine(y);
+				UInt8GrayA *d = (UInt8GrayA *)newimg.scanLine(y);
 				for (int x = 0; x < w; x++) {
-					d[x] = OctetGrayA::convert(s[x]);
+					d[x] = UInt8GrayA::convert(s[x]);
 				}
 			}
 			break;
 		case Format_U8_RGB:
 			newimg.make(w, h, newformat);
 			for (int y = 0; y < h; y++) {
-				OctetRGB const *s = (OctetRGB const *)scanLine(y);
-				OctetGrayA *d = (OctetGrayA *)newimg.scanLine(y);
+				UInt8RGB const *s = (UInt8RGB const *)scanLine(y);
+				UInt8GrayA *d = (UInt8GrayA *)newimg.scanLine(y);
 				for (int x = 0; x < w; x++) {
-					d[x] = OctetGrayA::convert(s[x]);
+					d[x] = UInt8GrayA::convert(s[x]);
 				}
 			}
 			break;
 		case Format_U8_Grayscale:
 			newimg.make(w, h, newformat);
 			for (int y = 0; y < h; y++) {
-				OctetGray const *s = (OctetGray const *)scanLine(y);
-				OctetGrayA *d = (OctetGrayA *)newimg.scanLine(y);
+				UInt8Gray const *s = (UInt8Gray const *)scanLine(y);
+				UInt8GrayA *d = (UInt8GrayA *)newimg.scanLine(y);
 				for (int x = 0; x < w; x++) {
-					d[x] = OctetGrayA::convert(s[x]);
+					d[x] = UInt8GrayA::convert(s[x]);
 				}
 			}
 			break;
 		}
-	} else if (newformat == Image::Format_U8_Grayscale) {
+	} else if (newformat == ImageFormat::Format_U8_Grayscale) {
 		switch (format()) {
 		case Format_F32_RGBA:
 			newimg.make(w, h, newformat);
 			for (int y = 0; y < h; y++) {
 				Float32RGBA const *s = (Float32RGBA const *)scanLine(y);
-				OctetGray *d = (OctetGray *)newimg.scanLine(y);
+				UInt8Gray *d = (UInt8Gray *)newimg.scanLine(y);
 				for (int x = 0; x < w; x++) {
-					d[x] = OctetGray::convert(s[x].limit());
+					d[x] = UInt8Gray::convert(s[x].limit());
 				}
 			}
 			break;
 		case Format_U8_RGBA:
 			newimg.make(w, h, newformat);
 			for (int y = 0; y < h; y++) {
-				OctetRGBA const *s = (OctetRGBA const *)scanLine(y);
-				OctetGray *d = (OctetGray *)newimg.scanLine(y);
+				UInt8RGBA const *s = (UInt8RGBA const *)scanLine(y);
+				UInt8Gray *d = (UInt8Gray *)newimg.scanLine(y);
 				for (int x = 0; x < w; x++) {
-					d[x] = OctetGray::convert(s[x]);
+					d[x] = UInt8Gray::convert(s[x]);
 				}
 			}
 			break;
 		case Format_U8_RGB:
 			newimg.make(w, h, newformat);
 			for (int y = 0; y < h; y++) {
-				OctetRGB const *s = (OctetRGB const *)scanLine(y);
-				OctetGray *d = (OctetGray *)newimg.scanLine(y);
+				UInt8RGB const *s = (UInt8RGB const *)scanLine(y);
+				UInt8Gray *d = (UInt8Gray *)newimg.scanLine(y);
 				for (int x = 0; x < w; x++) {
-					d[x] = OctetGray::convert(s[x]);
+					d[x] = UInt8Gray::convert(s[x]);
 				}
 			}
 			break;
 		case Format_U8_GrayscaleA:
 			newimg.make(w, h, newformat);
 			for (int y = 0; y < h; y++) {
-				OctetGrayA const *s = (OctetGrayA const *)scanLine(y);
-				OctetGray *d = (OctetGray *)newimg.scanLine(y);
+				UInt8GrayA const *s = (UInt8GrayA const *)scanLine(y);
+				UInt8Gray *d = (UInt8Gray *)newimg.scanLine(y);
 				for (int x = 0; x < w; x++) {
-					d[x] = OctetGray::convert(s[x]);
+					d[x] = UInt8Gray::convert(s[x]);
 				}
 			}
 			break;
 		}
-	} else if (newformat == Image::Format_F32_Grayscale) {
+	} else if (newformat == ImageFormat::Format_F32_Grayscale) {
 		switch (format()) {
 		case Format_U8_Grayscale:
 			newimg.make(w, h, newformat);
@@ -620,7 +892,7 @@ euclase::Image euclase::Image::convertToFormat(Image::Format newformat) const
 		case Format_U8_RGBA:
 			newimg.make(w, h, newformat);
 			for (int y = 0; y < h; y++) {
-				OctetRGBA const *s = (OctetRGBA const *)scanLine(y);
+				UInt8RGBA const *s = (UInt8RGBA const *)scanLine(y);
 				Float32Gray *d = (Float32Gray *)newimg.scanLine(y);
 				for (int x = 0; x < w; x++) {
 					d[x] = Float32Gray::convert(s[x]);
@@ -628,12 +900,12 @@ euclase::Image euclase::Image::convertToFormat(Image::Format newformat) const
 			}
 			break;
 		}
-	} else if (newformat == Image::Format_F32_GrayscaleA) {
+	} else if (newformat == ImageFormat::Format_F32_GrayscaleA) {
 		switch (format()) {
 		case Format_U8_GrayscaleA:
 			newimg.make(w, h, newformat);
 			for (int y = 0; y < h; y++) {
-				OctetGrayA const *s = (OctetGrayA const *)scanLine(y);
+				UInt8GrayA const *s = (UInt8GrayA const *)scanLine(y);
 				Float32GrayA *d = (Float32GrayA *)newimg.scanLine(y);
 				for (int x = 0; x < w; x++) {
 					d[x] = Float32GrayA::convert(s[x]);
@@ -642,16 +914,17 @@ euclase::Image euclase::Image::convertToFormat(Image::Format newformat) const
 			break;
 		}
 	}
-	return newimg;
+
+	return ::euclase::convertToFormat(*this, newformat);
 }
 
 euclase::Image euclase::Image::makeFPImage() const
 {
 	switch (format()) {
-	case euclase::Image::Format_F32_RGB:
-	case euclase::Image::Format_F32_RGBA:
-	case euclase::Image::Format_F32_Grayscale:
-	case euclase::Image::Format_F32_GrayscaleA:
+	case euclase::ImageFormat::Format_F32_RGB:
+	case euclase::ImageFormat::Format_F32_RGBA:
+	case euclase::ImageFormat::Format_F32_Grayscale:
+	case euclase::ImageFormat::Format_F32_GrayscaleA:
 		return *this;
 	case Format_U8_RGB:
 		return convertToFormat(Format_F32_RGB);
@@ -688,55 +961,55 @@ Size euclase::Image::size() const
 }
 
 #ifdef USE_QT
-QImage::Format euclase::qimageformat(Image::Format format)
+QImage::Format euclase::qimageformat(ImageFormat format)
 {
 	switch (format) {
-	case euclase::Image::Format_U8_RGB:
+	case euclase::ImageFormat::Format_U8_RGB:
 		return QImage::Format_RGB888;
-	case euclase::Image::Format_U8_RGBA:
+	case euclase::ImageFormat::Format_U8_RGBA:
 		return QImage::Format_RGBA8888;
-	case euclase::Image::Format_U8_Grayscale:
+	case euclase::ImageFormat::Format_U8_Grayscale:
 		return QImage::Format_Grayscale8;
 	}
 	return QImage::Format_Invalid;
 }
 #endif
 
-int euclase::bytesPerPixel(Image::Format format)
+int euclase::bytesPerPixel(ImageFormat format)
 {
 	switch (format) {
-	case Image::Format_U8_RGB:
+	case ImageFormat::Format_U8_RGB:
 		return 3;
-	case Image::Format_U8_RGBA:
+	case ImageFormat::Format_U8_RGBA:
 		return 4;
-	case Image::Format_U8_Grayscale:
+	case ImageFormat::Format_U8_Grayscale:
 		return 1;
-	case Image::Format_U8_GrayscaleA:
+	case ImageFormat::Format_U8_GrayscaleA:
 		return 2;
-	case Image::Format_F32_RGB:
+	case ImageFormat::Format_F32_RGB:
 		return sizeof(float) * 3;
-	case Image::Format_F32_RGBA:
+	case ImageFormat::Format_F32_RGBA:
 		return sizeof(float) * 4;
-	case Image::Format_F32_Grayscale:
+	case ImageFormat::Format_F32_Grayscale:
 		return sizeof(float);
-	case Image::Format_F32_GrayscaleA:
+	case ImageFormat::Format_F32_GrayscaleA:
 		return sizeof(float) * 2;
-	case Image::Format_F16_RGB:
+	case ImageFormat::Format_F16_RGB:
 		return sizeof(_float16_t) * 3;
-	case Image::Format_F16_RGBA:
+	case ImageFormat::Format_F16_RGBA:
 		return sizeof(_float16_t) * 4;
-	case Image::Format_F16_Grayscale:
+	case ImageFormat::Format_F16_Grayscale:
 		return sizeof(_float16_t);
-	case Image::Format_F16_GrayscaleA:
+	case ImageFormat::Format_F16_GrayscaleA:
 		return sizeof(_float16_t) * 2;
 	}
 	return 0;
 }
 
-bool euclase::Image::init(int w, int h, Image::Format format, MemoryType memtype, const Color &color)
+bool euclase::Image::init(int w, int h, ImageFormat format, MemoryType memtype, const Color &color)
 {
 	if (w < 1 || h < 1) {
-		qDebug() << "euclase::Image::init: invalid size" << w << h;
+		// qDebug() << "euclase::Image::init: invalid size" << w << h;
 		w = h = 0;
 		return false;
 	}
@@ -746,7 +1019,7 @@ bool euclase::Image::init(int w, int h, Image::Format format, MemoryType memtype
 		size_t n = sizeof(Data) + (memtype == Host ? datasize : 0);
 		p = (Data *)new char[n];
 	} catch (std::bad_alloc &e) {
-		qDebug() << "euclase::Image::init: bad_alloc" << e.what();
+		// qDebug() << "euclase::Image::init: bad_alloc" << e.what();
 		return false;
 	}
 	if (!p) {
@@ -777,7 +1050,7 @@ euclase::Image euclase::Image::copy(MemoryType memtype) const
 	auto f = format();
 	Image newimg(w, h, f, dst_memtype);
 	if (ptr_) {
-		const int datasize = w * h * euclase::bytesPerPixel(f);
+		const size_t datasize = w * h * euclase::bytesPerPixel(f);
 		switch (dst_memtype) {
 		case Host:
 			switch (src_memtype) {
@@ -853,7 +1126,7 @@ euclase::Float32RGB euclase::hsv_to_rgb(const FloatHSV &hsv)
 	rgb.g = hsv.v;
 	rgb.b = hsv.v;
 	if (hsv.s > 0.0f) {
-		float h = fmod(hsv.h * 6, 6);
+		float h = (float)fmod(hsv.h * 6, 6);
 		if (h < 0) h += 6;
 		const float MAX = hsv.v;
 		const float MIN = MAX - ((hsv.s) * MAX);
@@ -914,7 +1187,7 @@ static double bicubic(double t)
 	return 0;
 }
 
-template <euclase::Image::Format FORMAT, typename PIXEL>
+template <euclase::ImageFormat FORMAT, typename PIXEL>
 euclase::Image resizeNearestNeighbor(euclase::Image const &image, int dst_w, int dst_h)
 {
 	const int src_w = image.width();
@@ -935,12 +1208,12 @@ euclase::Image resizeNearestNeighbor(euclase::Image const &image, int dst_w, int
 	return newimg;
 }
 
-template <euclase::Image::Format FORMAT, typename PIXEL, typename FPIXEL>
+template <euclase::ImageFormat FORMAT, typename PIXEL, typename FPIXEL>
 euclase::Image resizeAveragingT(euclase::Image const &image, int dst_w, int dst_h)
 {
 	const int src_w = image.width();
 	const int src_h = image.height();
-	euclase::Image newimg(dst_w, dst_h, (euclase::Image::Format)FORMAT);
+	euclase::Image newimg(dst_w, dst_h, (euclase::ImageFormat)FORMAT);
 #pragma omp parallel for
 	for (int y = 0; y < dst_h; y++) {
 		double lo_y = (double)y * src_h / dst_h;
@@ -981,22 +1254,22 @@ euclase::Image resizeAveragingT(euclase::Image const &image, int dst_w, int dst_
 						}
 					}
 					double v = vy * vx;
-					pixel.add(p, v);
+					pixel.add(p, (float)v);
 					volume += v;
 				}
 			}
-			dst[x] = pixel.color(volume);
+			dst[x] = pixel.color((float)volume);
 		}
 	}
 	return newimg;
 }
 
-template <euclase::Image::Format FORMAT, typename PIXEL, typename FPIXEL>
+template <euclase::ImageFormat FORMAT, typename PIXEL, typename FPIXEL>
 euclase::Image resizeAveragingHT(euclase::Image const &image, int dst_w)
 {
 	const int src_w = image.width();
 	const int src_h = image.height();
-	euclase::Image newimg(dst_w, src_h, (euclase::Image::Format)FORMAT);
+	euclase::Image newimg(dst_w, src_h, (euclase::ImageFormat)FORMAT);
 #pragma omp parallel for
 	for (int y = 0; y < src_h; y++) {
 		PIXEL *dst = (PIXEL *)newimg.scanLine(y);
@@ -1020,16 +1293,16 @@ euclase::Image resizeAveragingHT(euclase::Image const &image, int dst_w)
 						v = hi_x - sx;
 					}
 				}
-				pixel.add(p, v);
+				pixel.add(p, (float)v);
 				volume += v;
 			}
-			dst[x] = pixel.color(volume);
+			dst[x] = pixel.color((float)volume);
 		}
 	}
 	return newimg;
 }
 
-template <euclase::Image::Format FORMAT, typename PIXEL, typename FPIXEL>
+template <euclase::ImageFormat FORMAT, typename PIXEL, typename FPIXEL>
 euclase::Image resizeAveragingVT(euclase::Image const &image, int dst_h)
 {
 	const int src_w = image.width();
@@ -1058,10 +1331,10 @@ euclase::Image resizeAveragingVT(euclase::Image const &image, int dst_h)
 				}
 				PIXEL const *src = (PIXEL const *)image.scanLine(sy < src_h ? sy : (src_h - 1));
 				FPIXEL p = euclase::pixel_cast<FPIXEL>(src[x]);
-				pixel.add(p, v);
+				pixel.add(p, (float)v);
 				volume += v;
 			}
-			dst[x] = pixel.color(volume);
+			dst[x] = pixel.color((float)volume);
 		}
 	}
 	return newimg;
@@ -1072,12 +1345,12 @@ struct bilinear_t {
 	double v0, v1;
 };
 
-template <euclase::Image::Format FORMAT, typename PIXEL, typename FPIXEL>
+template <euclase::ImageFormat FORMAT, typename PIXEL, typename FPIXEL>
 euclase::Image resizeBilinearT(euclase::Image const &image, int dst_w, int dst_h)
 {
 	const int src_w = image.width();
 	const int src_h = image.height();
-	euclase::Image newimg(dst_w, dst_h, (euclase::Image::Format)FORMAT);
+	euclase::Image newimg(dst_w, dst_h, (euclase::ImageFormat)FORMAT);
 
 	std::vector<bilinear_t> lut(dst_w);
 	bilinear_t *lut_p = &lut[0];
@@ -1130,22 +1403,22 @@ euclase::Image resizeBilinearT(euclase::Image const &image, int dst_w, int dst_h
 			double a21 = lut_p[x].v0 * yt;
 			double a22 = lut_p[x].v1 * yt;
 			FPIXEL pixel;
-			pixel.add(euclase::pixel_cast<FPIXEL>(src1[lut_p[x].i0]), a11);
-			pixel.add(euclase::pixel_cast<FPIXEL>(src1[lut_p[x].i1]), a12);
-			pixel.add(euclase::pixel_cast<FPIXEL>(src2[lut_p[x].i0]), a21);
-			pixel.add(euclase::pixel_cast<FPIXEL>(src2[lut_p[x].i1]), a22);
-			dst[x] = pixel.color(a11 + a12 + a21 + a22);
+			pixel.add(euclase::pixel_cast<FPIXEL>(src1[lut_p[x].i0]), (float)a11);
+			pixel.add(euclase::pixel_cast<FPIXEL>(src1[lut_p[x].i1]), (float)a12);
+			pixel.add(euclase::pixel_cast<FPIXEL>(src2[lut_p[x].i0]), (float)a21);
+			pixel.add(euclase::pixel_cast<FPIXEL>(src2[lut_p[x].i1]), (float)a22);
+			dst[x] = pixel.color((float)(a11 + a12 + a21 + a22));
 		}
 	}
 	return newimg;
 }
 
-template <euclase::Image::Format FORMAT, typename PIXEL, typename FPIXEL>
+template <euclase::ImageFormat FORMAT, typename PIXEL, typename FPIXEL>
 euclase::Image resizeBilinearHT(euclase::Image const &image, int dst_w)
 {
 	const int src_w = image.width();
 	const int src_h = image.height();
-	euclase::Image newimg(dst_w, src_h, (euclase::Image::Format)FORMAT);
+	euclase::Image newimg(dst_w, src_h, (euclase::ImageFormat)FORMAT);
 #pragma omp parallel for
 	for (int y = 0; y < src_h; y++) {
 		PIXEL *dst = (PIXEL *)newimg.scanLine(y);
@@ -1171,15 +1444,15 @@ euclase::Image resizeBilinearHT(euclase::Image const &image, int dst_w)
 			FPIXEL p1(euclase::pixel_cast<FPIXEL>(src[x0]));
 			FPIXEL p2(euclase::pixel_cast<FPIXEL>(src[x1]));
 			FPIXEL p;
-			p.add(p1, xs);
-			p.add(p2, xt);
+			p.add(p1, (float)xs);
+			p.add(p2, (float)xt);
 			dst[x] = p.color(1);
 		}
 	}
 	return newimg;
 }
 
-template <euclase::Image::Format FORMAT, typename PIXEL, typename FPIXEL>
+template <euclase::ImageFormat FORMAT, typename PIXEL, typename FPIXEL>
 euclase::Image resizeBilinearVT(euclase::Image const &image, int dst_h)
 {
 	const int src_w = image.width();
@@ -1210,8 +1483,8 @@ euclase::Image resizeBilinearVT(euclase::Image const &image, int dst_h)
 			FPIXEL p1(euclase::pixel_cast<FPIXEL>(src1[x]));
 			FPIXEL p2(euclase::pixel_cast<FPIXEL>(src2[x]));
 			FPIXEL p;
-			p.add(p1, ys);
-			p.add(p2, yt);
+			p.add(p1, (float)ys);
+			p.add(p2, (float)yt);
 			dst[x] = p.color(1);
 		}
 	}
@@ -1238,13 +1511,13 @@ static bicubic_lut_t makeBicubicLookupTable(int src, int dst, std::vector<double
 	return lut;
 }
 
-template <euclase::Image::Format FORMAT, typename PIXEL, typename FPIXEL>
+template <euclase::ImageFormat FORMAT, typename PIXEL, typename FPIXEL>
 euclase::Image resizeBicubicT(euclase::Image const &image, int dst_w, int dst_h)
 {
 	const int src_w = image.width();
 	const int src_h = image.height();
 	euclase::Image newimg;
-	if (!newimg.make(dst_w, dst_h, (euclase::Image::Format)FORMAT)) {
+	if (!newimg.make(dst_w, dst_h, (euclase::ImageFormat)FORMAT)) {
 		return {}; // bad alloc?
 	}
 
@@ -1274,24 +1547,24 @@ euclase::Image resizeBicubicT(euclase::Image const &image, int dst_w, int dst_h)
 							double vx = bicubic_lut_x_p[x][x2 + 1];
 							FPIXEL p(euclase::pixel_cast<FPIXEL>(src[x3]));
 							double v = vx * vy;
-							pixel.add(p, v);
+							pixel.add(p, (float)v);
 							amount += v;
 						}
 					}
 				}
 			}
-			dst[x] = pixel.color(amount);
+			dst[x] = pixel.color((float)amount);
 		}
 	}
 	return newimg;
 }
 
-template <euclase::Image::Format FORMAT, typename PIXEL, typename FPIXEL>
+template <euclase::ImageFormat FORMAT, typename PIXEL, typename FPIXEL>
 euclase::Image resizeBicubicHT(euclase::Image const &image, int dst_w)
 {
 	const int src_w = image.width();
 	const int src_h = image.height();
-	euclase::Image newimg(dst_w, src_h, (euclase::Image::Format)FORMAT);
+	euclase::Image newimg(dst_w, src_h, (euclase::ImageFormat)FORMAT);
 
 	std::vector<double> bicubic_lut_x;
 	bicubic_lut_t bicubic_lut_x_p = makeBicubicLookupTable(src_w, dst_w, &bicubic_lut_x);
@@ -1310,17 +1583,17 @@ euclase::Image resizeBicubicHT(euclase::Image const &image, int dst_w)
 				if (x3 >= 0 && x3 < src_w) {
 					double v = bicubic_lut_x_p[x][x2 + 1];
 					FPIXEL p(euclase::pixel_cast<FPIXEL>(src[x3]));
-					pixel.add(p, v);
+					pixel.add(p, (float)v);
 					volume += v;
 				}
 			}
-			dst[x] = pixel.color(volume);
+			dst[x] = pixel.color((float)volume);
 		}
 	}
 	return newimg;
 }
 
-template <euclase::Image::Format FORMAT, typename PIXEL, typename FPIXEL>
+template <euclase::ImageFormat FORMAT, typename PIXEL, typename FPIXEL>
 euclase::Image resizeBicubicVT(euclase::Image const &image, int dst_h)
 {
 	const int src_w = image.width();
@@ -1343,11 +1616,11 @@ euclase::Image resizeBicubicVT(euclase::Image const &image, int dst_h)
 				if (y3 >= 0 && y3 < src_h) {
 					double v = bicubic_lut_y_p[y][y2 + 1];
 					FPIXEL p(euclase::pixel_cast<FPIXEL>(((PIXEL const *)image.scanLine(y3))[x]));
-					pixel.add(p, v);
+					pixel.add(p, (float)v);
 					volume += v;
 				}
 			}
-			*dst = pixel.color(volume);
+			*dst = pixel.color((float)volume);
 		}
 	}
 	return newimg;
@@ -1369,7 +1642,7 @@ template <typename PIXEL, typename FPIXEL> euclase::Image BlurFilter(euclase::Im
 		{
 			for (int y = 0; y < radius; y++) {
 				double t = asin((radius - (y + 0.5)) / radius);
-				double x = floor(cos(t) * radius + 0.5);
+				int x = (int)floor(cos(t) * radius + 0.5);
 				shape[y] = x;
 				shape[radius * 2 - y] = x;
 			}
@@ -1457,25 +1730,25 @@ static euclase::Image resizeColorImage(euclase::Image const &image, int dst_w, i
 		if (w != dst_w || h != dst_h) {
 			if (dst_w < w || dst_h < h) {
 				if (method == EnlargeMethod::NearestNeighbor) {
-					newimage = resizeNearestNeighbor<euclase::Image::Format_F32_RGBA, Float32RGBA>(newimage, dst_w, dst_h);
+					newimage = resizeNearestNeighbor<euclase::ImageFormat::Format_F32_RGBA, Float32RGBA>(newimage, dst_w, dst_h);
 				} else {
 					if (dst_w < w && dst_h < h) {
 						if (alphachannel) {
-							newimage = resizeAveragingT<euclase::Image::Format_F32_RGBA, Float32RGBA, Float32RGBA>(image, dst_w, dst_h);
+							newimage = resizeAveragingT<euclase::ImageFormat::Format_F32_RGBA, Float32RGBA, Float32RGBA>(image, dst_w, dst_h);
 						} else {
-							newimage = resizeAveragingT<euclase::Image::Format_F32_RGBA, Float32RGB, Float32RGB>(image, dst_w, dst_h);
+							newimage = resizeAveragingT<euclase::ImageFormat::Format_F32_RGBA, Float32RGB, Float32RGB>(image, dst_w, dst_h);
 						}
 					} else if (dst_w < w) {
 						if (alphachannel) {
-							newimage = resizeAveragingHT<euclase::Image::Format_F32_RGBA, Float32RGBA, Float32RGBA>(image, dst_w);
+							newimage = resizeAveragingHT<euclase::ImageFormat::Format_F32_RGBA, Float32RGBA, Float32RGBA>(image, dst_w);
 						} else {
-							newimage = resizeAveragingHT<euclase::Image::Format_F32_RGBA, Float32RGB, Float32RGB>(image, dst_w);
+							newimage = resizeAveragingHT<euclase::ImageFormat::Format_F32_RGBA, Float32RGB, Float32RGB>(image, dst_w);
 						}
 					} else if (dst_h < h) {
 						if (alphachannel) {
-							newimage = resizeAveragingVT<euclase::Image::Format_F32_RGBA, Float32RGBA, Float32RGBA>(image, dst_h);
+							newimage = resizeAveragingVT<euclase::ImageFormat::Format_F32_RGBA, Float32RGBA, Float32RGBA>(image, dst_h);
 						} else {
-							newimage = resizeAveragingVT<euclase::Image::Format_F32_RGBA, Float32RGB, Float32RGB>(image, dst_h);
+							newimage = resizeAveragingVT<euclase::ImageFormat::Format_F32_RGBA, Float32RGB, Float32RGB>(image, dst_h);
 						}
 					}
 				}
@@ -1486,45 +1759,45 @@ static euclase::Image resizeColorImage(euclase::Image const &image, int dst_w, i
 				if (method == EnlargeMethod::Bilinear) {
 					if (dst_w > w && dst_h > h) {
 						if (alphachannel) {
-							newimage = resizeBilinearT<euclase::Image::Format_F32_RGBA, Float32RGBA, Float32RGBA>(newimage, dst_w, dst_h);
+							newimage = resizeBilinearT<euclase::ImageFormat::Format_F32_RGBA, Float32RGBA, Float32RGBA>(newimage, dst_w, dst_h);
 						} else {
-							newimage = resizeBilinearT<euclase::Image::Format_F32_RGBA, Float32RGB, Float32RGB>(newimage, dst_w, dst_h);
+							newimage = resizeBilinearT<euclase::ImageFormat::Format_F32_RGBA, Float32RGB, Float32RGB>(newimage, dst_w, dst_h);
 						}
 					} else if (dst_w > w) {
 						if (alphachannel) {
-							newimage = resizeBilinearHT<euclase::Image::Format_F32_RGBA, Float32RGBA, Float32RGBA>(newimage, dst_w);
+							newimage = resizeBilinearHT<euclase::ImageFormat::Format_F32_RGBA, Float32RGBA, Float32RGBA>(newimage, dst_w);
 						} else {
-							newimage = resizeBilinearHT<euclase::Image::Format_F32_RGBA, Float32RGB, Float32RGB>(newimage, dst_w);
+							newimage = resizeBilinearHT<euclase::ImageFormat::Format_F32_RGBA, Float32RGB, Float32RGB>(newimage, dst_w);
 						}
 					} else if (dst_h > h) {
 						if (alphachannel) {
-							newimage = resizeBilinearVT<euclase::Image::Format_F32_RGBA, Float32RGBA, Float32RGBA>(newimage, dst_h);
+							newimage = resizeBilinearVT<euclase::ImageFormat::Format_F32_RGBA, Float32RGBA, Float32RGBA>(newimage, dst_h);
 						} else {
-							newimage = resizeBilinearVT<euclase::Image::Format_F32_RGBA, Float32RGB, Float32RGB>(newimage, dst_h);
+							newimage = resizeBilinearVT<euclase::ImageFormat::Format_F32_RGBA, Float32RGB, Float32RGB>(newimage, dst_h);
 						}
 					}
 				} else if (method == EnlargeMethod::Bicubic) {
 					if (dst_w > w && dst_h > h) {
 						if (alphachannel) {
-							newimage = resizeBicubicT<euclase::Image::Format_F32_RGBA, Float32RGBA, Float32RGBA>(newimage, dst_w, dst_h);
+							newimage = resizeBicubicT<euclase::ImageFormat::Format_F32_RGBA, Float32RGBA, Float32RGBA>(newimage, dst_w, dst_h);
 						} else {
-							newimage = resizeBicubicT<euclase::Image::Format_F32_RGBA, Float32RGB, Float32RGB>(newimage, dst_w, dst_h);
+							newimage = resizeBicubicT<euclase::ImageFormat::Format_F32_RGBA, Float32RGB, Float32RGB>(newimage, dst_w, dst_h);
 						}
 					} else if (dst_w > w) {
 						if (alphachannel) {
-							newimage = resizeBicubicHT<euclase::Image::Format_F32_RGBA, Float32RGBA, Float32RGBA>(newimage, dst_w);
+							newimage = resizeBicubicHT<euclase::ImageFormat::Format_F32_RGBA, Float32RGBA, Float32RGBA>(newimage, dst_w);
 						} else {
-							newimage = resizeBicubicHT<euclase::Image::Format_F32_RGBA, Float32RGB, Float32RGB>(newimage, dst_w);
+							newimage = resizeBicubicHT<euclase::ImageFormat::Format_F32_RGBA, Float32RGB, Float32RGB>(newimage, dst_w);
 						}
 					} else if (dst_h > h) {
 						if (alphachannel) {
-							newimage = resizeBicubicVT<euclase::Image::Format_F32_RGBA, Float32RGBA, Float32RGBA>(newimage, dst_h);
+							newimage = resizeBicubicVT<euclase::ImageFormat::Format_F32_RGBA, Float32RGBA, Float32RGBA>(newimage, dst_h);
 						} else {
-							newimage = resizeBicubicVT<euclase::Image::Format_F32_RGBA, Float32RGB, Float32RGB>(newimage, dst_h);
+							newimage = resizeBicubicVT<euclase::ImageFormat::Format_F32_RGBA, Float32RGB, Float32RGB>(newimage, dst_h);
 						}
 					}
 				} else {
-					newimage = resizeNearestNeighbor<euclase::Image::Format_F32_RGBA, Float32RGBA>(newimage, dst_w, dst_h);
+					newimage = resizeNearestNeighbor<euclase::ImageFormat::Format_F32_RGBA, Float32RGBA>(newimage, dst_w, dst_h);
 				}
 			}
 		}
@@ -1543,25 +1816,25 @@ static euclase::Image resizeGrayscaleImage(euclase::Image const &image, int dst_
 			newimage = image;
 			if (dst_w < w || dst_h < h) {
 				if (method == EnlargeMethod::NearestNeighbor) {
-					newimage = resizeNearestNeighbor<euclase::Image::Format_F32_Grayscale, Float32Gray>(newimage, dst_w, dst_h);
+					newimage = resizeNearestNeighbor<euclase::ImageFormat::Format_F32_Grayscale, Float32Gray>(newimage, dst_w, dst_h);
 				} else {
 					if (dst_w < w && dst_h < h) {
 						if (alphachannel) {
-							newimage = resizeAveragingT<euclase::Image::Format_F32_Grayscale, Float32GrayA, Float32GrayA>(newimage, dst_w, dst_h);
+							newimage = resizeAveragingT<euclase::ImageFormat::Format_F32_Grayscale, Float32GrayA, Float32GrayA>(newimage, dst_w, dst_h);
 						} else {
-							newimage = resizeAveragingT<euclase::Image::Format_F32_Grayscale, Float32Gray, Float32Gray>(newimage, dst_w, dst_h);
+							newimage = resizeAveragingT<euclase::ImageFormat::Format_F32_Grayscale, Float32Gray, Float32Gray>(newimage, dst_w, dst_h);
 						}
 					} else if (dst_w < w) {
 						if (alphachannel) {
-							newimage = resizeAveragingHT<euclase::Image::Format_F32_Grayscale, Float32GrayA, Float32GrayA>(newimage, dst_w);
+							newimage = resizeAveragingHT<euclase::ImageFormat::Format_F32_Grayscale, Float32GrayA, Float32GrayA>(newimage, dst_w);
 						} else {
-							newimage = resizeAveragingHT<euclase::Image::Format_F32_Grayscale, Float32Gray, Float32Gray>(newimage, dst_w);
+							newimage = resizeAveragingHT<euclase::ImageFormat::Format_F32_Grayscale, Float32Gray, Float32Gray>(newimage, dst_w);
 						}
 					} else if (dst_h < h) {
 						if (alphachannel) {
-							newimage = resizeAveragingVT<euclase::Image::Format_F32_Grayscale, Float32GrayA, Float32GrayA>(newimage, dst_h);
+							newimage = resizeAveragingVT<euclase::ImageFormat::Format_F32_Grayscale, Float32GrayA, Float32GrayA>(newimage, dst_h);
 						} else {
-							newimage = resizeAveragingVT<euclase::Image::Format_F32_Grayscale, Float32Gray, Float32Gray>(newimage, dst_h);
+							newimage = resizeAveragingVT<euclase::ImageFormat::Format_F32_Grayscale, Float32Gray, Float32Gray>(newimage, dst_h);
 						}
 					}
 				}
@@ -1572,45 +1845,45 @@ static euclase::Image resizeGrayscaleImage(euclase::Image const &image, int dst_
 				if (method == EnlargeMethod::Bilinear) {
 					if (dst_w > w && dst_h > h) {
 						if (alphachannel) {
-							newimage = resizeBilinearT<euclase::Image::Format_F32_Grayscale, Float32GrayA, Float32GrayA>(newimage, dst_w, dst_h);
+							newimage = resizeBilinearT<euclase::ImageFormat::Format_F32_Grayscale, Float32GrayA, Float32GrayA>(newimage, dst_w, dst_h);
 						} else {
-							newimage = resizeBilinearT<euclase::Image::Format_F32_Grayscale, Float32Gray, Float32Gray>(newimage, dst_w, dst_h);
+							newimage = resizeBilinearT<euclase::ImageFormat::Format_F32_Grayscale, Float32Gray, Float32Gray>(newimage, dst_w, dst_h);
 						}
 					} else if (dst_w > w) {
 						if (alphachannel) {
-							newimage = resizeBilinearHT<euclase::Image::Format_F32_Grayscale, Float32GrayA, Float32GrayA>(newimage, dst_w);
+							newimage = resizeBilinearHT<euclase::ImageFormat::Format_F32_Grayscale, Float32GrayA, Float32GrayA>(newimage, dst_w);
 						} else {
-							newimage = resizeBilinearHT<euclase::Image::Format_F32_Grayscale, Float32Gray, Float32Gray>(newimage, dst_w);
+							newimage = resizeBilinearHT<euclase::ImageFormat::Format_F32_Grayscale, Float32Gray, Float32Gray>(newimage, dst_w);
 						}
 					} else if (dst_h > h) {
 						if (alphachannel) {
-							newimage = resizeBilinearVT<euclase::Image::Format_F32_Grayscale, Float32GrayA, Float32GrayA>(newimage, dst_h);
+							newimage = resizeBilinearVT<euclase::ImageFormat::Format_F32_Grayscale, Float32GrayA, Float32GrayA>(newimage, dst_h);
 						} else {
-							newimage = resizeBilinearVT<euclase::Image::Format_F32_Grayscale, Float32Gray, Float32Gray>(newimage, dst_h);
+							newimage = resizeBilinearVT<euclase::ImageFormat::Format_F32_Grayscale, Float32Gray, Float32Gray>(newimage, dst_h);
 						}
 					}
 				} else if (method == EnlargeMethod::Bicubic) {
 					if (dst_w > w && dst_h > h) {
 						if (alphachannel) {
-							newimage = resizeBicubicT<euclase::Image::Format_F32_Grayscale, Float32GrayA, Float32GrayA>(newimage, dst_w, dst_h);
+							newimage = resizeBicubicT<euclase::ImageFormat::Format_F32_Grayscale, Float32GrayA, Float32GrayA>(newimage, dst_w, dst_h);
 						} else {
-							newimage = resizeBicubicT<euclase::Image::Format_F32_Grayscale, Float32Gray, Float32Gray>(newimage, dst_w, dst_h);
+							newimage = resizeBicubicT<euclase::ImageFormat::Format_F32_Grayscale, Float32Gray, Float32Gray>(newimage, dst_w, dst_h);
 						}
 					} else if (dst_w > w) {
 						if (alphachannel) {
-							newimage = resizeBicubicHT<euclase::Image::Format_F32_Grayscale, Float32GrayA, Float32GrayA>(newimage, dst_w);
+							newimage = resizeBicubicHT<euclase::ImageFormat::Format_F32_Grayscale, Float32GrayA, Float32GrayA>(newimage, dst_w);
 						} else {
-							newimage = resizeBicubicHT<euclase::Image::Format_F32_Grayscale, Float32Gray, Float32Gray>(newimage, dst_w);
+							newimage = resizeBicubicHT<euclase::ImageFormat::Format_F32_Grayscale, Float32Gray, Float32Gray>(newimage, dst_w);
 						}
 					} else if (dst_h > h) {
 						if (alphachannel) {
-							newimage = resizeBicubicVT<euclase::Image::Format_F32_Grayscale, Float32GrayA, Float32GrayA>(newimage, dst_h);
+							newimage = resizeBicubicVT<euclase::ImageFormat::Format_F32_Grayscale, Float32GrayA, Float32GrayA>(newimage, dst_h);
 						} else {
-							newimage = resizeBicubicVT<euclase::Image::Format_F32_Grayscale, Float32Gray, Float32Gray>(newimage, dst_h);
+							newimage = resizeBicubicVT<euclase::ImageFormat::Format_F32_Grayscale, Float32Gray, Float32Gray>(newimage, dst_h);
 						}
 					}
 				} else {
-					newimage = resizeNearestNeighbor<euclase::Image::Format_F32_Grayscale, Float32Gray>(newimage, dst_w, dst_h);
+					newimage = resizeNearestNeighbor<euclase::ImageFormat::Format_F32_Grayscale, Float32Gray>(newimage, dst_w, dst_h);
 				}
 			}
 		}
@@ -1630,24 +1903,24 @@ euclase::Image euclase::resizeImage(euclase::Image const &image, int dst_w, int 
 
 	bool alphachannel = false;
 	switch (image.format()) {
-	case euclase::Image::Format_U8_RGBA:
-	case euclase::Image::Format_F32_RGBA:
-	case euclase::Image::Format_U8_GrayscaleA:
-	case euclase::Image::Format_F32_GrayscaleA:
+	case euclase::ImageFormat::Format_U8_RGBA:
+	case euclase::ImageFormat::Format_F32_RGBA:
+	case euclase::ImageFormat::Format_U8_GrayscaleA:
+	case euclase::ImageFormat::Format_F32_GrayscaleA:
 		alphachannel = true;
 		break;
 	}
 
 	switch (image.format()) {
-	case euclase::Image::Format_U8_Grayscale:
-		return resizeNearestNeighbor<euclase::Image::Format_U8_Grayscale, euclase::OctetGray>(image, dst_w, dst_h);
-	case euclase::Image::Format_U8_GrayscaleA:
-		return resizeNearestNeighbor<euclase::Image::Format_U8_GrayscaleA, euclase::OctetGrayA>(image, dst_w, dst_h);
-	case euclase::Image::Format_F32_RGB:
-	case euclase::Image::Format_F32_RGBA:
+	case euclase::ImageFormat::Format_U8_Grayscale:
+		return resizeNearestNeighbor<euclase::ImageFormat::Format_U8_Grayscale, euclase::UInt8Gray>(image, dst_w, dst_h);
+	case euclase::ImageFormat::Format_U8_GrayscaleA:
+		return resizeNearestNeighbor<euclase::ImageFormat::Format_U8_GrayscaleA, euclase::UInt8GrayA>(image, dst_w, dst_h);
+	case euclase::ImageFormat::Format_F32_RGB:
+	case euclase::ImageFormat::Format_F32_RGBA:
 		return resizeColorImage(image, dst_w, dst_h, method, alphachannel);
-	case euclase::Image::Format_F32_Grayscale:
-	case euclase::Image::Format_F32_GrayscaleA:
+	case euclase::ImageFormat::Format_F32_Grayscale:
+	case euclase::ImageFormat::Format_F32_GrayscaleA:
 		return resizeGrayscaleImage(image, dst_w, dst_h, method, alphachannel);
 	}
 	return {};
@@ -1655,19 +1928,19 @@ euclase::Image euclase::resizeImage(euclase::Image const &image, int dst_w, int 
 
 euclase::Image euclase::filter_blur(euclase::Image image, int radius, bool *cancel, std::function<void (float)> progress)
 {
-	if (image.format() == Image::Format_F32_RGBA) {
+	if (image.format() == ImageFormat::Format_F32_RGBA) {
 		return BlurFilter<Float32RGBA, Float32RGBA>(image, radius, cancel, progress);
 	}
 
-	if (image.format() == Image::Format_U8_Grayscale) {
+	if (image.format() == ImageFormat::Format_U8_Grayscale) {
 		return BlurFilter<Float32GrayA, Float32GrayA>(image, radius, cancel, progress);
 	}
 
 	auto format = image.format();
 	switch (format) {
-	case euclase::Image::Format_U8_RGBA:
-	case euclase::Image::Format_U8_GrayscaleA:
-		auto img = filter_blur(image.convertToFormat(Image::Format_F32_RGBA), radius, cancel, progress);
+	case euclase::ImageFormat::Format_U8_RGBA:
+	case euclase::ImageFormat::Format_U8_GrayscaleA:
+		auto img = filter_blur(image.convertToFormat(ImageFormat::Format_F32_RGBA), radius, cancel, progress);
 		return img.convertToFormat(format);
 	}
 	return {};

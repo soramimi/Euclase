@@ -22,8 +22,8 @@ static void *io_ptr(png_struct *png_ptr)
 
 static bool _write_png(euclase::Image const &src, std::function<int (char const *p, int n)> fn)
 {
-	if (src.memtype() != euclase::Image::Host || src.format() != euclase::Image::Format_U8_RGB) {
-		euclase::Image img = src.toHost().convertToFormat(euclase::Image::Format_U8_RGB);
+	if (src.memtype() != euclase::Image::Host || src.format() != euclase::ImageFormat::Format_U8_RGB) {
+		euclase::Image img = src.toHost().convertToFormat(euclase::ImageFormat::Format_U8_RGB);
 		return _write_png(img, fn);
 	}
 
@@ -258,13 +258,13 @@ static bool _load_png(euclase::Image *dst, std::function<int (char *p, int n)> f
 		ulRowBytes = png_get_rowbytes(png_ptr, info_ptr);
 		ulChannels = png_get_channels(png_ptr, info_ptr);
 
-		auto format = euclase::Image::Format_Invalid;
+		auto format = euclase::ImageFormat::Format_Invalid;
 		if (ulChannels == 1) {
-			format = euclase::Image::Format_U8_Grayscale;
+			format = euclase::ImageFormat::Format_U8_Grayscale;
 		} else if (ulChannels == 3) {
-			format = euclase::Image::Format_U8_RGB;
+			format = euclase::ImageFormat::Format_U8_RGB;
 		} else if (ulChannels == 4) {
-			format = euclase::Image::Format_U8_RGBA;
+			format = euclase::ImageFormat::Format_U8_RGBA;
 		} else {
 			throw "unsupported channels";
 		}

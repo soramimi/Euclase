@@ -141,9 +141,11 @@ HEADERS += \
 	fp/f16c.h \
 	fp/fp.h \
 	joinpath.h \
+	jpeg.cpph \
 	libEuclaseCUDA/libeuclasecuda.h \
 	median.h \
 	misc.h \
+	png.cpph \
 	uninitialized_vector.h \
 	xbrz/xbrz.h \
 	xbrz/xbrz_config.h \

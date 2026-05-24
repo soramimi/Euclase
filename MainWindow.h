@@ -206,8 +206,8 @@ public:
 	Canvas const *canvas() const;
 
 	void fitView();
-	Canvas::Panel renderToPanel(Canvas::InputLayerMode input_layer_mode, euclase::Image::Format format, QRect const &r, const QRect &maskrect, const Canvas::RenderOption &opt, bool *abort) const;
-	euclase::Image renderToImage(euclase::Image::Format format, QRect const &r, Canvas::RenderOption const &opt, bool *abort) const;
+	Canvas::Panel renderToPanel(Canvas::InputLayerMode input_layer_mode, euclase::ImageFormat format, QRect const &r, const QRect &maskrect, const Canvas::RenderOption &opt, bool *abort) const;
+	euclase::Image renderToImage(euclase::ImageFormat format, QRect const &r, Canvas::RenderOption const &opt, bool *abort) const;
 	QRect selectionRect() const;
 	void openFile(const QString &path);
 	int canvasWidth() const;
@@ -282,7 +282,7 @@ public:
 	bool isPreviewEnabled() const;
 	void setCurrentLayer(int index);
 	euclase::Image::MemoryType preferredMemoryType() const;
-	euclase::Image::Format preferredImageFormat() const;
+	euclase::ImageFormat preferredImageFormat() const;
 	void updateImageView(const QRect &canvasrect); // canvasrect is in canvas coordinate
 	std::mutex &mutexForCanvas() const;
 	euclase::Image renderSelection(const QRect &r, bool *abort) const;
