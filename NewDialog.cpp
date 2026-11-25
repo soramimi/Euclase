@@ -2,6 +2,7 @@
 #include "ui_NewDialog.h"
 
 #include <QClipboard>
+#include <QMessageBox>
 
 NewDialog::NewDialog(QWidget *parent)
 	: QDialog(parent)
@@ -48,13 +49,18 @@ void NewDialog::setImageSize(QSize size)
 
 QSize NewDialog::imageSize() const
 {
-	auto toStdString = [](QString const &s){
-		QByteArray ba = s.toUtf8();
-		return std::string(ba.data(), ba.size());
-	};
-	int w = strtoul(toStdString(ui->lineEdit_width->text()).data(), nullptr, 10);
-	int h = strtoul(toStdString(ui->lineEdit_height->text()).data(), nullptr, 10);
+	int w = ui->lineEdit_width->text().toInt();
+	int h = ui->lineEdit_height->text().toInt();
 	return validateImageSize(QSize(w, h));
+}
+
+void NewDialog::accept()
+{
+	if (from() == From::New && imageSize().isEmpty()) {
+		QMessageBox::warning(this, tr("Invalid image size"), tr("Enter a positive width and height."));
+		return;
+	}
+	QDialog::accept();
 }
 
 void NewDialog::on_radioButton_from_clipboard_clicked()

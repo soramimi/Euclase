@@ -29,6 +29,7 @@
 #include <QPainter>
 #include <QScreen>
 #include <QShortcut>
+#include <algorithm>
 #include <omp.h>
 #include <stdint.h>
 #include <QMessageBox>
@@ -346,33 +347,39 @@ Document const &MainWindow::currentDocument() const
 	return m->document;
 }
 
-void MainWindow::setImage(euclase::Image image, bool fitview)
+void MainWindow::setImage(euclase::Image image, bool fitview, QString path)
 {
-	clearCanvas();
-	ui->widget_image_view->clearRenderCache(true, true);
-
-	int w = image.width();
-	int h = image.height();
-	canvas()->setSize(QSize(w, h));
-	setupBasicLayer(canvas()->current_layer());
-
-	Canvas::Layer layer;
-	{
-		image = image.memconvert(canvas()->current_layer()->memtype_);
-		image = image.convertToFormat(canvas()->current_layer()->format_);
-		layer.setImage(QPoint(0, 0), image);
-	}
-	if (layer.format_ == euclase::ImageFormat::Format_Invalid) {
+	Canvas::Layer replacement;
+	setupBasicLayer(&replacement);
+	image = image.convertToFormat(replacement.format_);
+	image.memconvert(replacement.memtype_);
+	if (!image) {
 		QMessageBox::critical(this, tr("Error"), tr("Failed to create image"));
 		return;
 	}
 
+	Canvas::Layer source;
+	source.setImage(QPoint(0, 0), image);
 	Canvas::RenderOption opt;
 	opt.blend_mode = Canvas::BlendMode::Normal;
-	canvas()->renderToLayer(canvas()->current_layer(), Canvas::Canvas::PrimaryLayer, layer, nullptr, opt, nullptr);
+	Canvas::renderToLayer(&replacement, Canvas::PrimaryLayer, source, nullptr, opt, nullptr);
+	if (std::any_of(replacement.primary_panels.begin(), replacement.primary_panels.end(),
+					[](const Canvas::Panel &panel) { return panel.isNull(); })) {
+		QMessageBox::critical(this, tr("Error"), tr("Failed to create image"));
+		return;
+	}
 
+	{
+		std::lock_guard lock(mutexForCanvas());
+		canvas()->clear();
+		canvas()->setSize(image.size());
+		*canvas()->current_layer() = std::move(replacement);
+	}
+	m->document.setDocumentPath(path);
+	ui->widget_image_view->clearRenderCache(true, true);
 	resetView(fitview);
 	updateImageView({});
+	onUpdateDocumentInformation();
 }
 
 void MainWindow::setImageFromBytes(QByteArray const &ba, bool fitview)
@@ -384,35 +391,21 @@ void MainWindow::setImageFromBytes(QByteArray const &ba, bool fitview)
 
 void MainWindow::openFile(QString const &path)
 {
-#if 0
-	QByteArray ba;
-	QFile file(path);
-	if (file.open(QFile::ReadOnly)) {
-		ba = file.readAll();
-		m->document.setDocumentPath(path);
-	}
-	setImageFromBytes(ba, true);
-#else
-	auto i = path.lastIndexOf('.');
-	QString suffix;
-	if (i > 0) {
-		suffix = path.mid(i).toUpper();
-	}
-	if (suffix == ".PNG") {
-		auto result = euclase::load_png(path.toStdString().c_str());
-		if (result) {
-			setImage(*result, true);
-		}
-	} else if (suffix == ".JPEG" || suffix == ".JPG") {
-		auto result = euclase::load_jpeg(path.toStdString().c_str());
-		if (result) {
-			setImage(*result, true);
-		}
+	const QString suffix = QFileInfo(path).suffix().toUpper();
+	std::optional<euclase::Image> result;
+	if (suffix == "PNG") {
+		result = euclase::load_png(path.toStdString().c_str());
+	} else if (suffix == "JPEG" || suffix == "JPG") {
+		result = euclase::load_jpeg(path.toStdString().c_str());
 	} else {
 		QMessageBox::critical(this, tr("Error"), tr("Unsupported file format: %1").arg(suffix));
 		return;
 	}
-#endif
+	if (!result || !*result) {
+		QMessageBox::critical(this, tr("Error"), tr("Failed to open image: %1").arg(path));
+		return;
+	}
+	setImage(*result, true, path);
 }
 
 void MainWindow::on_action_file_save_as_triggered()
@@ -531,7 +524,7 @@ void MainWindow::on_action_resize_triggered()
 		euclase::EnlargeMethod method = dlg.method();
 		euclase::Image newimage = resizeImage(srcimage, w, h, method);
 		newimage.memconvert(memtype);
-		setImage(newimage, true);
+		setImage(newimage, true, currentDocument().file_path_);
 	}
 }
 
@@ -635,7 +628,7 @@ void MainWindow::setFilerDialogActive(bool active)
 	ui->tabWidget_brush->setEnabled(enable);
 }
 
-void MainWindow::filterStart(FilterContext &&context, AbstractFilterForm *form, std::function<euclase::Image (FilterContext *context)> const &fn)
+void MainWindow::filterStart(FilterContext &&context, AbstractFilterForm *form, const FilterFunction &fn)
 {
 	canvas()->current_layer()->alternate_selection_panels.clear();
 	if (isRectVisible()) {
@@ -677,10 +670,12 @@ void MainWindow::filterClose(bool apply)
 	p.swap(m->filter_dialog);
 	if (p) {
 		setFilerDialogActive(false);
-		euclase::Image result = p->result();
-		p->close();
+		euclase::Image result;
+		if (apply) {
+			result = p->result();
+		}
 		p.reset();
-		if (apply && result) {
+		if (result) {
 			setFilteredImage(result, true);
 		} else {
 			resetCurrentAlternateOption({});
@@ -737,9 +732,8 @@ void MainWindow::on_action_filter_sepia_triggered()
 {
 	FilterContext fc;
 	fc.setParameter("amount", 10);
-	filterStart(std::move(fc), nullptr, [](FilterContext *context){
-		FilterStatus s(context->cancel_ptr(), context->progress_ptr());
-		return sepia(context->sourceImage(), &s);
+	filterStart(std::move(fc), nullptr, [](const FilterContext *context, FilterStatus *status){
+		return sepia(context->sourceImage(), status);
 	});
 }
 
@@ -747,10 +741,9 @@ void MainWindow::on_action_filter_median_triggered()
 {
 	FilterContext fc;
 	fc.setParameter("amount", 10);
-	filterStart(std::move(fc), new FilterFormMedian(this), [](FilterContext *context){
-		FilterStatus s(context->cancel_ptr(), context->progress_ptr());
+	filterStart(std::move(fc), new FilterFormMedian(this), [](const FilterContext *context, FilterStatus *status){
 		int value = context->parameter("amount").toInt();
-		return filter_median(context->sourceImage(), value, &s);
+		return filter_median(context->sourceImage(), value, status);
 	});
 }
 
@@ -758,10 +751,9 @@ void MainWindow::on_action_filter_maximize_triggered()
 {
 	FilterContext fc;
 	fc.setParameter("amount", 10);
-	filterStart(std::move(fc), nullptr, [](FilterContext *context){
-		FilterStatus s(context->cancel_ptr(), context->progress_ptr());
+	filterStart(std::move(fc), nullptr, [](const FilterContext *context, FilterStatus *status){
 		int value = context->parameter("amount").toInt();
-		return filter_maximize(context->sourceImage(), value, &s);
+		return filter_maximize(context->sourceImage(), value, status);
 	});
 }
 
@@ -769,24 +761,23 @@ void MainWindow::on_action_filter_minimize_triggered()
 {
 	FilterContext fc;
 	fc.setParameter("amount", 10);
-	filterStart(std::move(fc), nullptr, [](FilterContext *context){
-		FilterStatus s(context->cancel_ptr(), context->progress_ptr());
+	filterStart(std::move(fc), nullptr, [](const FilterContext *context, FilterStatus *status){
 		int value = context->parameter("amount").toInt();
-		return filter_minimize(context->sourceImage(), value, &s);
+		return filter_minimize(context->sourceImage(), value, status);
 	});
 }
 
 void MainWindow::on_action_filter_blur_triggered()
 {
-	auto fn = [](FilterContext *context){
+	auto fn = [](const FilterContext *context, FilterStatus *status){
 		int radius = context->parameter("amount").toInt();
 		euclase::Image newimage = context->sourceImage().toHost();
-		FilterStatus s(context->cancel_ptr(), context->progress_ptr());
+		auto isInterrupted = [&]() { return status->cancel->load(); };
 		for (int pass = 0; pass < 3; pass++) {
 			auto progress = [&](float v){
-				*s.progress = (pass + v) / 3.0f;
+				*status->progress = (pass + v) / 3.0f;
 			};
-			newimage = filter_blur(newimage, radius, s.cancel, progress);
+			newimage = filter_blur(newimage, radius, isInterrupted, progress);
 		}
 		return newimage;
 	};
@@ -800,7 +791,7 @@ void MainWindow::on_action_filter_antialias_triggered()
 {
 	FilterContext fc;
 	fc.setParameter("amount", 10);
-	filterStart(std::move(fc), nullptr, [](FilterContext *context){
+	filterStart(std::move(fc), nullptr, [](const FilterContext *context, FilterStatus *){
 		euclase::Image newimage = context->sourceImage();
 		filter_antialias(&newimage);
 		return newimage;
@@ -1803,7 +1794,7 @@ void MainWindow::filter_xBRZ(int factor)
 		QImage dstimage(w * factor, h * factor, QImage::Format_RGBA8888);
 		xbrz::ScalerCfg cfg;
 		xbrz::scale(factor, (uint32_t*)srcimage.bits(), (uint32_t*)dstimage.bits(), w, h, xbrz::ColorFormat::RGBA, cfg, 0, h);
-		setImage(euclase::Image(dstimage), true);
+		setImage(euclase::Image(dstimage), true, currentDocument().file_path_);
 	}
 }
 
@@ -1921,13 +1912,12 @@ void MainWindow::colorCollection()
 	fc.setParameter("hue", 0);
 	fc.setParameter("saturation", 0);
 	fc.setParameter("brightness", 0);
-	filterStart(std::move(fc), new FilterFormColorCorrection(this), [](FilterContext *context){
-		FilterStatus s(context->cancel_ptr(), context->progress_ptr());
+	filterStart(std::move(fc), new FilterFormColorCorrection(this), [](const FilterContext *context, FilterStatus *status){
 		ColorCorrectionParams params;
 		params.hue = context->parameter("hue").toInt() / 360.f;
 		params.saturation = context->parameter("saturation").toInt() / 100.f;
 		params.brightness = context->parameter("brightness").toInt() / 100.f;
-		return filter_color_correction(context->sourceImage(), params, &s);
+		return filter_color_correction(context->sourceImage(), params, status);
 	});
 }
 
@@ -1939,7 +1929,8 @@ void MainWindow::onUpdateDocumentInformation()
 	str = str.arg(sz.width()).arg(sz.height());
 	ui->statusBar->showMessage(str);
 
-	setWindowTitle(doc.fileName() + " - " + qApp->applicationName());
+	const QString name = doc.fileName();
+	setWindowTitle(name.isEmpty() ? qApp->applicationName() : name + " - " + qApp->applicationName());
 }
 
 

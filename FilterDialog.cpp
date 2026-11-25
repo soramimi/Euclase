@@ -1,23 +1,20 @@
 
 #include "FilterDialog.h"
+#include "FilterStatus.h"
 #include "ui_FilterDialog.h"
 #include <QDateTime>
-#include <QDebug>
-#include <QMutex>
 #include <QPainter>
-#include <QTimer>
 #include "MainWindow.h"
-#include <QWaitCondition>
+#include <atomic>
 #include <thread>
 #include <utility>
 
 struct FilterDialog::Private {
 	QDateTime start_filter;
-	int timer_id = 0;
-	bool busy = false;
-	bool done = false;
-	bool update = false;
 	std::thread thread;
+	std::atomic_bool finished{false};
+	std::atomic_bool cancel{false};
+	std::atomic<float> worker_progress{0.0f};
 	FilterFunction filter_fn;
 	FilterContext context;
 	euclase::Image result_image;
@@ -33,7 +30,7 @@ FilterDialog::FilterDialog(MainWindow *parent, FilterContext &&context, Abstract
 	ui->setupUi(this);
 
 	m->filter_fn = fn;
-	m->context = context;
+	m->context = std::move(context);
 
 	if (form) {
 		form->setParent(ui->stackedWidget);
@@ -54,7 +51,10 @@ FilterDialog::FilterDialog(MainWindow *parent, FilterContext &&context, Abstract
 
 FilterDialog::~FilterDialog()
 {
-	stopFilter(true); // スレッド停止（完了まで待つ）
+	m->cancel = true;
+	if (m->thread.joinable()) {
+		m->thread.join();
+	}
 	delete m;
 	delete ui;
 }
@@ -64,37 +64,27 @@ FilterContext *FilterDialog::context()
 	return &m->context;
 }
 
-void FilterDialog::stopFilter(bool join)
-{
-	*context()->progress_ptr() = 0.0f;
-	*context()->cancel_ptr() = true;
-	if (join) {
-		if (m->thread.joinable()) {
-			m->thread.join();
-		}
-	}
-	m->busy = false;
-	m->done = false;
-	m->update = false;
-}
-
 void FilterDialog::updateFilter()
 {
-	stopFilter(false);
+	ui->pushButton_ok->setEnabled(false);
+	m->cancel = true;
+	setProgress(0);
 	m->start_filter = QDateTime::currentDateTime().addMSecs(100);
 }
 
 void FilterDialog::startFilter()
 {
-	m->thread = std::thread([&](){
-		auto memtype = context()->sourceImage().memtype();
-		m->result_image = m->filter_fn(context());
-		if (!*context()->cancel_ptr()) {
-			m->result_image.memconvert(memtype);
-			m->done = true;
-			m->update = true;
+	m->cancel = false;
+	m->finished = false;
+	m->worker_progress = 0.0f;
+	m->thread = std::thread([this, input = m->context](){
+		FilterStatus status(&m->cancel, &m->worker_progress);
+		euclase::Image result = m->filter_fn(&input, &status);
+		if (!m->cancel) {
+			result.memconvert(input.sourceImage().memtype());
 		}
-		m->busy = false;
+		m->result_image = result;
+		m->finished = true;
 	});
 }
 
@@ -110,30 +100,27 @@ void FilterDialog::updateImageView()
 	mainwindow->updateImageViewEntire();
 }
 
-void FilterDialog::timerEvent(QTimerEvent *event)
+void FilterDialog::timerEvent(QTimerEvent *)
 {
-	{
-		float value = *context()->progress_ptr();
-		setProgress(value);
-	}
-
-	if (m->busy) return;
-
-	if (m->update) {
-		m->update = false;
-		mainwindow->setFilteredImage(m->result_image, false);
-		updateImageView();
-	}
-
-	if (m->start_filter.isValid()) {
-		QDateTime now = QDateTime::currentDateTime();
-		if (m->start_filter <= now) {
-			m->start_filter = {};
-			stopFilter(true);
-			m->busy = true;
-			*context()->cancel_ptr() = false;
-			startFilter();
+	if (m->thread.joinable()) {
+		if (!m->finished) {
+			if (!m->cancel) {
+				setProgress(m->worker_progress);
+			}
+			return;
 		}
+		m->thread.join();
+		setProgress(0);
+		if (!m->start_filter.isValid() && m->result_image) {
+			mainwindow->setFilteredImage(m->result_image, false);
+			updateImageView();
+			ui->pushButton_ok->setEnabled(true);
+		}
+	}
+
+	if (m->start_filter.isValid() && m->start_filter <= QDateTime::currentDateTime()) {
+		m->start_filter = {};
+		startFilter();
 	}
 }
 
@@ -168,11 +155,11 @@ void FilterDialog::on_checkBox_preview_stateChanged(int arg1)
 
 void FilterDialog::done(int r)
 {
-	if (r == QDialog::Accepted) {
-		emit end(true);
-	} else {
-		emit end(false);
+	const bool apply = r == QDialog::Accepted;
+	if (apply && !ui->pushButton_ok->isEnabled()) {
+		return;
 	}
+	emit end(apply);
 }
 	
 

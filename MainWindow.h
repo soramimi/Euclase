@@ -137,7 +137,7 @@ private:
 	
 	const Document &currentDocument() const;
 
-	void setImage(euclase::Image image, bool fitview);
+	void setImage(euclase::Image image, bool fitview, QString path = {});
 	void setImageFromBytes(QByteArray const &ba, bool fitview);
 	void setFilteredImage(const euclase::Image &image, bool apply);
 
@@ -170,7 +170,7 @@ private:
 	bool isRectVisible() const;
 	QRect boundsRect() const;
 	void resetView(bool fitview);
-	void filterStart(FilterContext &&context, AbstractFilterForm *form, const std::function<euclase::Image (FilterContext *)> &fn);
+	void filterStart(FilterContext &&context, AbstractFilterForm *form, const FilterFunction &fn);
 	void filter_xBRZ(int factor);
 	void resetCurrentAlternateOption(Canvas::BlendMode blendmode = Canvas::BlendMode::Normal);
 	void applyCurrentAlternateLayer(bool lock = true);

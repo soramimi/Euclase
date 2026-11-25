@@ -1628,12 +1628,8 @@ euclase::Image resizeBicubicVT(euclase::Image const &image, int dst_h)
 
 //
 
-template <typename PIXEL, typename FPIXEL> euclase::Image BlurFilter(euclase::Image const &image, int radius, bool *cancel, std::function<void (float)> &progress)
+template <typename PIXEL, typename FPIXEL> euclase::Image BlurFilter(euclase::Image const &image, int radius, const std::function<bool()> &isInterrupted, std::function<void (float)> &progress)
 {
-	auto isInterrupted = [&](){
-		return cancel && *cancel;
-	};
-
 	int w = image.width();
 	int h = image.height();
 	euclase::Image newimage(w, h, image.format());
@@ -1928,19 +1924,24 @@ euclase::Image euclase::resizeImage(euclase::Image const &image, int dst_w, int 
 
 euclase::Image euclase::filter_blur(euclase::Image image, int radius, bool *cancel, std::function<void (float)> progress)
 {
+	return filter_blur(image, radius, [cancel]() { return cancel && *cancel; }, std::move(progress));
+}
+
+euclase::Image euclase::filter_blur(euclase::Image image, int radius, const std::function<bool()> &isInterrupted, std::function<void (float)> progress)
+{
 	if (image.format() == ImageFormat::Format_F32_RGBA) {
-		return BlurFilter<Float32RGBA, Float32RGBA>(image, radius, cancel, progress);
+		return BlurFilter<Float32RGBA, Float32RGBA>(image, radius, isInterrupted, progress);
 	}
 
 	if (image.format() == ImageFormat::Format_U8_Grayscale) {
-		return BlurFilter<Float32GrayA, Float32GrayA>(image, radius, cancel, progress);
+		return BlurFilter<Float32GrayA, Float32GrayA>(image, radius, isInterrupted, progress);
 	}
 
 	auto format = image.format();
 	switch (format) {
 	case euclase::ImageFormat::Format_U8_RGBA:
 	case euclase::ImageFormat::Format_U8_GrayscaleA:
-		auto img = filter_blur(image.convertToFormat(ImageFormat::Format_F32_RGBA), radius, cancel, progress);
+		auto img = filter_blur(image.convertToFormat(ImageFormat::Format_F32_RGBA), radius, isInterrupted, std::move(progress));
 		return img.convertToFormat(format);
 	}
 	return {};

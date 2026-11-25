@@ -20,6 +20,8 @@ public:
 	From from() const;
 	void setImageSize(QSize size);
 	QSize imageSize() const;
+public slots:
+	void accept() override;
 private slots:
 	void on_radioButton_from_clipboard_clicked();
 

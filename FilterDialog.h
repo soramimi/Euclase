@@ -4,10 +4,12 @@
 #include <QDialog>
 #include <QVariant>
 #include <functional>
+#include <map>
 #include "euclase.h"
 
 class MainWindow;
 class AbstractFilterForm;
+struct FilterStatus;
 
 namespace Ui {
 class FilterDialog;
@@ -16,8 +18,6 @@ class FilterDialog;
 class FilterContext {
 private:
 	std::map<QString, QVariant> parameters_;
-	bool cancel_ = false;
-	float progress_ = 0.0f;
 	euclase::Image source_image_;
 public:
 	void setSourceImage(euclase::Image const &image)
@@ -41,17 +41,9 @@ public:
 		}
 		return def;
 	}
-	float *progress_ptr()
-	{
-		return &progress_;
-	}
-	bool *cancel_ptr()
-	{
-		return &cancel_;
-	}
 };
 
-typedef std::function<euclase::Image (FilterContext *)> FilterFunction;
+using FilterFunction = std::function<euclase::Image(const FilterContext *, FilterStatus *)>;
 
 class FilterDialog : public QDialog {
 	Q_OBJECT
@@ -61,7 +53,6 @@ private:
 	Private *m;
 	MainWindow *mainwindow;
 	void startFilter();
-	void stopFilter(bool join);
 	void setProgress(float value);
 	void updateImageView();
 public:
