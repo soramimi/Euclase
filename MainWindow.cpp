@@ -716,6 +716,7 @@ void MainWindow::filterClose(bool apply)
 				QMessageBox::critical(this, tr("Error"), tr("Failed to apply filter"));
 			}
 		}
+		setPreviewLayerEnable(true);
 		updateImageViewEntire();
 	}
 }

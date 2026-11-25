@@ -795,36 +795,39 @@ bool Canvas::renderToEachPanel(Panel *target_panel, const Layer &input_layer, co
 
 	RenderOption render_opt = opt;
 	render_opt.use_mask = false;
-	for (const auto &input : input_layer.primary_panels) {
+	const auto &primary_panels = input_layer.primary_panels;
+	const auto &alternate_panels = input_layer.alternate_panels;
+	const auto mode = input_layer.alternate_blend_mode;
+	auto primary = primary_panels.begin();
+	auto alternate = opt.active_panel == AlternateLayer && mode != BlendMode::Disable
+			? alternate_panels.begin() : alternate_panels.end();
+	// Merge the sorted tile lists in the same order used after applying the overlay.
+	while (primary != primary_panels.end() || alternate != alternate_panels.end()) {
 		if (abort && abort->load(std::memory_order_relaxed)) return false;
-		if (area.intersected(panelRect(input, input_layer.offset())).empty()) continue;
-
-		const Panel *source = &input;
-		Panel composed;
-		if (opt.active_panel == AlternateLayer) {
-			const auto mode = input_layer.alternate_blend_mode;
-			const bool replace = mode == BlendMode::Replace;
-			const Panel *alternate = findPanel(input_layer.alternate_panels, input.offset());
-			if (alternate && mode != BlendMode::Disable) {
-				Panel selection_mask;
-				const auto &filter_masks = input_layer.alternate_selection_panels;
-				const bool masked_filter = replace && !filter_masks.empty();
-				const bool masked_brush = !replace && opt.use_mask && mask_layer;
-				const Panel *mask = nullptr;
-				if (masked_filter) {
-					mask = findPanel(filter_masks, input.offset());
-				} else if (masked_brush) {
-					if (!selectionMaskForPanel(&selection_mask, input, input_layer.offset(), *mask_layer, abort)) return false;
-					if (selection_mask) mask = &selection_mask;
-				}
-				if ((!masked_filter && !masked_brush) || mask) {
-					composed = input.copy();
-					if (!composePanel(&composed, alternate, mask, replace ? BlendMode::Normal : mode)) return false;
-					source = &composed;
-				}
+		const Panel *input = nullptr;
+		const Panel *overlay = nullptr;
+		const bool has_primary = primary != primary_panels.end();
+		if (alternate == alternate_panels.end() || (has_primary && COMP(primary->offset(), alternate->offset()) < 0)) {
+			input = &*primary;
+			++primary;
+		} else {
+			overlay = &*alternate;
+			++alternate;
+			if (has_primary && primary->offset() == overlay->offset()) {
+				input = &*primary;
+				++primary;
 			}
 		}
-		if (!renderToSinglePanel(target_panel, {}, source, input_layer.offset(), nullptr, render_opt, opt.brush_color, 255, abort)) {
+		const auto &tile = input ? *input : *overlay;
+		if (area.intersected(panelRect(tile, input_layer.offset())).empty()) continue;
+
+		Panel composed;
+		if (overlay && !composeAlternatePanel(composed, input_layer, input, *overlay,
+										  opt.use_mask ? mask_layer : nullptr, mode, abort)) {
+			return false;
+		}
+		const auto *source = composed ? &composed : input;
+		if (source && !renderToSinglePanel(target_panel, {}, source, input_layer.offset(), nullptr, render_opt, opt.brush_color, 255, abort)) {
 			return false;
 		}
 	}
@@ -846,6 +849,34 @@ bool Canvas::selectionMaskForPanel(Panel *mask, const Panel &tile, const QPoint 
 	if (containsSelection(mask->image())) mask->setOffset(tile.offset());
 	else mask->reset();
 	return true;
+}
+
+bool Canvas::composeAlternatePanel(Panel &result, const Layer &layer, const Panel *primary, const Panel &alternate,
+								   const Layer *selection, BlendMode mode, const std::atomic_bool *abort)
+{
+	const bool replace = layer.alternate_blend_mode == BlendMode::Replace;
+	if (replace) mode = BlendMode::Normal;
+	if (!primary && mode == BlendMode::Eraser) return true;
+
+	Panel selection_mask;
+	const Panel *mask = nullptr;
+	if (replace && !layer.alternate_selection_panels.empty()) {
+		mask = findPanel(layer.alternate_selection_panels, alternate.offset());
+		if (!mask) return true;
+	} else if (selection) {
+		if (!selectionMaskForPanel(&selection_mask, alternate, layer.offset(), *selection, abort)) return false;
+		if (!selection_mask) return true;
+		mask = &selection_mask;
+	}
+
+	if (primary) {
+		result = primary->copy();
+	} else {
+		const auto format = layer.format_ == euclase::Format_Invalid ? alternate.format() : layer.format_;
+		if (!result->make(PANEL_SIZE, PANEL_SIZE, format, layer.memtype_)) return false;
+		result.setOffset(alternate.offset());
+	}
+	return composePanel(&result, &alternate, mask, mode);
 }
 
 bool Canvas::renderToLayer(Layer *target_layer, ActivePanel activepanel, const Layer &input_layer, const Layer *mask_layer, const RenderOption &opt, const std::atomic_bool *abort) try
@@ -995,12 +1026,26 @@ Canvas::Panel Canvas::renderToPanel(InputLayerMode input_layer_mode, euclase::Im
 
 Canvas::Panel Canvas::crop(const QRect &r, const std::atomic_bool *abort) const
 {
+	if (abort && abort->load(std::memory_order_relaxed)) return {};
 	Panel panel;
 	const auto *current = current_layer();
 	const QRect area = panelRect(r).toQRect();
 	if (!current || !panel->make(area.width(), area.height(), euclase::Format_U8_RGBA)) return {};
 	panel.setOffset(area.topLeft());
-	if (!renderToEachPanel(&panel, *current, selection_layer(), {}, abort)) return {};
+	if (!renderToEachPanel(&panel, *current, nullptr, {}, abort)) return {};
+	if (selection_layer()->primary_panels.empty()) return panel;
+
+	const auto mask = renderSelection(area, abort);
+	if (!mask) return {};
+	for (int y = 0; y < panel.height(); y++) {
+		if (abort && abort->load(std::memory_order_relaxed)) return {};
+		const auto *coverage = mask.scanLine(y);
+		auto *row = reinterpret_cast<euclase::UInt8RGBA *>(panel.scanLine(y));
+		for (int x = 0; x < panel.width(); x++) {
+			row[x].a = (row[x].a * coverage[x] + 127) / 255;
+			if (row[x].a == 0) row[x] = {};
+		}
+	}
 	return panel;
 }
 
@@ -1049,27 +1094,13 @@ bool Canvas::Layer::finishAlternatePanels(bool apply, const Layer *mask_layer, R
 		std::vector<Panel> pending;
 		pending.reserve(alternate_panels.size());
 		for (const auto &alternate : alternate_panels) {
-			Panel selection_mask;
-			const Panel *mask = nullptr;
-			if (alternate_blend_mode == BlendMode::Replace && !alternate_selection_panels.empty()) {
-				mask = findPanel(alternate_selection_panels, alternate.offset());
-				if (!mask) continue;
-			} else if (opt.use_mask && mask_layer) {
-				if (!Canvas::selectionMaskForPanel(&selection_mask, alternate, offset(), *mask_layer, nullptr)) return false;
-				if (!selection_mask) continue;
-				mask = &selection_mask;
-			}
-
 			const auto *existing = findPanel(primary_panels, alternate.offset());
-			Panel tile = existing ? existing->copy() : Panel();
-			if (!existing) {
-				const auto format = format_ == euclase::Format_Invalid ? alternate.format() : format_;
-				if (!tile->make(PANEL_SIZE, PANEL_SIZE, format, memtype_)) return false;
-				tile.setOffset(alternate.offset());
+			Panel tile;
+			if (!Canvas::composeAlternatePanel(tile, *this, existing, alternate,
+											  opt.use_mask ? mask_layer : nullptr, opt.blend_mode, nullptr)) {
+				return false;
 			}
-			const auto mode = alternate_blend_mode == BlendMode::Replace ? BlendMode::Normal : opt.blend_mode;
-			if (!composePanel(&tile, &alternate, mask, mode)) return false;
-			pending.push_back(std::move(tile));
+			if (tile) pending.push_back(std::move(tile));
 		}
 		if (!commitPanels(primary_panels, pending)) return false;
 	}
