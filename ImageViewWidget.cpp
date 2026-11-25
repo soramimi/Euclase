@@ -110,7 +110,7 @@ namespace {
 struct RenderView {
 	CoordinateMapper mapper;
 	QSize canvas_size;
-	QPointF cursor;
+	QPointF cursor_in_canvas;
 };
 
 struct RenderRequest {
@@ -928,33 +928,36 @@ void ImageViewWidget::runImageRendering()
 			m->image_rendering_active = false;
 			continue;
 		}
-		auto distance = [&](const QRect &tile){
-			const QPointF delta = QPointF(tile.center()) - view.cursor;
+		auto distance_squared = [&](const QRect &tile) {
+			const QRectF area(tile);
+			const auto &cursor = view.cursor_in_canvas;
+			const QPointF nearest(std::clamp(cursor.x(), area.left(), area.right()),
+								  std::clamp(cursor.y(), area.top(), area.bottom()));
+			const QPointF delta = cursor - nearest;
 			return QPointF::dotProduct(delta, delta);
 		};
-		std::sort(tiles.begin(), tiles.end(), [&](const QRect &a, const QRect &b){ return distance(a) < distance(b); });
+		std::stable_sort(tiles.begin(), tiles.end(), [&](const QRect &a, const QRect &b) {
+			return distance_squared(a) < distance_squared(b);
+		});
 
 		std::atomic_bool failed{false};
-		// Keep conversion parallel while limiting contention on the Canvas mutex.
-#pragma omp parallel for num_threads(2)
-		for (std::ptrdiff_t i = 0; i < static_cast<std::ptrdiff_t>(tiles.size()); i++) {
-			if (canceled() || failed.load(std::memory_order_relaxed)) continue;
-			const QRect &tile = tiles[i];
+		auto renderTile = [&](const QRect &tile) -> RenderedTile {
+			if (canceled() || failed.load(std::memory_order_relaxed)) return {};
 			const QPoint first = mapper.mapToViewportFromCanvas(tile.topLeft()).toPoint();
 			const QPoint last = mapper.mapToViewportFromCanvas(QPointF(tile.x() + tile.width(), tile.y() + tile.height())).toPoint();
 			const QSize output_size(last.x() - first.x(), last.y() - first.y());
-			if (output_size.isEmpty()) continue;
+			if (output_size.isEmpty()) return {};
 
 			Canvas::RenderOption opt;
 			opt.use_mask = true;
 			const auto panel = m->mainwindow->renderToPanel(Canvas::AllLayers, euclase::Format_F32_RGBA,
 														   tile, {}, opt, &request.canceled);
-			if (canceled()) continue;
+			if (canceled()) return {};
 			const QImage image = panel.image().toHost().qimage();
 			QImage scaled = image.scaled(output_size).convertToFormat(QImage::Format_RGBA8888);
 			if (scaled.isNull()) {
 				failed.store(true, std::memory_order_relaxed);
-				continue;
+				return {};
 			}
 
 			const QPoint phase = first + checker_origin;
@@ -967,10 +970,23 @@ void ImageViewWidget::runImageRendering()
 					}
 				}
 			}
-			std::lock_guard lock(m->mutex);
-			if (canceled()) continue;
-			m->image_result.tiles.push_back({first, std::move(scaled)});
-			if (!m->brush_dragging) queueImageUpdate();
+			return {first, std::move(scaled)};
+		};
+
+		// Give the workers adjacent priorities and publish in order even when a later tile finishes first.
+#pragma omp parallel for num_threads(2) schedule(static, 1) ordered
+		for (std::ptrdiff_t i = 0; i < static_cast<std::ptrdiff_t>(tiles.size()); i++) {
+			auto rendered = renderTile(tiles[i]);
+#pragma omp ordered
+			{
+				if (!rendered.image.isNull()) {
+					std::lock_guard lock(m->mutex);
+					if (!canceled()) {
+						m->image_result.tiles.push_back(std::move(rendered));
+						if (!m->brush_dragging) queueImageUpdate();
+					}
+				}
+			}
 		}
 		{
 			std::lock_guard lock(m->mutex);
