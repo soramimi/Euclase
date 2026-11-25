@@ -68,6 +68,26 @@ euclase::Image euclase::convertToFormat(AbstractImage const &source, ImageFormat
 	euclase::Image newimg;
 	if (newformat == ImageFormat::Format_U8_RGBA) {
 		switch (source.format()) {
+		case Format_U8_RGB:
+			if (!newimg.make(w, h, newformat)) return {};
+			for (int y = 0; y < h; y++) {
+				auto const *src = reinterpret_cast<UInt8RGB const *>(source.scanLine(y));
+				auto *dst = reinterpret_cast<UInt8RGBA *>(newimg.scanLine(y));
+				for (int x = 0; x < w; x++) {
+					dst[x] = UInt8RGBA(src[x].r, src[x].g, src[x].b, 255);
+				}
+			}
+			break;
+		case Format_U8_GrayscaleA:
+			if (!newimg.make(w, h, newformat)) return {};
+			for (int y = 0; y < h; y++) {
+				auto const *src = reinterpret_cast<UInt8GrayA const *>(source.scanLine(y));
+				auto *dst = reinterpret_cast<UInt8RGBA *>(newimg.scanLine(y));
+				for (int x = 0; x < w; x++) {
+					dst[x] = UInt8RGBA(src[x]);
+				}
+			}
+			break;
 		case Format_F16_RGBA:
 			if (!newimg.make(w, h, newformat)) return {};
 			for (int y = 0; y < h; y++) {
@@ -91,6 +111,16 @@ euclase::Image euclase::convertToFormat(AbstractImage const &source, ImageFormat
 		}
 	} else if (newformat == ImageFormat::Format_U8_RGB) {
 		switch (source.format()) {
+		case Format_U8_RGBA:
+			if (!newimg.make(w, h, newformat)) return {};
+			for (int y = 0; y < h; y++) {
+				auto const *src = reinterpret_cast<UInt8RGBA const *>(source.scanLine(y));
+				auto *dst = reinterpret_cast<UInt8RGB *>(newimg.scanLine(y));
+				for (int x = 0; x < w; x++) {
+					dst[x] = UInt8RGB(src[x].r, src[x].g, src[x].b);
+				}
+			}
+			break;
 		case Format_U8_Grayscale:
 			if (!newimg.make(w, h, newformat)) return {};
 			for (int y = 0; y < h; y++) {
@@ -111,6 +141,17 @@ euclase::Image euclase::convertToFormat(AbstractImage const &source, ImageFormat
 				}
 			}
 			break;
+		case Format_F16_RGBA:
+			if (!newimg.make(w, h, newformat)) return {};
+			for (int y = 0; y < h; y++) {
+				auto const *src = reinterpret_cast<Float16RGBA const *>(source.scanLine(y));
+				auto *dst = reinterpret_cast<UInt8RGB *>(newimg.scanLine(y));
+				for (int x = 0; x < w; x++) {
+					UInt8RGBA pixel = UInt8RGBA::convert(Float32RGBA::convert(src[x]).limit());
+					dst[x] = UInt8RGB(pixel.r, pixel.g, pixel.b);
+				}
+			}
+			break;
 		case Format_F32_RGBA:
 			if (!newimg.make(w, h, newformat)) return {};
 			for (int y = 0; y < h; y++) {
@@ -125,6 +166,26 @@ euclase::Image euclase::convertToFormat(AbstractImage const &source, ImageFormat
 		}
 	} else if (newformat == ImageFormat::Format_F32_RGBA) {
 		switch (source.format()) {
+		case Format_U8_Grayscale:
+			if (!newimg.make(w, h, newformat)) return {};
+			for (int y = 0; y < h; y++) {
+				auto const *src = reinterpret_cast<UInt8Gray const *>(source.scanLine(y));
+				auto *dst = reinterpret_cast<Float32RGBA *>(newimg.scanLine(y));
+				for (int x = 0; x < w; x++) {
+					dst[x] = Float32RGBA::convert(UInt8RGBA(src[x].v, src[x].v, src[x].v, 255));
+				}
+			}
+			break;
+		case Format_U8_GrayscaleA:
+			if (!newimg.make(w, h, newformat)) return {};
+			for (int y = 0; y < h; y++) {
+				auto const *src = reinterpret_cast<UInt8GrayA const *>(source.scanLine(y));
+				auto *dst = reinterpret_cast<Float32RGBA *>(newimg.scanLine(y));
+				for (int x = 0; x < w; x++) {
+					dst[x] = Float32RGBA::convert(UInt8RGBA(src[x]));
+				}
+			}
+			break;
 		case Format_U8_RGBA:
 			if (!newimg.make(w, h, newformat)) return {};
 			for (int y = 0; y < h; y++) {
@@ -1478,25 +1539,29 @@ static euclase::Image resizeColorImage(euclase::Image const &image, int dst_w, i
 		if (w != dst_w || h != dst_h) {
 			if (dst_w < w || dst_h < h) {
 				if (method == EnlargeMethod::NearestNeighbor) {
-					newimage = resizeNearestNeighbor<euclase::ImageFormat::Format_F32_RGBA, Float32RGBA>(newimage, dst_w, dst_h);
+					if (alphachannel) {
+						newimage = resizeNearestNeighbor<euclase::ImageFormat::Format_F32_RGBA, Float32RGBA>(newimage, dst_w, dst_h);
+					} else {
+						newimage = resizeNearestNeighbor<euclase::ImageFormat::Format_F32_RGB, Float32RGB>(newimage, dst_w, dst_h);
+					}
 				} else {
 					if (dst_w < w && dst_h < h) {
 						if (alphachannel) {
 							newimage = resizeAveragingT<euclase::ImageFormat::Format_F32_RGBA, Float32RGBA, Float32RGBA>(image, dst_w, dst_h);
 						} else {
-							newimage = resizeAveragingT<euclase::ImageFormat::Format_F32_RGBA, Float32RGB, Float32RGB>(image, dst_w, dst_h);
+							newimage = resizeAveragingT<euclase::ImageFormat::Format_F32_RGB, Float32RGB, Float32RGB>(image, dst_w, dst_h);
 						}
 					} else if (dst_w < w) {
 						if (alphachannel) {
 							newimage = resizeAveragingHT<euclase::ImageFormat::Format_F32_RGBA, Float32RGBA, Float32RGBA>(image, dst_w);
 						} else {
-							newimage = resizeAveragingHT<euclase::ImageFormat::Format_F32_RGBA, Float32RGB, Float32RGB>(image, dst_w);
+							newimage = resizeAveragingHT<euclase::ImageFormat::Format_F32_RGB, Float32RGB, Float32RGB>(image, dst_w);
 						}
 					} else if (dst_h < h) {
 						if (alphachannel) {
 							newimage = resizeAveragingVT<euclase::ImageFormat::Format_F32_RGBA, Float32RGBA, Float32RGBA>(image, dst_h);
 						} else {
-							newimage = resizeAveragingVT<euclase::ImageFormat::Format_F32_RGBA, Float32RGB, Float32RGB>(image, dst_h);
+							newimage = resizeAveragingVT<euclase::ImageFormat::Format_F32_RGB, Float32RGB, Float32RGB>(image, dst_h);
 						}
 					}
 				}
@@ -1509,19 +1574,19 @@ static euclase::Image resizeColorImage(euclase::Image const &image, int dst_w, i
 						if (alphachannel) {
 							newimage = resizeBilinearT<euclase::ImageFormat::Format_F32_RGBA, Float32RGBA, Float32RGBA>(newimage, dst_w, dst_h);
 						} else {
-							newimage = resizeBilinearT<euclase::ImageFormat::Format_F32_RGBA, Float32RGB, Float32RGB>(newimage, dst_w, dst_h);
+							newimage = resizeBilinearT<euclase::ImageFormat::Format_F32_RGB, Float32RGB, Float32RGB>(newimage, dst_w, dst_h);
 						}
 					} else if (dst_w > w) {
 						if (alphachannel) {
 							newimage = resizeBilinearHT<euclase::ImageFormat::Format_F32_RGBA, Float32RGBA, Float32RGBA>(newimage, dst_w);
 						} else {
-							newimage = resizeBilinearHT<euclase::ImageFormat::Format_F32_RGBA, Float32RGB, Float32RGB>(newimage, dst_w);
+							newimage = resizeBilinearHT<euclase::ImageFormat::Format_F32_RGB, Float32RGB, Float32RGB>(newimage, dst_w);
 						}
 					} else if (dst_h > h) {
 						if (alphachannel) {
 							newimage = resizeBilinearVT<euclase::ImageFormat::Format_F32_RGBA, Float32RGBA, Float32RGBA>(newimage, dst_h);
 						} else {
-							newimage = resizeBilinearVT<euclase::ImageFormat::Format_F32_RGBA, Float32RGB, Float32RGB>(newimage, dst_h);
+							newimage = resizeBilinearVT<euclase::ImageFormat::Format_F32_RGB, Float32RGB, Float32RGB>(newimage, dst_h);
 						}
 					}
 				} else if (method == EnlargeMethod::Bicubic) {
@@ -1529,23 +1594,27 @@ static euclase::Image resizeColorImage(euclase::Image const &image, int dst_w, i
 						if (alphachannel) {
 							newimage = resizeBicubicT<euclase::ImageFormat::Format_F32_RGBA, Float32RGBA, Float32RGBA>(newimage, dst_w, dst_h);
 						} else {
-							newimage = resizeBicubicT<euclase::ImageFormat::Format_F32_RGBA, Float32RGB, Float32RGB>(newimage, dst_w, dst_h);
+							newimage = resizeBicubicT<euclase::ImageFormat::Format_F32_RGB, Float32RGB, Float32RGB>(newimage, dst_w, dst_h);
 						}
 					} else if (dst_w > w) {
 						if (alphachannel) {
 							newimage = resizeBicubicHT<euclase::ImageFormat::Format_F32_RGBA, Float32RGBA, Float32RGBA>(newimage, dst_w);
 						} else {
-							newimage = resizeBicubicHT<euclase::ImageFormat::Format_F32_RGBA, Float32RGB, Float32RGB>(newimage, dst_w);
+							newimage = resizeBicubicHT<euclase::ImageFormat::Format_F32_RGB, Float32RGB, Float32RGB>(newimage, dst_w);
 						}
 					} else if (dst_h > h) {
 						if (alphachannel) {
 							newimage = resizeBicubicVT<euclase::ImageFormat::Format_F32_RGBA, Float32RGBA, Float32RGBA>(newimage, dst_h);
 						} else {
-							newimage = resizeBicubicVT<euclase::ImageFormat::Format_F32_RGBA, Float32RGB, Float32RGB>(newimage, dst_h);
+							newimage = resizeBicubicVT<euclase::ImageFormat::Format_F32_RGB, Float32RGB, Float32RGB>(newimage, dst_h);
 						}
 					}
 				} else {
-					newimage = resizeNearestNeighbor<euclase::ImageFormat::Format_F32_RGBA, Float32RGBA>(newimage, dst_w, dst_h);
+					if (alphachannel) {
+						newimage = resizeNearestNeighbor<euclase::ImageFormat::Format_F32_RGBA, Float32RGBA>(newimage, dst_w, dst_h);
+					} else {
+						newimage = resizeNearestNeighbor<euclase::ImageFormat::Format_F32_RGB, Float32RGB>(newimage, dst_w, dst_h);
+					}
 				}
 			}
 		}
@@ -1564,23 +1633,27 @@ static euclase::Image resizeGrayscaleImage(euclase::Image const &image, int dst_
 			newimage = image;
 			if (dst_w < w || dst_h < h) {
 				if (method == EnlargeMethod::NearestNeighbor) {
-					newimage = resizeNearestNeighbor<euclase::ImageFormat::Format_F32_Grayscale, Float32Gray>(newimage, dst_w, dst_h);
+					if (alphachannel) {
+						newimage = resizeNearestNeighbor<euclase::ImageFormat::Format_F32_GrayscaleA, Float32GrayA>(newimage, dst_w, dst_h);
+					} else {
+						newimage = resizeNearestNeighbor<euclase::ImageFormat::Format_F32_Grayscale, Float32Gray>(newimage, dst_w, dst_h);
+					}
 				} else {
 					if (dst_w < w && dst_h < h) {
 						if (alphachannel) {
-							newimage = resizeAveragingT<euclase::ImageFormat::Format_F32_Grayscale, Float32GrayA, Float32GrayA>(newimage, dst_w, dst_h);
+							newimage = resizeAveragingT<euclase::ImageFormat::Format_F32_GrayscaleA, Float32GrayA, Float32GrayA>(newimage, dst_w, dst_h);
 						} else {
 							newimage = resizeAveragingT<euclase::ImageFormat::Format_F32_Grayscale, Float32Gray, Float32Gray>(newimage, dst_w, dst_h);
 						}
 					} else if (dst_w < w) {
 						if (alphachannel) {
-							newimage = resizeAveragingHT<euclase::ImageFormat::Format_F32_Grayscale, Float32GrayA, Float32GrayA>(newimage, dst_w);
+							newimage = resizeAveragingHT<euclase::ImageFormat::Format_F32_GrayscaleA, Float32GrayA, Float32GrayA>(newimage, dst_w);
 						} else {
 							newimage = resizeAveragingHT<euclase::ImageFormat::Format_F32_Grayscale, Float32Gray, Float32Gray>(newimage, dst_w);
 						}
 					} else if (dst_h < h) {
 						if (alphachannel) {
-							newimage = resizeAveragingVT<euclase::ImageFormat::Format_F32_Grayscale, Float32GrayA, Float32GrayA>(newimage, dst_h);
+							newimage = resizeAveragingVT<euclase::ImageFormat::Format_F32_GrayscaleA, Float32GrayA, Float32GrayA>(newimage, dst_h);
 						} else {
 							newimage = resizeAveragingVT<euclase::ImageFormat::Format_F32_Grayscale, Float32Gray, Float32Gray>(newimage, dst_h);
 						}
@@ -1593,19 +1666,19 @@ static euclase::Image resizeGrayscaleImage(euclase::Image const &image, int dst_
 				if (method == EnlargeMethod::Bilinear) {
 					if (dst_w > w && dst_h > h) {
 						if (alphachannel) {
-							newimage = resizeBilinearT<euclase::ImageFormat::Format_F32_Grayscale, Float32GrayA, Float32GrayA>(newimage, dst_w, dst_h);
+							newimage = resizeBilinearT<euclase::ImageFormat::Format_F32_GrayscaleA, Float32GrayA, Float32GrayA>(newimage, dst_w, dst_h);
 						} else {
 							newimage = resizeBilinearT<euclase::ImageFormat::Format_F32_Grayscale, Float32Gray, Float32Gray>(newimage, dst_w, dst_h);
 						}
 					} else if (dst_w > w) {
 						if (alphachannel) {
-							newimage = resizeBilinearHT<euclase::ImageFormat::Format_F32_Grayscale, Float32GrayA, Float32GrayA>(newimage, dst_w);
+							newimage = resizeBilinearHT<euclase::ImageFormat::Format_F32_GrayscaleA, Float32GrayA, Float32GrayA>(newimage, dst_w);
 						} else {
 							newimage = resizeBilinearHT<euclase::ImageFormat::Format_F32_Grayscale, Float32Gray, Float32Gray>(newimage, dst_w);
 						}
 					} else if (dst_h > h) {
 						if (alphachannel) {
-							newimage = resizeBilinearVT<euclase::ImageFormat::Format_F32_Grayscale, Float32GrayA, Float32GrayA>(newimage, dst_h);
+							newimage = resizeBilinearVT<euclase::ImageFormat::Format_F32_GrayscaleA, Float32GrayA, Float32GrayA>(newimage, dst_h);
 						} else {
 							newimage = resizeBilinearVT<euclase::ImageFormat::Format_F32_Grayscale, Float32Gray, Float32Gray>(newimage, dst_h);
 						}
@@ -1613,25 +1686,29 @@ static euclase::Image resizeGrayscaleImage(euclase::Image const &image, int dst_
 				} else if (method == EnlargeMethod::Bicubic) {
 					if (dst_w > w && dst_h > h) {
 						if (alphachannel) {
-							newimage = resizeBicubicT<euclase::ImageFormat::Format_F32_Grayscale, Float32GrayA, Float32GrayA>(newimage, dst_w, dst_h);
+							newimage = resizeBicubicT<euclase::ImageFormat::Format_F32_GrayscaleA, Float32GrayA, Float32GrayA>(newimage, dst_w, dst_h);
 						} else {
 							newimage = resizeBicubicT<euclase::ImageFormat::Format_F32_Grayscale, Float32Gray, Float32Gray>(newimage, dst_w, dst_h);
 						}
 					} else if (dst_w > w) {
 						if (alphachannel) {
-							newimage = resizeBicubicHT<euclase::ImageFormat::Format_F32_Grayscale, Float32GrayA, Float32GrayA>(newimage, dst_w);
+							newimage = resizeBicubicHT<euclase::ImageFormat::Format_F32_GrayscaleA, Float32GrayA, Float32GrayA>(newimage, dst_w);
 						} else {
 							newimage = resizeBicubicHT<euclase::ImageFormat::Format_F32_Grayscale, Float32Gray, Float32Gray>(newimage, dst_w);
 						}
 					} else if (dst_h > h) {
 						if (alphachannel) {
-							newimage = resizeBicubicVT<euclase::ImageFormat::Format_F32_Grayscale, Float32GrayA, Float32GrayA>(newimage, dst_h);
+							newimage = resizeBicubicVT<euclase::ImageFormat::Format_F32_GrayscaleA, Float32GrayA, Float32GrayA>(newimage, dst_h);
 						} else {
 							newimage = resizeBicubicVT<euclase::ImageFormat::Format_F32_Grayscale, Float32Gray, Float32Gray>(newimage, dst_h);
 						}
 					}
 				} else {
-					newimage = resizeNearestNeighbor<euclase::ImageFormat::Format_F32_Grayscale, Float32Gray>(newimage, dst_w, dst_h);
+					if (alphachannel) {
+						newimage = resizeNearestNeighbor<euclase::ImageFormat::Format_F32_GrayscaleA, Float32GrayA>(newimage, dst_w, dst_h);
+					} else {
+						newimage = resizeNearestNeighbor<euclase::ImageFormat::Format_F32_Grayscale, Float32Gray>(newimage, dst_w, dst_h);
+					}
 				}
 			}
 		}
@@ -1685,13 +1762,10 @@ euclase::Image euclase::filter_blur(euclase::Image image, int radius, const std:
 		return BlurFilter<Float32RGBA, Float32RGBA>(image, radius, isInterrupted, progress);
 	}
 
-	if (image.format() == ImageFormat::Format_U8_Grayscale) {
-		return BlurFilter<Float32GrayA, Float32GrayA>(image, radius, isInterrupted, progress);
-	}
-
 	auto format = image.format();
 	switch (format) {
 	case euclase::ImageFormat::Format_U8_RGBA:
+	case euclase::ImageFormat::Format_U8_Grayscale:
 	case euclase::ImageFormat::Format_U8_GrayscaleA:
 		auto img = filter_blur(image.convertToFormat(ImageFormat::Format_F32_RGBA), radius, isInterrupted, std::move(progress));
 		return img.convertToFormat(format);

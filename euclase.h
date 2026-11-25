@@ -1243,7 +1243,7 @@ public:
 	}
 	Float32RGBA color(float amount) const
 	{
-		if (amount == 0) {
+		if (amount == 0 || a == 0) {
 			return Float32RGBA(0.0f, 0.0f, 0.0f, 0.0f);
 		}
 		Float32RGBA t(*this);
@@ -1545,7 +1545,7 @@ public:
 	}
 	Float32GrayA color(float amount) const
 	{
-		if (amount == 0) {
+		if (amount == 0 || a == 0) {
 			return Float32GrayA(0, 0);
 		}
 		Float32GrayA t(*this);
@@ -1789,9 +1789,9 @@ UInt16Gray UInt16Gray::convert(UInt16RGB const &t)
 
 UInt8Gray UInt8Gray::convert(Float32RGBA const &t)
 {
-	auto y = ::euclase::gray(t.r8(), t.g8(), t.b8());
-	y = gamma(y);
-	return UInt8Gray(uint8_t(y * t.a));
+	float y = clamp_f32(::euclase::grayf(t.r, t.g, t.b));
+	int value = int(gamma(y) * 255 + 0.5f);
+	return UInt8Gray(uint8_t((value * t.a8() + 127) / 255));
 }
 
 inline UInt8Gray UInt8Gray::convert(const UInt8GrayA &r)
@@ -1818,7 +1818,8 @@ Float32Gray Float32Gray::convert(UInt16RGBA const &r)
 
 UInt8GrayA UInt8GrayA::convert(const Float32RGBA &t)
 {
-	return UInt8GrayA(::euclase::gray(t.r, t.g, t.b), 255);
+	float y = clamp_f32(::euclase::grayf(t.r, t.g, t.b));
+	return UInt8GrayA(uint8_t(gamma(y) * 255 + 0.5f), t.a8());
 }
 
 UInt16GrayA UInt16GrayA::convert(const Float32RGBA &t)
