@@ -119,12 +119,14 @@ struct RenderRequest {
 	std::atomic_bool canceled{false};
 
 	// Request state is protected by the view mutex. Workers only poll canceled without it.
-	void schedule(const RenderView &snapshot)
+	void schedule(const RenderView &snapshot, bool invalidate = true)
 	{
 		view = snapshot;
 		pending = true;
-		++generation;
-		canceled.store(true, std::memory_order_relaxed);
+		if (invalidate) {
+			++generation;
+			canceled.store(true, std::memory_order_relaxed);
+		}
 	}
 
 	void discard()
@@ -210,6 +212,7 @@ struct ImageViewWidget::Private {
 	RenderRequest outline_request;
 	QRegion dirty;
 	bool redraw_entire_view = false;
+	bool image_result_pending = false;
 	std::thread image_rendering_thread;
 	std::thread selection_outline_thread;
 
@@ -438,7 +441,7 @@ void ImageViewWidget::clearRenderCache()
 	update();
 }
 
-void ImageViewWidget::requestRendering(const QRect &canvasrect)
+void ImageViewWidget::requestRendering(const QRegion &canvas_region)
 {
 	const auto mapper = currentCoordinateMapper();
 	const RenderView snapshot{mapper, canvasSize(), mapper.mapToCanvasFromViewport(mapFromGlobal(QCursor::pos()))};
@@ -446,15 +449,16 @@ void ImageViewWidget::requestRendering(const QRect &canvasrect)
 		std::lock_guard lock(m->mutex);
 		if (m->stopping) return;
 		const auto &previous = m->image_request.view;
-		if (canvasrect.isEmpty() || previous.canvas_size != snapshot.canvas_size
+		const bool invalidate = canvas_region.isEmpty() || previous.canvas_size != snapshot.canvas_size
 				|| previous.mapper.scale() != mapper.scale() || previous.mapper.scrollOffset() != mapper.scrollOffset()
-				|| previous.mapper.viewport_size() != mapper.viewport_size()) {
+				|| previous.mapper.viewport_size() != mapper.viewport_size();
+		if (invalidate) {
 			m->redraw_entire_view = true;
 			m->dirty = {};
 		} else if (!m->redraw_entire_view) {
-			m->dirty += canvasrect;
+			m->dirty += canvas_region;
 		}
-		m->image_request.schedule(snapshot);
+		m->image_request.schedule(snapshot, invalidate);
 	}
 	m->cond.notify_all();
 }
@@ -771,11 +775,12 @@ void ImageViewWidget::runImageRendering()
 		uint64_t generation;
 		{
 			std::unique_lock lock(m->mutex);
-			m->cond.wait(lock, [&] { return request.pending || m->stopping; });
+			m->cond.wait(lock, [&] { return m->stopping || (request.pending && !m->image_result_pending); });
 			if (m->stopping) return;
 			generation = request.take(view);
-			dirty = m->dirty;
+			dirty.swap(m->dirty);
 			full = m->redraw_entire_view;
+			m->redraw_entire_view = false;
 		}
 
 		const QRect visible = visibleCanvas(view);
@@ -839,15 +844,32 @@ void ImageViewWidget::runImageRendering()
 			}
 			rendered[i] = {first, std::move(scaled)};
 		}
-		if (canceled() || failed.load(std::memory_order_relaxed)) continue;
+		{
+			std::lock_guard lock(m->mutex);
+			if (m->stopping || generation != request.generation) continue;
+			if (failed.load(std::memory_order_relaxed)) {
+				// Keep unfinished work for the next request without spinning on a failed render.
+				if (full) {
+					m->redraw_entire_view = true;
+					m->dirty = {};
+				} else {
+					m->dirty += dirty;
+				}
+				continue;
+			}
+			// Keep at most one rendered batch queued for the GUI.
+			m->image_result_pending = true;
+		}
 
 		QMetaObject::invokeMethod(this, [this, generation, mapper, full, rendered = std::move(rendered)] {
+			bool current;
 			{
 				std::lock_guard lock(m->mutex);
-				if (m->stopping || generation != m->image_request.generation) return;
-				m->redraw_entire_view = false;
-				m->dirty = {};
+				m->image_result_pending = false;
+				current = !m->stopping && generation == m->image_request.generation;
 			}
+			m->cond.notify_all();
+			if (!current) return;
 
 			if (full) m->offscreen1.clear();
 			m->offscreen1_mapper = mapper;

@@ -4,6 +4,7 @@
 #include "CoordinateMapper.h"
 #include "MainWindow.h"
 #include "SelectionOutline.h"
+#include <QRegion>
 #include <QScrollBar>
 #include <QTimer>
 #include <QWidget>
@@ -83,7 +84,7 @@ public:
 	static constexpr QColor BGCOLOR = QColor(128, 128, 128);
 
 	void clearRenderCache();
-	void requestRendering(const QRect &canvasrect);
+	void requestRendering(const QRegion &canvas_region);
 private slots:
 	void onTimer();
 signals:

@@ -27,6 +27,7 @@
 #include <QKeyEvent>
 #include <QMimeData>
 #include <QPainter>
+#include <QRegion>
 #include <QScreen>
 #include <QShortcut>
 #include <algorithm>
@@ -909,7 +910,7 @@ void MainWindow::updateImageView(const QRect &canvasrect)
 	ui->widget_image_view->requestRendering(canvasrect);
 }
 
-bool MainWindow::paintLayer(Operation op, Canvas::Layer const &layer)
+bool MainWindow::paintLayer(Operation op, Canvas::Layer const &layer, QRegion &dirty)
 {
 	if (isFilterDialogActive()) return false;
 	
@@ -926,7 +927,7 @@ bool MainWindow::paintLayer(Operation op, Canvas::Layer const &layer)
 		drawn = op == Operation::PaintToCurrentLayer ? canvas()->paintToCurrentLayer(layer, opt, nullptr)
 					: canvas()->paintToCurrentAlternate(layer, opt, nullptr);
 	}
-	for (const auto &area : changed) updateImageView(area);
+	for (const auto &area : changed) dirty += area;
 	return drawn;
 }
 
@@ -941,7 +942,8 @@ bool MainWindow::paintLayer(Operation op, Canvas::Layer const &layer)
 void MainWindow::drawBrush(bool one)
 {
 	if (isFilterDialogActive() || m->brush_failed) return;
-	
+
+	QRegion dirty;
 	auto Put = [&](QPointF const &pt, Brush const &brush){
 		Canvas::Layer layer;
 		{
@@ -960,7 +962,7 @@ void MainWindow::drawBrush(bool one)
 			RoundBrushGenerator shape(brush.size, brush.softness);
 			layer.setImage(QPoint(x0, y0), shape.image(w, h, x - x0, y - y0, m->primary_color));
 		}
-		m->brush_failed = !paintLayer(Operation::PaintToCurrentAlternate, layer);
+		m->brush_failed = !paintLayer(Operation::PaintToCurrentAlternate, layer, dirty);
 	};
 
 	auto Point = [&](double t){
@@ -975,7 +977,7 @@ void MainWindow::drawBrush(bool one)
 		do {
 			if (m->brush_next_distance == 0) {
 				Put(pt0, currentBrush());
-				if (m->brush_failed) return;
+				if (m->brush_failed) break;
 				m->brush_next_distance = m->brush_span;
 			}
 			double t = std::min(m->brush_t + (1.0 / 16), 1.0);
@@ -997,6 +999,7 @@ void MainWindow::drawBrush(bool one)
 	}
 
 	m->brush_t = 0;
+	if (!dirty.isEmpty()) ui->widget_image_view->requestRendering(dirty);
 }
 
 void MainWindow::resetCurrentAlternateOption(Canvas::BlendMode blendmode)

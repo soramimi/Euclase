@@ -10,6 +10,7 @@
 class Brush;
 
 class QToolButton;
+class QRegion;
 class FilterContext;
 class MyToolButton;
 
@@ -145,7 +146,7 @@ private:
 		PaintToCurrentLayer,
 		PaintToCurrentAlternate,
 	};
-	bool paintLayer(Operation op, const Canvas::Layer &layer);
+	bool paintLayer(Operation op, const Canvas::Layer &layer, QRegion &dirty);
 
 	void drawBrush(bool one);
 	void updateImageViewEntire();
