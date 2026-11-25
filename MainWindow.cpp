@@ -44,6 +44,7 @@ struct MainWindow::Private {
 	double brush_span = 4;
 	double brush_t = 0;
 	QPointF brush_bezier[4];
+	bool brush_failed = false;
 
 	bool mouse_moved = false;
 	QPoint start_viewport_pt;
@@ -380,7 +381,7 @@ void MainWindow::setImage(euclase::Image image, bool fitview, QString path)
 		return;
 	}
 	m->document.setDocumentPath(path);
-	ui->widget_image_view->clearRenderCache(true, true);
+	ui->widget_image_view->clearRenderCache();
 	resetView(fitview);
 	updateImageView({});
 	onUpdateDocumentInformation();
@@ -466,27 +467,24 @@ bool MainWindow::isPreviewEnabled() const
 	return m->preview_layer_enabled;
 }
 
-Canvas::Panel MainWindow::renderToPanel(Canvas::InputLayerMode input_layer_mode, euclase::ImageFormat format, QRect const &r, QRect const &maskrect, const Canvas::RenderOption &opt, bool *abort) const
+Canvas::Panel MainWindow::renderToPanel(Canvas::InputLayerMode input_layer_mode, euclase::ImageFormat format, QRect const &r, QRect const &maskrect, const Canvas::RenderOption &opt, const std::atomic_bool *abort) const
 {
+	if (abort && abort->load(std::memory_order_relaxed)) return {};
 	std::lock_guard lock(mutexForCanvas());
 	auto activepanel = m->preview_layer_enabled ? Canvas::AlternateLayer : Canvas::PrimaryLayer;
 	return canvas()->renderToPanel(input_layer_mode, format, r, maskrect, activepanel, opt, abort);
 }
 
-euclase::Image MainWindow::renderSelection(const QRect &r, bool *abort) const
+euclase::Image MainWindow::renderSelection(const QRect &r, const std::atomic_bool *abort) const
 {
+	if (abort && abort->load(std::memory_order_relaxed)) return {};
 	std::lock_guard lock(mutexForCanvas());
 	return canvas()->renderSelection(r, abort).image();
 }
 
-euclase::Image MainWindow::renderToImage(euclase::ImageFormat format, QRect const &r, Canvas::RenderOption const &opt, bool *abort) const
+euclase::Image MainWindow::renderToImage(euclase::ImageFormat format, QRect const &r, Canvas::RenderOption const &opt, const std::atomic_bool *abort) const
 {
 	return renderToPanel(Canvas::CurrentLayerOnly, format, r, {}, opt, abort).image();
-}
-
-SelectionOutline MainWindow::renderSelectionOutline(bool *abort)
-{
-	return ui->widget_image_view->renderSelectionOutline(abort);
 }
 
 QRect MainWindow::selectionRect() const
@@ -606,6 +604,7 @@ void MainWindow::onPenDown(double x, double y)
 	m->brush_bezier[0] = m->brush_bezier[1] = m->brush_bezier[2] = m->brush_bezier[3] = QPointF(x, y);
 	m->brush_next_distance = 0;
 	m->brush_t = 0;
+	m->brush_failed = false;
 	drawBrush(true);
 }
 
@@ -904,9 +903,9 @@ void MainWindow::updateImageView(const QRect &canvasrect)
 	ui->widget_image_view->requestRendering(canvasrect);
 }
 
-void MainWindow::paintLayer(Operation op, Canvas::Layer const &layer)
+bool MainWindow::paintLayer(Operation op, Canvas::Layer const &layer)
 {
-	if (isFilterDialogActive()) return;
+	if (isFilterDialogActive()) return false;
 	
 	std::vector<QRect> changed;
 	changed.reserve(layer.primary_panels.size());
@@ -915,15 +914,14 @@ void MainWindow::paintLayer(Operation op, Canvas::Layer const &layer)
 		changed.push_back(area);
 	};
 	opt.brush_color = foregroundColor();
+	bool drawn;
 	{
 		std::lock_guard lock(mutexForCanvas());
-		if (op == Operation::PaintToCurrentLayer) {
-			canvas()->paintToCurrentLayer(layer, opt, nullptr);
-		} else if (op == Operation::PaintToCurrentAlternate) {
-			canvas()->paintToCurrentAlternate(layer, opt, nullptr);
-		}
+		drawn = op == Operation::PaintToCurrentLayer ? canvas()->paintToCurrentLayer(layer, opt, nullptr)
+					: canvas()->paintToCurrentAlternate(layer, opt, nullptr);
 	}
 	for (const auto &area : changed) updateImageView(area);
+	return drawn;
 }
 
 /**
@@ -936,7 +934,7 @@ void MainWindow::paintLayer(Operation op, Canvas::Layer const &layer)
  */
 void MainWindow::drawBrush(bool one)
 {
-	if (isFilterDialogActive()) return;
+	if (isFilterDialogActive() || m->brush_failed) return;
 	
 	auto Put = [&](QPointF const &pt, Brush const &brush){
 		Canvas::Layer layer;
@@ -956,7 +954,7 @@ void MainWindow::drawBrush(bool one)
 			RoundBrushGenerator shape(brush.size, brush.softness);
 			layer.setImage(QPoint(x0, y0), shape.image(w, h, x - x0, y - y0, m->primary_color));
 		}
-		paintLayer(Operation::PaintToCurrentAlternate, layer);
+		m->brush_failed = !paintLayer(Operation::PaintToCurrentAlternate, layer);
 	};
 
 	auto Point = [&](double t){
@@ -971,6 +969,7 @@ void MainWindow::drawBrush(bool one)
 		do {
 			if (m->brush_next_distance == 0) {
 				Put(pt0, currentBrush());
+				if (m->brush_failed) return;
 				m->brush_next_distance = m->brush_span;
 			}
 			double t = std::min(m->brush_t + (1.0 / 16), 1.0);
@@ -1007,7 +1006,7 @@ void MainWindow::applyCurrentAlternateLayer()
 		std::lock_guard lock(mutexForCanvas());
 		const auto opt = renderOption();
 		auto *layer = canvas()->current_layer();
-		if (layer->finishAlternatePanels(true, opt.selection_layer, opt.opt1)) return;
+		if (!m->brush_failed && layer->finishAlternatePanels(true, opt.selection_layer, opt.opt1)) return;
 		layer->finishAlternatePanels(false, nullptr, {});
 	}
 	updateImageViewEntire();

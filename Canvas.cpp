@@ -175,9 +175,9 @@ const Canvas::Layer *Canvas::selection_layer() const
 	return &m->selection_layer;
 }
 
-bool Canvas::renderToSinglePanel(Panel *target_panel, QPoint const &target_offset, Panel const *input_panel, QPoint const &input_offset, Layer const *mask_layer, RenderOption const &opt, QColor const &brush_color, int opacity, bool *abort) try
+bool Canvas::renderToSinglePanel(Panel *target_panel, QPoint const &target_offset, Panel const *input_panel, QPoint const &input_offset, Layer const *mask_layer, RenderOption const &opt, QColor const &brush_color, int opacity, const std::atomic_bool *abort) try
 {
-	if (!target_panel || !*target_panel || !input_panel || !*input_panel || (abort && *abort)) return false;
+	if (!target_panel || !*target_panel || !input_panel || !*input_panel || (abort && abort->load(std::memory_order_relaxed))) return false;
 
 	const auto dst = panelRect(*target_panel, target_offset);
 	const auto src = panelRect(*input_panel, input_offset);
@@ -193,7 +193,8 @@ bool Canvas::renderToSinglePanel(Panel *target_panel, QPoint const &target_offse
 	const auto src_memory = input_panel->image().memtype();
 	const auto dst_memory = target_panel->image().memtype();
 	const bool cuda_rgba = (srcfmt == euclase::Format_F16_RGBA || srcfmt == euclase::Format_F32_RGBA)
-			&& (dstfmt == euclase::Format_F16_RGBA || dstfmt == euclase::Format_F32_RGBA);
+			&& (dstfmt == euclase::Format_F16_RGBA || dstfmt == euclase::Format_F32_RGBA)
+			&& opt.blend_mode == BlendMode::Normal;
 	const bool cuda_gray = srcfmt == euclase::Format_U8_Grayscale && dstfmt == euclase::Format_U8_Grayscale
 			&& src_memory == euclase::Image::CUDA;
 	if ((src_memory == euclase::Image::CUDA || dst_memory == euclase::Image::CUDA)
@@ -257,11 +258,10 @@ bool Canvas::renderToSinglePanel(Panel *target_panel, QPoint const &target_offse
 			constexpr int max_launch_extent = std::numeric_limits<int>::max() - 15;
 			if (w > max_launch_extent || h > max_launch_extent) return false;
 			auto *out = target_panel->imagep();
-			global->cuda->blend_uint8_grayscale(w, h, input_image->data(), input_image->width(),
+			return global->cuda->blend_uint8_grayscale(w, h, input_image->data(), input_image->width(),
 					input_image->height(), sx, sy, maskimg ? maskimg->data() : nullptr,
 					maskimg ? maskimg->width() : 0, maskimg ? maskimg->height() : 0,
 					out->data(), out->width(), out->height(), dx, dy);
-			return true;
 		}
 #endif
 
@@ -359,9 +359,6 @@ bool Canvas::renderToSinglePanel(Panel *target_panel, QPoint const &target_offse
 	}
 
 	if (dstfmt == euclase::ImageFormat::Format_U8_RGBA) {
-		if (srcfmt != euclase::Format_U8_RGBA && srcfmt != euclase::Format_F32_RGBA) {
-			return srcfmt == euclase::Format_F16_RGBA;
-		}
 		const auto in = input_image->convertToFormat(euclase::ImageFormat::Format_U8_RGBA);
 		if (!in) return false;
 		const size_t pixel_size = in.bytesPerPixel();
@@ -404,9 +401,10 @@ bool Canvas::renderToSinglePanel(Panel *target_panel, QPoint const &target_offse
 				cudamem_t *dst = out->data();
 				int dst_w = out->width();
 				int dst_h = out->height();
-				global->cuda->blend_fp32_RGBA(w, h, src, src_w, src_h, sx, sy, mask, mask_w, mask_h, dst, dst_w, dst_h, dx, dy);
+				return global->cuda->blend_fp32_RGBA(w, h, src, src_w, src_h, sx, sy, mask, mask_w, mask_h, dst, dst_w, dst_h, dx, dy);
+#else
+				return false;
 #endif
-				return true;
 			}
 		}
 
@@ -540,9 +538,10 @@ bool Canvas::renderToSinglePanel(Panel *target_panel, QPoint const &target_offse
 				cudamem_t *dst = out->data();
 				int dst_w = out->width();
 				int dst_h = out->height();
-				global->cuda->blend_fp16_RGBA(w, h, src, src_w, src_h, sx, sy, mask, mask_w, mask_h, dst, dst_w, dst_h, dx, dy);
+				return global->cuda->blend_fp16_RGBA(w, h, src, src_w, src_h, sx, sy, mask, mask_w, mask_h, dst, dst_w, dst_h, dx, dy);
+#else
+				return false;
 #endif
-				return true;
 			}
 		}
 
@@ -745,8 +744,10 @@ bool Canvas::composePanel(Panel *target_panel, const Panel *alt_panel, const Pan
 		auto compose = format == euclase::Format_F32_RGBA
 				? (erase ? cuda->erase_fp32_RGBA : cuda->blend_fp32_RGBA)
 				: (erase ? cuda->erase_fp16_RGBA : cuda->blend_fp16_RGBA);
-		compose(width, height, src.data(), src.width(), src.height(), 0, 0,
-				mask.data(), mask.width(), mask.height(), dst.data(), dst.width(), dst.height(), 0, 0);
+		if (!compose(width, height, src.data(), src.width(), src.height(), 0, 0,
+					 mask.data(), mask.width(), mask.height(), dst.data(), dst.width(), dst.height(), 0, 0)) {
+			return false;
+		}
 	} else
 #endif
 	if (format == euclase::Format_F32_RGBA) {
@@ -763,7 +764,7 @@ bool Canvas::composePanel(Panel *target_panel, const Panel *alt_panel, const Pan
 	return true;
 }
 
-bool Canvas::renderToEachPanel(Panel *target_panel, const Layer &input_layer, const Layer *mask_layer, const RenderOption &opt, bool *abort)
+bool Canvas::renderToEachPanel(Panel *target_panel, const Layer &input_layer, const Layer *mask_layer, const RenderOption &opt, const std::atomic_bool *abort)
 {
 	auto area = panelRect(*target_panel);
 	if (opt.mask_rect.isValid()) {
@@ -773,7 +774,7 @@ bool Canvas::renderToEachPanel(Panel *target_panel, const Layer &input_layer, co
 	RenderOption render_opt = opt;
 	render_opt.use_mask = false;
 	for (const auto &input : input_layer.primary_panels) {
-		if (abort && *abort) return false;
+		if (abort && abort->load(std::memory_order_relaxed)) return false;
 		if (area.intersected(panelRect(input, input_layer.offset())).empty()) continue;
 
 		const Panel *source = &input;
@@ -804,7 +805,7 @@ bool Canvas::renderToEachPanel(Panel *target_panel, const Layer &input_layer, co
 	return true;
 }
 
-bool Canvas::renderToLayer(Layer *target_layer, ActivePanel activepanel, const Layer &input_layer, const Layer *mask_layer, const RenderOption &opt, bool *abort) try
+bool Canvas::renderToLayer(Layer *target_layer, ActivePanel activepanel, const Layer &input_layer, const Layer *mask_layer, const RenderOption &opt, const std::atomic_bool *abort) try
 {
 	if (!target_layer || input_layer.format_ == euclase::Format_Invalid) return false;
 	auto *target = target_layer->panels(activepanel);
@@ -826,7 +827,7 @@ bool Canvas::renderToLayer(Layer *target_layer, ActivePanel activepanel, const L
 		if (!bounds.isValid()) return false;
 		for (int64_t y = tileStart(area.top - target_offset.y()); y < area.bottom - target_offset.y(); y += PANEL_SIZE) {
 			for (int64_t x = tileStart(area.left - target_offset.x()); x < area.right - target_offset.x(); x += PANEL_SIZE) {
-				if ((abort && *abort) || !pointFits(x, y)) return false;
+				if ((abort && abort->load(std::memory_order_relaxed)) || !pointFits(x, y)) return false;
 				const QPoint offset{int(x), int(y)};
 				auto it = panelPosition(pending, offset);
 				Panel *tile;
@@ -848,7 +849,7 @@ bool Canvas::renderToLayer(Layer *target_layer, ActivePanel activepanel, const L
 		if (opt.notify_changed_rect) changed.push_back(bounds);
 	}
 
-	if ((abort && *abort) || !commitPanels(*target, pending)) return false;
+	if ((abort && abort->load(std::memory_order_relaxed)) || !commitPanels(*target, pending)) return false;
 	if (activepanel != AlternateSelection) {
 		target_layer->format_ = format;
 		target_layer->active_panel_ = activepanel;
@@ -874,32 +875,33 @@ void Canvas::clear()
 	m->current_layer_index = 0;
 }
 
-bool Canvas::paintToCurrentLayer(Layer const &source, RenderOption const &opt, bool *abort)
+bool Canvas::paintToCurrentLayer(Layer const &source, RenderOption const &opt, const std::atomic_bool *abort)
 {
 	return renderToLayer(current_layer(), PrimaryLayer, source, selection_layer(), opt, abort);
 }
 
-bool Canvas::paintToCurrentAlternate(Layer const &source, RenderOption const &opt, bool *abort)
+bool Canvas::paintToCurrentAlternate(Layer const &source, RenderOption const &opt, const std::atomic_bool *abort)
 {
 	return renderToLayer(current_layer(), AlternateLayer, source, opt.use_mask ? selection_layer() : nullptr, opt, abort);
 }
 
-bool Canvas::addSelection(Layer const &source, RenderOption const &opt, bool *abort)
+bool Canvas::addSelection(Layer const &source, RenderOption const &opt, const std::atomic_bool *abort)
 {
 	RenderOption o = opt;
 	o.brush_color = Qt::white;
 	return renderToLayer(selection_layer(), PrimaryLayer, source, nullptr, o, abort);
 }
 
-bool Canvas::subSelection(Layer const &source, RenderOption const &opt, bool *abort)
+bool Canvas::subSelection(Layer const &source, RenderOption const &opt, const std::atomic_bool *abort)
 {
 	RenderOption o = opt;
 	o.brush_color = Qt::black;
 	return renderToLayer(selection_layer(), PrimaryLayer, source, nullptr, o, abort);
 }
 
-Canvas::Panel Canvas::renderSelection(const QRect &r, bool *abort) const
+Canvas::Panel Canvas::renderSelection(const QRect &r, const std::atomic_bool *abort) const
 {
+	if (abort && abort->load(std::memory_order_relaxed)) return {};
 	const QRect area = panelRect(r).toQRect();
 	Panel panel;
 	if (!panel->make(area.width(), area.height(), euclase::Format_U8_Grayscale)) return {};
@@ -908,8 +910,9 @@ Canvas::Panel Canvas::renderSelection(const QRect &r, bool *abort) const
 	return panel;
 }
 
-Canvas::Panel Canvas::renderToPanel(InputLayerMode input_layer_mode, euclase::ImageFormat format, const QRect &r, QRect const &maskrect, ActivePanel activepanel, RenderOption const &opt, bool *abort) const
+Canvas::Panel Canvas::renderToPanel(InputLayerMode input_layer_mode, euclase::ImageFormat format, const QRect &r, QRect const &maskrect, ActivePanel activepanel, RenderOption const &opt, const std::atomic_bool *abort) const
 {
+	if (abort && abort->load(std::memory_order_relaxed)) return {};
 	const auto *current = current_layer();
 	const QRect area = panelRect(r).toQRect();
 	Panel panel;
@@ -930,7 +933,7 @@ Canvas::Panel Canvas::renderToPanel(InputLayerMode input_layer_mode, euclase::Im
 	return panel;
 }
 
-Canvas::Panel Canvas::crop(const QRect &r, bool *abort) const
+Canvas::Panel Canvas::crop(const QRect &r, const std::atomic_bool *abort) const
 {
 	Panel panel;
 	const auto *current = current_layer();

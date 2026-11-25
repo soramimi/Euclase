@@ -1,7 +1,6 @@
 
 #include "ImageViewWidget.h"
 #include "AlphaBlend.h"
-#include "ApplicationGlobal.h"
 #include "Canvas.h"
 #include "MainWindow.h"
 #include "PanelizedImage.h"
@@ -9,20 +8,16 @@
 #include "misc.h"
 #include "Bounds.h"
 #include <QBitmap>
-#include <QBuffer>
-#include <QDebug>
-#include <QElapsedTimer>
-#include <QFileDialog>
-#include <QMenu>
 #include <QPainter>
 #include <QPainterPath>
+#include <QRegion>
 #include <QSvgRenderer>
 #include <QWheelEvent>
+#include <atomic>
 #include <cmath>
+#include <condition_variable>
 #include <mutex>
 #include <thread>
-#include <condition_variable>
-#include <variant>
 
 const int MAX_SCALE = 32; // 32x
 const int MIN_SCALE = 16; // 1/16x
@@ -109,6 +104,67 @@ public:
 };
 
 
+namespace {
+
+struct RenderView {
+	CoordinateMapper mapper;
+	QSize canvas_size;
+	QPointF cursor;
+};
+
+struct RenderRequest {
+	RenderView view;
+	uint64_t generation = 0;
+	bool pending = false;
+	std::atomic_bool canceled{false};
+
+	// Request state is protected by the view mutex. Workers only poll canceled without it.
+	void schedule(const RenderView &snapshot)
+	{
+		view = snapshot;
+		pending = true;
+		++generation;
+		canceled.store(true, std::memory_order_relaxed);
+	}
+
+	void discard()
+	{
+		pending = false;
+		++generation;
+		canceled.store(true, std::memory_order_relaxed);
+	}
+
+	uint64_t take(RenderView &snapshot)
+	{
+		snapshot = view;
+		pending = false;
+		canceled.store(false, std::memory_order_relaxed);
+		return generation;
+	}
+};
+
+struct RenderedTile {
+	QPoint position;
+	QImage image;
+};
+
+QRect visibleCanvas(const RenderView &view)
+{
+	const auto &mapper = view.mapper;
+	const QSize viewport = mapper.viewport_size();
+	const QPointF start = mapper.mapToCanvasFromViewport({});
+	const QPointF end = mapper.mapToCanvasFromViewport(QPointF(viewport.width(), viewport.height()));
+	const double width = std::max(0, view.canvas_size.width());
+	const double height = std::max(0, view.canvas_size.height());
+	const int x = int(std::floor(std::clamp(start.x(), 0.0, width)));
+	const int y = int(std::floor(std::clamp(start.y(), 0.0, height)));
+	const int right = int(std::ceil(std::clamp(end.x(), 0.0, width)));
+	const int bottom = int(std::ceil(std::clamp(end.y(), 0.0, height)));
+	return {x, y, right - x, bottom - y};
+}
+
+} // namespace
+
 struct ImageViewWidget::Private {
 	MainWindow *mainwindow = nullptr;
 	QScrollBar *v_scroll_bar = nullptr;
@@ -130,8 +186,6 @@ struct ImageViewWidget::Private {
 
 	bool left_button = false;
 
-	int delayed_update_counter = 0; // x 100ms
-
 	bool scrolling = false;
 
 	int stripe_animation = 0;
@@ -151,22 +205,18 @@ struct ImageViewWidget::Private {
 	std::mutex mutex;
 	std::condition_variable cond;
 
+	bool stopping = false;
+	RenderRequest image_request;
+	RenderRequest outline_request;
+	QRegion dirty;
+	bool redraw_entire_view = false;
 	std::thread image_rendering_thread;
-	bool render_interrupted = false;
-	bool render_invalidate = false;
-	bool render_requested = false;
-	bool render_canceled = false;
-	std::vector<QRect> render_canvas_rects; // in canvas coordinates
-	std::vector<QRect> render_canvas_adding_rects;
-	std::vector<Canvas::Panel> composed_panels_cache;
+	std::thread selection_outline_thread;
 
+	// The display cache and overlay belong to the GUI thread.
 	CoordinateMapper offscreen1_mapper;
 	PanelizedImage offscreen1;
-
-	std::thread selection_outline_thread;
 	SelectionOutline selection_outline;
-	bool selection_outline_requested = false;
-	QPixmap offscreen2;
 };
 
 ImageViewWidget::ImageViewWidget(QWidget *parent)
@@ -178,8 +228,6 @@ ImageViewWidget::ImageViewWidget(QWidget *parent)
 	initBrushes();
 
 	setMouseTracking(true);
-
-	connect(this, &ImageViewWidget::notifySelectionOutlineReady, this, &ImageViewWidget::onSelectionOutlineReady);
 
 	connect(&timer_, &QTimer::timeout, this, &ImageViewWidget::onTimer);
 	timer_.start(100);
@@ -220,11 +268,6 @@ MainWindow *ImageViewWidget::mainwindow()
 	return m->mainwindow;
 }
 
-std::mutex &ImageViewWidget::mutexForOffscreen()
-{
-	return m->mutex;
-}
-
 void ImageViewWidget::init(MainWindow *mainwindow, QScrollBar *vsb, QScrollBar *hsb)
 {
 	m->mainwindow = mainwindow;
@@ -233,47 +276,36 @@ void ImageViewWidget::init(MainWindow *mainwindow, QScrollBar *vsb, QScrollBar *
 	startRenderingThread();
 }
 
-static QImage scale_fp32_to_uint8_rgba(euclase::Image const &src, int w, int h)
-{
-	if (!src) return {};
-	if (src.memtype() == euclase::Image::CUDA) {
-		euclase::Image tmp(w, h, euclase::ImageFormat::Format_U8_RGBA, euclase::Image::CUDA);
-		if (!tmp) return {};
-		global->cuda->scale_fp32_to_uint8_rgba(w, h, w, tmp.data(), src.width(), src.height(), src.data());
-		return tmp.qimage();
-	} else {
-		QImage qimg = src.qimage();
-		if (qimg.isNull()) return {};
-		return qimg.scaled(w, h, Qt::IgnoreAspectRatio, Qt::FastTransformation);
-	}
-}
-
 void ImageViewWidget::runSelectionRendering()
 {
-	while (1) {
-		bool req = false;
+	auto &request = m->outline_request;
+	while (true) {
+		RenderView view;
+		uint64_t generation;
 		{
 			std::unique_lock lock(m->mutex);
-			if (m->render_interrupted) break;
-			m->cond.wait(lock, [&](){ return m->selection_outline_requested || m->render_interrupted; });
-			req = m->selection_outline_requested;
+			m->cond.wait(lock, [&] { return request.pending || m->stopping; });
+			if (m->stopping) return;
+			generation = request.take(view);
 		}
-		if (req) {
-			m->selection_outline_requested = false;
-			SelectionOutline selection_outline = renderSelectionOutline(&m->selection_outline_requested);
-			emit notifySelectionOutlineReady(selection_outline);
-		}
+		QPoint position;
+		auto outline = renderSelectionOutline(view.mapper, view.canvas_size, request.canceled, position);
+		if (request.canceled.load(std::memory_order_relaxed)) continue;
+
+		QMetaObject::invokeMethod(this, [this, generation, position, outline = std::move(outline)] {
+			{
+				std::lock_guard lock(m->mutex);
+				if (m->stopping || generation != m->outline_request.generation) return;
+			}
+			m->selection_outline = {position, outline.isNull() ? QBitmap() : QBitmap::fromImage(outline)};
+			update();
+		}, Qt::QueuedConnection);
 	}
 }
 
 CoordinateMapper ImageViewWidget::currentCoordinateMapper() const
 {
 	return CoordinateMapper(size(), m->d.view_scroll_offset, scale());
-}
-
-CoordinateMapper ImageViewWidget::offscreenCoordinateMapper() const
-{
-	return m->offscreen1_mapper;
 }
 
 void ImageViewWidget::startRenderingThread()
@@ -289,14 +321,12 @@ void ImageViewWidget::startRenderingThread()
 void ImageViewWidget::stopRenderingThread()
 {
 	{
-		std::lock_guard lock(mutexForOffscreen());
-		m->composed_panels_cache.clear();
-		m->render_canvas_rects.clear();
-		m->render_canvas_adding_rects.clear();
-		m->render_interrupted = true;
-		m->render_canceled = true;
-		m->cond.notify_all();
+		std::lock_guard lock(m->mutex);
+		m->stopping = true;
+		m->image_request.discard();
+		m->outline_request.discard();
 	}
+	m->cond.notify_all();
 	if (m->image_rendering_thread.joinable()) {
 		m->image_rendering_thread.join();
 	}
@@ -371,16 +401,6 @@ QSize ImageViewWidget::canvasSize() const
 }
 
 /**
- * @brief ImageViewWidget::center
- *
- * ビューポート座標系での中心座標を返す
- */
-QPoint ImageViewWidget::center() const
-{
-	return QPoint(width() / 2, height() / 2);
-}
-
-/**
  * @brief ImageViewWidget::centerF
  *
  * ビューポート座標系での中心座標を返す
@@ -404,163 +424,47 @@ QSize ImageViewWidget::imageScrollRange() const
 	return QSize(w, h);
 }
 
-/**
- * @brief ImageViewWidget::clearRenderCache
- *
- * レンダリングキャッシュをクリアする
- */
-void ImageViewWidget::clearRenderCache(bool clear_offscreen, bool lock)
+void ImageViewWidget::clearRenderCache()
 {
-	if (lock) {
-		std::lock_guard lock(mutexForOffscreen());
-		clearRenderCache(clear_offscreen, false);
-		return;
+	{
+		std::lock_guard lock(m->mutex);
+		m->image_request.discard();
+		m->outline_request.discard();
+		m->redraw_entire_view = false;
+		m->dirty = {};
 	}
-
-	m->offscreen1_mapper = currentCoordinateMapper();
-	m->composed_panels_cache.clear();
-	m->render_canvas_rects.clear();
-	m->render_canvas_adding_rects.clear();
-	m->render_requested = true;
-	m->render_canceled = true;
-
-	if (clear_offscreen) {
-		m->offscreen1.clear();
-		m->offscreen2 = {};
-	}
-
-	m->cond.notify_all();
+	m->offscreen1.clear();
+	m->selection_outline = {};
+	update();
 }
 
-/**
- * @brief ImageViewWidget::requestUpdateCanvas
- * @param canvasrect キャンバス座標系での更新領域
- * @param lock 排他処理を行う場合はtrue
- *
- * キャンバス座標系での更新領域を追加する
- */
-void ImageViewWidget::requestUpdateCanvas(const QRect &canvasrect, bool lock)
-{
-	if (lock) {
-		std::lock_guard lock(mutexForOffscreen());
-		requestUpdateCanvas(canvasrect, false);
-		return;
-	}
-	m->render_canvas_adding_rects.push_back(canvasrect);
-}
-
-/**
- * @brief ImageViewWidget::requestUpdateView
- * @param viewrect ビューポート座標系での更新領域
- * @param lock 排他処理を行う場合はtrue
- *
- * ビューポート座標系での更新領域を追加する
- */
-void ImageViewWidget::requestUpdateView(const QRect &viewrect, bool lock)
-{
-	QPointF topleft = viewrect.topLeft();
-	QPointF bottomright = viewrect.bottomRight();
-	topleft = mapToCanvasFromViewport(topleft);
-	bottomright = mapToCanvasFromViewport(bottomright);
-	int x0 = (int)floor(topleft.x());
-	int y0 = (int)floor(topleft.y());
-	int x1 = (int)ceil(bottomright.x());
-	int y1 = (int)ceil(bottomright.y());
-	requestUpdateCanvas(QRect(x0, y0, x1 - x0, y1 - y0), lock);
-}
-
-/**
- * @brief ImageViewWidget::requestUpdateEntire
- * @param lock 排他処理を行う場合はtrue
- *
- * 画面全体の更新を予約する
- */
-void ImageViewWidget::requestUpdateEntire(bool lock)
-{
-	if (lock) {
-		std::lock_guard lock(mutexForOffscreen());
-		requestUpdateEntire(false);
-		return;
-	}
-	clearRenderCache(false, false);
-	requestUpdateView({0, 0, width(), height()}, false);
-}
-
-/**
- * @brief ImageViewWidget::requestRendering
- * @param canvasrects キャンバス座標系での更新領域
- *
- * キャンバス座標系で更新要求する
- */
 void ImageViewWidget::requestRendering(const QRect &canvasrect)
 {
-	std::lock_guard lock(mutexForOffscreen());
-	m->offscreen1_mapper = currentCoordinateMapper();
-	if (canvasrect.isEmpty()) {
-		requestUpdateEntire(false);
-	} else {
-		requestUpdateCanvas(canvasrect, false);
+	const auto mapper = currentCoordinateMapper();
+	const RenderView snapshot{mapper, canvasSize(), mapper.mapToCanvasFromViewport(mapFromGlobal(QCursor::pos()))};
+	{
+		std::lock_guard lock(m->mutex);
+		if (m->stopping) return;
+		const auto &previous = m->image_request.view;
+		if (canvasrect.isEmpty() || previous.canvas_size != snapshot.canvas_size
+				|| previous.mapper.scale() != mapper.scale() || previous.mapper.scrollOffset() != mapper.scrollOffset()
+				|| previous.mapper.viewport_size() != mapper.viewport_size()) {
+			m->redraw_entire_view = true;
+			m->dirty = {};
+		} else if (!m->redraw_entire_view) {
+			m->dirty += canvasrect;
+		}
+		m->image_request.schedule(snapshot);
 	}
-	m->render_requested = true;
 	m->cond.notify_all();
 }
 
-/**
- * @brief ImageViewWidget::internalScrollImage
- * @param x スクロール先のx座標
- * @param y スクロール先のy座標
- * @param differential_update 差分更新する場合はtrue
- *
- * 画面をスクロールする
- */
-void ImageViewWidget::internalScrollImage(double x, double y, bool differential_update)
+void ImageViewWidget::scrollImage(double x, double y)
 {
-	auto old_offset = m->d.view_scroll_offset;
-
-	QSizeF sz = imageScrollRange();
-	x = std::min(std::max(x, 0.0), sz.width());
-	y = std::min(std::max(y, 0.0), sz.height());
-	m->d.view_scroll_offset = QPointF(x, y);
-
-	if (differential_update) { // 差分更新
-		if (m->d.view_scroll_offset != old_offset) { // スクロールした
-			int delta_x = (int)ceil(old_offset.x() - x); // 右にスクロールするとdelta_xは正
-			int delta_y = (int)ceil(old_offset.y() - y); // 下にスクロールするとdelta_yは正
-			{
-				std::lock_guard lock(mutexForOffscreen());
-				m->offscreen1_mapper = currentCoordinateMapper();
-				m->render_canceled = true;
-
-				if (delta_x > 0) { // 右にスクロール、左に空白ができる
-					requestUpdateView({0, 0, delta_x, height()}, false);
-				} else if (delta_x < 0) { // 左にスクロール、右に空白ができる
-					requestUpdateView({width() + delta_x, 0, -delta_x, height()}, false);
-				}
-				if (delta_y > 0) { // 下にスクロール、上に空白ができる
-					requestUpdateView({0, 0, width(), delta_y}, false);
-				} else if (delta_y < 0) { // 上にスクロール、下に空白ができる
-					requestUpdateView({0, height() + delta_y, width(), -delta_y}, false);
-				}
-
-				m->render_requested = true;
-				m->cond.notify_all();
-			}
-			update();
-		}
-	}
-}
-
-/**
- * @brief 指定した位置にスクロールする
- * @param x スクロール先のx座標
- * @param y スクロール先のy座標
- * @param differential_update 差分更新するかどうか
- */
-void ImageViewWidget::scrollImage(double x, double y, bool differential_update)
-{
-	internalScrollImage(x, y, differential_update);
-
-	// 選択領域のアウトラインを更新
+	const auto range = imageScrollRange();
+	m->d.view_scroll_offset = {std::clamp(x, 0.0, double(range.width())),
+							   std::clamp(y, 0.0, double(range.height()))};
+	requestRendering({});
 	requestUpdateSelectionOutline();
 
 	// スクロールバーの位置を更新
@@ -591,7 +495,7 @@ void ImageViewWidget::refrectScrollBar()
 	double y = m->v_scroll_bar->value();
 	if (fabs(x - m->d.view_scroll_offset.x()) < e) x = m->d.view_scroll_offset.x(); // 差が小さいときは値を維持する
 	if (fabs(y - m->d.view_scroll_offset.y()) < e) y = m->d.view_scroll_offset.y();
-	internalScrollImage(x, y, true);
+	scrollImage(x, y);
 }
 
 /**
@@ -632,8 +536,15 @@ void ImageViewWidget::updateScrollBarRange()
  */
 void ImageViewWidget::requestUpdateSelectionOutline()
 {
-	m->selection_outline_requested = true;
+	const RenderView snapshot{currentCoordinateMapper(), canvasSize(), {}};
+	{
+		std::lock_guard lock(m->mutex);
+		if (m->stopping) return;
+		m->outline_request.schedule(snapshot);
+	}
+	m->selection_outline = {};
 	m->cond.notify_all();
+	update();
 }
 
 /**
@@ -713,7 +624,7 @@ double ImageViewWidget::scale() const
 void ImageViewWidget::zoomInternal(QPointF const &pos)
 {
 	QPointF pt = getScaleAnchorPos() * scale() + centerF() - pos;
-	scrollImage(pt.x(), pt.y(), false);
+	scrollImage(pt.x(), pt.y());
 	update();
 }
 
@@ -767,11 +678,9 @@ void ImageViewWidget::scaleFit(double ratio)
 	}
 	updateScrollBarRange(); // スクロールバーの範囲を更新
 
-	scrollImage(w * scale() / 2.0, h * scale() / 2.0, false); // 中心にスクロール
+	scrollImage(w * scale() / 2.0, h * scale() / 2.0); // 中心にスクロール
 
 	updateCursorAnchorPos(); // ホイールスクロールの基準座標を更新
-	
-	requestRendering({});
 }
 
 /**
@@ -804,332 +713,136 @@ void ImageViewWidget::zoomOut()
 	zoomToCenter(scale() / 2);
 }
 
-/**
- * @brief ImageViewWidget::generateSelectionOutlineImage
- * @return アウトライン画像
- *
- * 選択領域のアウトライン画像を生成する
- */
-QImage ImageViewWidget::generateSelectionOutlineImage(QImage const &selection, bool *abort)
+QImage ImageViewWidget::renderSelectionOutline(const CoordinateMapper &mapper, const QSize &canvas_size,
+											   const std::atomic_bool &canceled, QPoint &position)
 {
-	Q_ASSERT(selection.format() == QImage::Format_Grayscale8);
+	const QRect area = visibleCanvas({mapper, canvas_size, {}});
+	if (area.isEmpty()) return {};
+	const QPointF first = mapper.mapToViewportFromCanvas(area.topLeft());
+	const QPointF last = mapper.mapToViewportFromCanvas(QPointF(area.x() + area.width(), area.y() + area.height()));
+	position = {int(std::floor(first.x())), int(std::floor(first.y()))};
+	const QSize output_size(int(std::ceil(last.x())) - position.x(), int(std::ceil(last.y())) - position.y());
+	if (output_size.isEmpty()) return {};
 
-	QImage image;
-	int w = selection.width();
-	int h = selection.height();
+	const auto mask = mainwindow()->renderSelection(area, &canceled);
+	if (!mask || canceled.load(std::memory_order_relaxed)) return {};
+	const auto selection = mask.qimage().scaled(output_size).convertToFormat(QImage::Format_Grayscale8);
+	if (selection.isNull()) return {};
 
-	image = QImage(w, h, QImage::Format_Grayscale8);
-	if (image.isNull()) return {};
-	image.fill(Qt::white);
-	for (int y = 1; y + 1 < h; y++) {
-		if (abort && *abort) return {};
-		uint8_t const *s0 = selection.scanLine(y - 1);
-		uint8_t const *s1 = selection.scanLine(y);
-		uint8_t const *s2 = selection.scanLine(y + 1);
-		uint8_t *d = image.scanLine(y);
-		for (int x = 1; x + 1 < w; x++) {
-			uint8_t v = ~(s0[x - 1] & s0[x] & s0[x + 1] & s1[x - 1] & s1[x + 1] & s2[x - 1] & s2[x] & s2[x + 1]) & s1[x];
-			d[x] = (v & 0x80) ? 0 : 255;
+	QImage outline(output_size, QImage::Format_Grayscale8);
+	if (outline.isNull()) return {};
+	outline.fill(Qt::white);
+	for (int y = 1; y + 1 < outline.height(); y++) {
+		if (canceled.load(std::memory_order_relaxed)) return {};
+		const auto *above = selection.scanLine(y - 1);
+		const auto *row = selection.scanLine(y);
+		const auto *below = selection.scanLine(y + 1);
+		auto *dest = outline.scanLine(y);
+		for (int x = 1; x + 1 < outline.width(); x++) {
+			const uint8_t edge = ~(above[x - 1] & above[x] & above[x + 1] & row[x - 1] & row[x + 1]
+								   & below[x - 1] & below[x] & below[x + 1]) & row[x];
+			dest[x] = (edge & 0x80) ? 0 : 255;
 		}
 	}
-	return image;
+	return outline;
 }
 
-/**
- * @brief ImageViewWidget::renderSelectionOutline
- * @param abort
- * @return
- *
- * 画像の選択範囲を描画する
- */
-SelectionOutline ImageViewWidget::renderSelectionOutline(bool *abort)
-{
-	SelectionOutline data;
-	const auto canvas_size = canvasSize();
-	const int dw = canvas_size.width();
-	const int dh = canvas_size.height();
-	if (dw > 0 && dh > 0) {
-		CoordinateMapper mapper = currentCoordinateMapper();
-		QPointF dp0(0, 0);
-		QPointF dp1(width(), height());
-		dp0 = mapper.mapToCanvasFromViewport(dp0);
-		dp1 = mapper.mapToCanvasFromViewport(dp1);
-		dp0.rx() = floor(std::max(dp0.rx(), (double)0));
-		dp0.ry() = floor(std::max(dp0.ry(), (double)0));
-		dp1.rx() = ceil(std::min(dp1.rx(), (double)dw));
-		dp1.ry() = ceil(std::min(dp1.ry(), (double)dh));
-		QPointF vp0 = mapper.mapToViewportFromCanvas(dp0);
-		QPointF vp1 = mapper.mapToViewportFromCanvas(dp1);
-		vp0.rx() = floor(vp0.rx());
-		vp0.ry() = floor(vp0.ry());
-		vp1.rx() = ceil(vp1.rx());
-		vp1.ry() = ceil(vp1.ry());
-		int vx = (int)vp0.x();
-		int vy = (int)vp0.y();
-		int vw = (int)vp1.x() - vx;
-		int vh = (int)vp1.y() - vy;
-		int dx = int(dp0.x());
-		int dy = int(dp0.y());
-		int dw = int(dp1.x()) - dx;
-		int dh = int(dp1.y()) - dy;
-		if (vw > 0 && vh > 0 && dw > 0 && dh > 0) {
-			QImage selection;
-			const auto sel = mainwindow()->renderSelection(QRect(dx, dy, dw, dh), abort);
-			if (!sel || (abort && *abort)) return {};
-			// 選択領域をスケーリング
-			if (sel.memtype() == euclase::Image::CUDA) { // CUDAメモリの場合はスケーリングをCUDAで行う
-				euclase::Image tmp(vw, vh, euclase::ImageFormat::Format_U8_Grayscale, euclase::Image::CUDA);
-				if (!tmp) return {};
-				int sw = sel.width();
-				int sh = sel.height();
-				global->cuda->scale(vw, vh, vw, tmp.data(), sw, sh, sw, sel.data(), 1);
-				selection = tmp.qimage();
-			} else { // それ以外はホストメモリで行う
-				selection = sel.qimage().scaled(vw, vh);
-			}
-			if (selection.isNull()) return {};
-			QImage outline = generateSelectionOutlineImage(selection, abort); // アウトライン画像を生成
-			if (outline.isNull()) return {};
-			data.bitmap = QBitmap::fromImage(outline);
-			data.point = QPoint(vx, vy);
-		}
-	}
-	return data;
-}
-
-/**
- * @brief ImageViewWidget::runImageRendering
- *
- * オフスクリーンへレンダリングする
- */
 void ImageViewWidget::runImageRendering()
 {
-	while (1) {
-		if (m->render_interrupted) return;
-		bool requested = false;
+	auto &request = m->image_request;
+	auto canceled = [&] { return request.canceled.load(std::memory_order_relaxed); };
+	while (true) {
+		RenderView view;
+		QRegion dirty;
+		bool full;
+		uint64_t generation;
 		{
-			std::unique_lock lock(mutexForOffscreen());
-			if (m->render_interrupted) return;
-			m->cond.wait(lock, [&](){ return m->render_requested || m->render_interrupted; });
-			m->render_canceled = false;
-			if (m->render_requested) {
-				m->render_requested = false;
-				requested = true;
-			}
+			std::unique_lock lock(m->mutex);
+			m->cond.wait(lock, [&] { return request.pending || m->stopping; });
+			if (m->stopping) return;
+			generation = request.take(view);
+			dirty = m->dirty;
+			full = m->redraw_entire_view;
 		}
-		if (requested) {
-			CoordinateMapper mapper; // オフスクリーン座標系
-			{
-				std::lock_guard lock(mutexForOffscreen());
-				Q_ASSERT(m->offscreen1.offset() == QPoint());
-				mapper = m->offscreen1_mapper;
-				if (m->render_invalidate) {
-					m->render_invalidate = false;
-					m->offscreen1.clear();
-				}
-				std::vector<QRect> v;
-				std::swap(v, m->render_canvas_adding_rects);
-				m->render_canvas_rects.insert(m->render_canvas_rects.end(), v.begin(), v.end());
-			}
 
-			const auto canvas_size = canvasSize();
-			const auto viewport = mapper.viewport_size();
-			const QPoint viewport_center(viewport.width() / 2, viewport.height() / 2);
-
-			const QPointF view_topleft = mapper.mapToViewportFromCanvas(QPointF(0, 0));
-			const QPointF view_bottomright = mapper.mapToViewportFromCanvas(QPointF(canvas_size.width(), canvas_size.height()));
-			const int view_left = std::max((int)floor(view_topleft.x()), 0);
-			const int view_top = std::max((int)floor(view_topleft.y()), 0);
-			const int view_right = std::min((int)ceil(view_bottomright.x() + 1), viewport.width()); // ceilだけでは足りなことがあるので 1 足す
-			const int view_bottom = std::min((int)ceil(view_bottomright.y() + 1), viewport.height());
-
-			std::vector<QRect> target_rects;
-
-			{ // レンダリングする領域を決定
-				std::lock_guard lock(mutexForOffscreen());
-				QPointF topleft = mapper.mapToCanvasFromViewport(QPointF(view_left, view_top));
-				QPointF bottomright = mapper.mapToCanvasFromViewport(QPointF(view_right, view_bottom));
-				const int S1 = OFFSCREEN_PANEL_SIZE - 1;
-				int x0 = (int)topleft.x() & ~S1; // パネルサイズ単位に切り下げ
-				int y0 = (int)topleft.y() & ~S1;
-				int x1 = (int)bottomright.x() & ~S1;
-				int y1 = (int)bottomright.y() & ~S1;
-				for (int y = y0; y <= y1; y += OFFSCREEN_PANEL_SIZE) {
-					for (int x = x0; x <= x1; x += OFFSCREEN_PANEL_SIZE) {
-						QRect target_rect(x, y, OFFSCREEN_PANEL_SIZE, OFFSCREEN_PANEL_SIZE); // 描画する候補の矩形
-						for (auto const &requested_rect : m->render_canvas_rects) { // 描画要求された矩形と重なっているかどうか
-							if (target_rect.intersects(requested_rect)) {
-								target_rects.push_back(target_rect);
-								break;
-							}
-						}
-					}
-				}
-			}
-
-			if (1) { // マウスカーソルから近い順にソート
-				QPoint center = mapper.mapToCanvasFromViewport(mapFromGlobal(QCursor::pos())).toPoint();
-				std::sort(target_rects.begin(), target_rects.end(), [&](QRect const &a, QRect const &b){
-					auto Center = [=](QRect const &r){
-						return r.center();
-					};
-					auto Distance = [](QPoint const &a, QPoint const &b){
-						const double dx = double(a.x()) - b.x();
-						const double dy = double(a.y()) - b.y();
-						return dx * dx + dy * dy;
-					};
-					QPoint ca = Center(a);
-					QPoint cb = Center(b);
-					return Distance(ca, center) < Distance(cb, center);
-				});
-			}
-
-			auto canceled = [&](){
-				bool f = /*m->render_requested ||*/ m->render_canceled || /*m->render_invalidate ||*/ m->render_interrupted;
-				return f;
-			};
-
-			size_t panelindex = 0;
-			std::atomic_int rectindex = 0;
-
-#pragma omp parallel for num_threads(8)
-			for (int i = 0; i < target_rects.size(); i++) {
-				if (canceled()) continue;
-
-				// パネル矩形
-				QRect const &rect = target_rects[rectindex++];
-				const int x = rect.x();
-				const int y = rect.y();
-				const int w = rect.width();
-				const int h = rect.height();
-
-				// 描画先座標
-				QPointF src_topleft(x, y);
-				QPointF src_bottomright(x + w, y + h);
-
-				// 描画元座標
-				QPointF dst_topleft = mapper.mapToViewportFromCanvas(src_topleft);
-				QPointF dst_bottomright = mapper.mapToViewportFromCanvas(src_bottomright);
-
-				// 描画範囲でクリップ
-				if (dst_topleft.x() < view_left) dst_topleft.rx() = view_left;
-				if (dst_topleft.y() < view_top) dst_topleft.ry() = view_top;
-				if (dst_bottomright.x() > view_right) dst_bottomright.rx() = view_right;
-				if (dst_bottomright.y() > view_bottom) dst_bottomright.ry() = view_bottom;
-
-				// 整数化
-				src_topleft = mapper.mapToCanvasFromViewport(dst_topleft);
-				src_bottomright = mapper.mapToCanvasFromViewport(dst_bottomright);
-				src_topleft.rx() = std::max((int)floor(src_topleft.x()), x);
-				src_topleft.ry() = std::max((int)floor(src_topleft.y()), y);
-				src_bottomright.rx() = std::min((int)ceil(src_bottomright.x()), x + w);
-				src_bottomright.ry() = std::min((int)ceil(src_bottomright.y()), y + h);
-
-				// 描画先を再計算
-				dst_topleft = mapper.mapToViewportFromCanvas(src_topleft);
-				dst_bottomright = mapper.mapToViewportFromCanvas(src_bottomright);
-				int dx = (int)round(dst_topleft.x());
-				int dy = (int)round(dst_topleft.y());
-				int dw = (int)ceil(dst_bottomright.x()) - dx;
-				int dh = (int)ceil(dst_bottomright.y()) - dy;
-				if (dw < 1 || dh < 1) continue;
-
-				// 描画元座標を確定
-				int sx = (int)src_topleft.x();
-				int sy = (int)src_topleft.y();
-				int sw = (int)src_bottomright.x() - sx;
-				int sh = (int)src_bottomright.y() - sy;
-				if (sw < 1 || sh < 1) continue;
-
-				// パネル原点を引く
-				sx -= x;
-				sy -= y;
-
-				euclase::Image image;
-				Canvas::Panel newpanel;
-				Canvas::RenderOption opt;
-				opt.use_mask = true;
-				newpanel = m->mainwindow->renderToPanel(Canvas::AllLayers, euclase::ImageFormat::Format_F32_RGBA, rect, {}, opt, (bool *)&m->render_interrupted);
-				if (!newpanel || canceled()) continue;
-
-				newpanel = newpanel->toHost();
-				if (!newpanel || canceled()) continue;
-
-				newpanel.setOffset(x, y);
-				{
-					// パネルキャッシュから検索
-					std::lock_guard lock(mutexForOffscreen());
-					Canvas::Panel *panel = nullptr;
-					QPoint pos(x, y);
-					for (size_t j = panelindex; j < m->composed_panels_cache.size(); j++) {
-						if (m->composed_panels_cache[j].offset() == pos) {
-							std::swap(m->composed_panels_cache[panelindex], m->composed_panels_cache[j]);
-							panel = &m->composed_panels_cache[panelindex];
-							*panel->imagep() = newpanel.image();
-							panelindex++;
-							break;
-						}
-					}
-					if (!panel) { // 見つからなかったら、新規パネルを作成
-						if (panelindex <= m->composed_panels_cache.size()) { // 別スレッドがcomposed_panels_cacheをclearすることがあるので、範囲チェック
-							m->composed_panels_cache.insert(m->composed_panels_cache.begin() + panelindex, newpanel);
-							panel = &m->composed_panels_cache[panelindex];
-						}
-						panelindex++;
-					}
-				}
-
-				image = cropImage(newpanel.image(), sx, sy, sw, sh); // 画像を切り出す
-				if (canceled()) continue;
-
-				// 拡大縮小
-				QImage qimg = scale_fp32_to_uint8_rgba(image, dw, dh);
-				if (qimg.isNull()) continue;
-
-				if (canceled()) continue;
-
-				QPoint dpos = QPoint(dx, dy) - viewport_center + mapper.scrollOffset().toPoint();
-
-				// 透明部分の市松模様
-				for (int iy = 0; iy < qimg.height(); iy++) {
-					euclase::UInt8RGBA *p = (euclase::UInt8RGBA *)qimg.scanLine(iy);
-					for (int ix = 0; ix < qimg.width(); ix++) {
-						if (p->a < 255) { // 透明部分
-							int u = dpos.x() + ix; // 市松模様の座標がずれないように、オフスクリーン系の座標の原点を足す
-							int v = dpos.y() + iy;
-							uint8_t a = ((u ^ v) & 8) ? 255 : 192; // 市松模様パターン
-							euclase::UInt8RGBA bg(a, a, a, 255); // 市松模様の背景
-							*p = AlphaBlend::blend(bg, *p); // 背景に合成
-						}
-						p++;
-					}
-				}
-
-				if (canceled()) continue;
-
-				// オフスクリーンへ描画する
-				{
-					std::lock_guard lock(mutexForOffscreen());
-					if (!canceled()) {
-						m->offscreen1.paintImage(dpos, qimg, qimg.size(), {});
-					}
-				}
-			}
-			{
-				std::lock_guard lock(mutexForOffscreen());
-
-				if (!canceled()) {
-					m->render_canvas_rects.clear(); // 描画済みのパネル矩形をクリア
-					update();
-				}
-
-				// 多すぎるパネルを削除
-				size_t n = panelindex * 2;
-				if (m->composed_panels_cache.size() > n) {
-					m->composed_panels_cache.resize(n);
+		const QRect visible = visibleCanvas(view);
+		const auto &mapper = view.mapper;
+		const auto viewport = mapper.viewport_size();
+		const QPoint checker_origin = mapper.scrollOffset().toPoint() - QPoint(viewport.width() / 2, viewport.height() / 2);
+		std::vector<QRect> tiles;
+		if (!visible.isEmpty()) {
+			const auto first_x = visible.left() / OFFSCREEN_PANEL_SIZE * OFFSCREEN_PANEL_SIZE;
+			const auto first_y = visible.top() / OFFSCREEN_PANEL_SIZE * OFFSCREEN_PANEL_SIZE;
+			for (int64_t y = first_y; y <= visible.bottom() && !canceled(); y += OFFSCREEN_PANEL_SIZE) {
+				for (int64_t x = first_x; x <= visible.right(); x += OFFSCREEN_PANEL_SIZE) {
+					const int w = int(std::min<int64_t>(OFFSCREEN_PANEL_SIZE, int64_t(visible.right()) + 1 - x));
+					const int h = int(std::min<int64_t>(OFFSCREEN_PANEL_SIZE, int64_t(visible.bottom()) + 1 - y));
+					const QRect tile(int(x), int(y), w, h);
+					const auto area = tile.intersected(visible);
+					if (full || dirty.intersects(area)) tiles.push_back(area);
 				}
 			}
 		}
+		if (canceled()) continue;
+		auto distance = [&](const QRect &tile){
+			const QPointF delta = QPointF(tile.center()) - view.cursor;
+			return QPointF::dotProduct(delta, delta);
+		};
+		std::sort(tiles.begin(), tiles.end(), [&](const QRect &a, const QRect &b){ return distance(a) < distance(b); });
+
+		std::vector<RenderedTile> rendered(tiles.size());
+		std::atomic_bool failed{false};
+		// Keep conversion parallel while limiting contention on the Canvas mutex.
+#pragma omp parallel for num_threads(2)
+		for (std::ptrdiff_t i = 0; i < static_cast<std::ptrdiff_t>(tiles.size()); i++) {
+			if (canceled() || failed.load(std::memory_order_relaxed)) continue;
+			const QRect &tile = tiles[i];
+			const QPoint first = mapper.mapToViewportFromCanvas(tile.topLeft()).toPoint();
+			const QPoint last = mapper.mapToViewportFromCanvas(QPointF(tile.x() + tile.width(), tile.y() + tile.height())).toPoint();
+			const QSize output_size(last.x() - first.x(), last.y() - first.y());
+			if (output_size.isEmpty()) continue;
+
+			Canvas::RenderOption opt;
+			opt.use_mask = true;
+			const auto panel = m->mainwindow->renderToPanel(Canvas::AllLayers, euclase::Format_F32_RGBA,
+														   tile, {}, opt, &request.canceled);
+			if (canceled()) continue;
+			const QImage image = panel.image().toHost().qimage();
+			QImage scaled = image.scaled(output_size).convertToFormat(QImage::Format_RGBA8888);
+			if (scaled.isNull()) {
+				failed.store(true, std::memory_order_relaxed);
+				continue;
+			}
+
+			const QPoint phase = first + checker_origin;
+			for (int y = 0; y < scaled.height() && !canceled(); y++) {
+				auto *row = reinterpret_cast<euclase::UInt8RGBA *>(scaled.scanLine(y));
+				for (int x = 0; x < scaled.width(); x++) {
+					if (row[x].a < 255) {
+						const uint8_t shade = (((phase.x() + x) ^ (phase.y() + y)) & 8) ? 255 : 192;
+						row[x] = AlphaBlend::blend(euclase::UInt8RGBA(shade, shade, shade, 255), row[x]);
+					}
+				}
+			}
+			rendered[i] = {first, std::move(scaled)};
+		}
+		if (canceled() || failed.load(std::memory_order_relaxed)) continue;
+
+		QMetaObject::invokeMethod(this, [this, generation, mapper, full, rendered = std::move(rendered)] {
+			{
+				std::lock_guard lock(m->mutex);
+				if (m->stopping || generation != m->image_request.generation) return;
+				m->redraw_entire_view = false;
+				m->dirty = {};
+			}
+
+			if (full) m->offscreen1.clear();
+			m->offscreen1_mapper = mapper;
+			for (const auto &tile : rendered) {
+				if (!tile.image.isNull()) m->offscreen1.paintImage(tile.position, tile.image, tile.image.size(), {});
+			}
+			update();
+		}, Qt::QueuedConnection);
 	}
 }
 
@@ -1150,89 +863,42 @@ void ImageViewWidget::paintEvent(QPaintEvent *)
 
 	const CoordinateMapper mapper = currentCoordinateMapper();
 
-	// オーバーレイ用オフスクリーンの描画は別スレッドで実行
-	std::thread th;
-	if (doc_w > 0 && doc_h > 0) {
-		th = std::thread([&](){
-			Q_ASSERT(doc_w > 0);
-			Q_ASSERT(doc_h > 0);
-			if (m->offscreen2.width() != view_w || m->offscreen2.height() != view_h) {
-				m->offscreen2 = QPixmap(view_w, view_h);
-			}
-			m->offscreen2.fill(Qt::transparent);
-			{
-				QPainter pr2(&m->offscreen2);
-
-				// 最大拡大時のグリッド
-				if (scale() == MAX_SCALE && !m->scrolling) { // スクロール中はグリッドを描画しない
-					QPoint org = mapper.mapToViewportFromCanvas(QPointF(0, 0)).toPoint();
-					QPointF topleft = mapper.mapToCanvasFromViewport(QPointF(0, 0));
-					int topleft_x = (int)floor(topleft.x());
-					int topleft_y = (int)floor(topleft.y());
-					pr2.save();
-					pr2.setOpacity(0.25);
-					pr2.setBrushOrigin(org);
-					int x = topleft_x;
-					while (1) {
-						QPointF pt = mapper.mapToViewportFromCanvas(QPointF(x, topleft_y));
-						int z = (int)floor(pt.x());
-						if (z >= width()) break;
-						pr2.fillRect(z, 0, 1, height(), m->horz_stripe_brush);
-						x++;
-					}
-					int y = topleft_y;
-					while (1) {
-						QPointF pt = mapper.mapToViewportFromCanvas(QPointF(topleft_x, y));
-						int z = (int)floor(pt.y());
-						if (z >= height()) break;
-						pr2.fillRect(0, z, width(), 1, m->vert_stripe_brush);
-						y++;
-					}
-					pr2.restore();
-				}
-
-				// 選択領域点線
-				if (!m->selection_outline.bitmap.isNull()) {
-					QBrush brush = stripeBrush();
-					pr2.save();
-					pr2.setClipRegion(QRegion(m->selection_outline.bitmap).translated(m->selection_outline.point));
-					pr2.setOpacity(0.5);
-					pr2.fillRect(0, 0, width(), height(), brush);
-					pr2.restore();
-				}
-			}
-		});
-	}
-
-	// ビューポートの描画
 	QPainter pr_view(this);
+	pr_view.fillRect(rect(), BGCOLOR);
+	const auto &cache_mapper = m->offscreen1_mapper;
+	for (const auto &panel : m->offscreen1.panels_) {
+		const QPointF first = mapper.mapToViewportFromCanvas(cache_mapper.mapToCanvasFromViewport(panel.offset));
+		const QPointF end = QPointF(panel.offset) + QPointF(panel.image.width(), panel.image.height());
+		const QPointF last = mapper.mapToViewportFromCanvas(cache_mapper.mapToCanvasFromViewport(end));
+		pr_view.drawImage(QRectF(first, last), panel.image, panel.image.rect());
+	}
 
-	// 画像のオフスクリーンを描画
-	Q_ASSERT(m->offscreen1.offset().x() == 0); // オフスクリーンの原点は常に(0, 0)
-	Q_ASSERT(m->offscreen1.offset().y() == 0);
-	{
-		std::lock_guard lock(mutexForOffscreen());
-		auto osmapper = offscreenCoordinateMapper();
-		for (PanelizedImage::Panel const &panel : m->offscreen1.panels_) {
-			QPoint org = panel.offset - m->offscreen1_mapper.scrollOffset().toPoint() + center();
-			QPointF topleft(org);
-			QPointF bottomright(org.x() + panel.image.width(), org.y() + panel.image.height());
-			topleft = osmapper.mapToCanvasFromViewport(topleft);
-			topleft = mapper.mapToViewportFromCanvas(topleft);
-			bottomright = osmapper.mapToCanvasFromViewport(bottomright);
-			bottomright = mapper.mapToViewportFromCanvas(bottomright);
-			bottomright.rx() = ceil(bottomright.x());
-			bottomright.ry() = ceil(bottomright.y());
-			pr_view.drawImage(QRectF(topleft, bottomright), panel.image, panel.image.rect());
+	if (doc_w > 0 && doc_h > 0 && scale() == MAX_SCALE && !m->scrolling) {
+		const auto first = mapper.mapToCanvasFromViewport({});
+		pr_view.save();
+		pr_view.setOpacity(0.25);
+		pr_view.setBrushOrigin(mapper.mapToViewportFromCanvas({}).toPoint());
+		for (int x = int(std::floor(first.x())); ; x++) {
+			const int z = int(std::floor(mapper.mapToViewportFromCanvas(QPointF(x, first.y())).x()));
+			if (z >= view_w) break;
+			pr_view.fillRect(z, 0, 1, view_h, m->horz_stripe_brush);
 		}
+		for (int y = int(std::floor(first.y())); ; y++) {
+			const int z = int(std::floor(mapper.mapToViewportFromCanvas(QPointF(first.x(), y)).y()));
+			if (z >= view_h) break;
+			pr_view.fillRect(0, z, view_w, 1, m->vert_stripe_brush);
+		}
+		pr_view.restore();
 	}
 
-	if (th.joinable()) {
-		th.join();
+	const auto &outline = m->selection_outline;
+	if (!outline.bitmap.isNull()) {
+		pr_view.save();
+		pr_view.setClipRegion(QRegion(outline.bitmap).translated(outline.point));
+		pr_view.setOpacity(0.5);
+		pr_view.fillRect(rect(), stripeBrush());
+		pr_view.restore();
 	}
-
-	// オーバーレイを描画
-	pr_view.drawPixmap(0, 0, m->offscreen2);
 
 	{
 		QPointF pt0(0, 0);
@@ -1273,62 +939,6 @@ void ImageViewWidget::paintEvent(QPaintEvent *)
 
 
 
-/**
- * @brief ImageViewWidget::rescaleOffScreen
- *
- *  座標マッピングに応じてオフスクリーンを再描画する
- */
-void ImageViewWidget::rescaleOffScreen()
-{
-	std::lock_guard lock(mutexForOffscreen());
-
-	Q_ASSERT(m->offscreen1.offset().x() == 0); // オフスクリーンの原点は常に(0, 0)
-	Q_ASSERT(m->offscreen1.offset().y() == 0);
-
-	auto old_mapper = m->offscreen1_mapper; // 古い座標系
-	auto new_mapper = currentCoordinateMapper(); // 新しい座標系
-
-	QPointF old_org(centerF() - old_mapper.scrollOffset()); // 古い座標系の原点
-	QPointF new_org(centerF() - new_mapper.scrollOffset()); // 新しい座標系の原点
-
-	PanelizedImage new_offscreen;
-
-	// 新しい座標系でオフスクリーンを再構築
-	for (PanelizedImage::Panel &panel : m->offscreen1.panels_) {
-		const QPointF org = old_org + panel.offset; // パネルの原点座標
-
-		// 描画先矩形を計算
-		QPointF dst_topleft(org);
-		QPointF dst_bottomright = dst_topleft + QPoint(panel.image.width(), panel.image.height());
-		dst_topleft = old_mapper.mapToCanvasFromViewport(dst_topleft);
-		dst_topleft = new_mapper.mapToViewportFromCanvas(dst_topleft);
-		dst_bottomright = old_mapper.mapToCanvasFromViewport(dst_bottomright);
-		dst_bottomright = new_mapper.mapToViewportFromCanvas(dst_bottomright);
-
-		// 画面外ならスキップ
-		const int x = floor(dst_topleft.x());
-		const int y = floor(dst_topleft.y());
-		const int w = ceil(dst_bottomright.x()) - x;
-		const int h = ceil(dst_bottomright.y()) - y;
-		QRect r(x, y, w, h);
-		r = r.intersected(rect());
-		if (r.isEmpty()) continue;
-
-		// 描画先座標
-		int dx = (int)round(dst_topleft.x() - new_org.x());
-		int dy = (int)round(dst_topleft.y() - new_org.y());
-
-		// 描画先マスク
-		QRect dstmask(r.translated(-new_org.toPoint()));
-
-		// 描画
-		new_offscreen.paintImage(QPoint(dx, dy), panel.image, QSize(w, h), dstmask);
-	}
-
-	m->offscreen1_mapper = new_mapper;
-	m->offscreen1 = std::move(new_offscreen);
-}
-
 void ImageViewWidget::setToolCursor(QCursor const &cursor)
 {
 	m->cursor = cursor;
@@ -1339,19 +949,12 @@ void ImageViewWidget::updateToolCursor()
 	setCursor(m->cursor);
 }
 
-void ImageViewWidget::cancelRendering()
-{
-	std::lock_guard lock(mutexForOffscreen());
-	m->render_canceled = true;
-	m->cond.notify_all();
-}
-
 void ImageViewWidget::internalUpdateScroll()
 {
 	QPoint pos = m->d.mouse_pos;
 	int delta_x = pos.x() - m->d.mouse_press_pos.x();
 	int delta_y = pos.y() - m->d.mouse_press_pos.y();
-	scrollImage(m->d.scroll_starting_offset.x() - delta_x, m->d.scroll_starting_offset.y() - delta_y, true);
+	scrollImage(m->d.scroll_starting_offset.x() - delta_x, m->d.scroll_starting_offset.y() - delta_y);
 }
 
 void ImageViewWidget::doHandScroll()
@@ -1366,7 +969,7 @@ void ImageViewWidget::resizeEvent(QResizeEvent *)
 {
 	updateScrollBarRange();
 	requestUpdateSelectionOutline();
-	requestUpdateEntire(true);
+	requestRendering({});
 }
 
 void ImageViewWidget::mousePressEvent(QMouseEvent *e)
@@ -1416,43 +1019,12 @@ void ImageViewWidget::mouseReleaseEvent(QMouseEvent *)
 
 void ImageViewWidget::wheelEvent(QWheelEvent *e)
 {
-	double d = e->angleDelta().y(); // ホイールの回転量
-	double s = scale() * pow(1.001, d); // 拡大率
-	if (zoomToCursor(s)) {
-		m->delayed_update_counter = 3; // 300ms後に更新する
-	}
+	zoomToCursor(scale() * pow(1.001, e->angleDelta().y()));
 }
 
-void ImageViewWidget::onSelectionOutlineReady(const SelectionOutline &data)
-{
-	m->selection_outline = data;
-	update();
-}
-
-/**
- * @brief ImageViewWidget::onTimer
- *
- * タイマーイベントの処理
- */
 void ImageViewWidget::onTimer()
 {
 	m->stripe_animation = (m->stripe_animation + 1) & 7;
 	m->bounds_animation = (m->bounds_animation + 1) % 10;
-
-	bool update = true;
-
-	if (m->delayed_update_counter > 0) { // 遅延更新
-		m->delayed_update_counter--;
-		if (m->delayed_update_counter == 0) { // 更新する
-			rescaleOffScreen(); // オフスクリーンを再構築
-			requestUpdateEntire(true);
-
-			update = false; // 再描画すると表示がガタつくので再描画しない。次のonTimerで再描画される
-		}
-	}
-
-	if (update) {
-		this->update();
-	}
+	update();
 }
-

@@ -68,6 +68,16 @@ euclase::Image euclase::convertToFormat(AbstractImage const &source, ImageFormat
 	euclase::Image newimg;
 	if (newformat == ImageFormat::Format_U8_RGBA) {
 		switch (source.format()) {
+		case Format_F16_RGBA:
+			if (!newimg.make(w, h, newformat)) return {};
+			for (int y = 0; y < h; y++) {
+				const auto *src = reinterpret_cast<const Float16RGBA *>(source.scanLine(y));
+				auto *dst = reinterpret_cast<UInt8RGBA *>(newimg.scanLine(y));
+				for (int x = 0; x < w; x++) {
+					dst[x] = UInt8RGBA::convert(Float32RGBA::convert(src[x]).limit());
+				}
+			}
+			break;
 		case Format_F32_RGBA:
 			if (!newimg.make(w, h, newformat)) return {};
 			for (int y = 0; y < h; y++) {
@@ -355,8 +365,12 @@ void euclase::Image::assign(Data *p)
 	ptr_ = p;
 }
 
-void euclase::Image::fill(const Color &color)
+bool euclase::Image::fill(const Color &color)
 {
+	if (!ptr_) return false;
+#ifdef USE_CUDA
+	if (memtype() == CUDA && (!global || !global->cuda)) return false;
+#endif
 	int w = width();
 	int h = height();
 	switch (format()) {
@@ -367,8 +381,7 @@ void euclase::Image::fill(const Color &color)
 			uint8_t g = color.green();
 			uint8_t b = color.blue();
 			uint8_t a = color.alpha();
-			global->cuda->fill_uint8_rgb(w, h, r, g, b, a, data(), width(), height(), 0, 0);
-			return;
+			return global->cuda->fill_uint8_rgb(w, h, r, g, b, a, data(), width(), height(), 0, 0);
 		}
 #endif
 		for (int y = 0; y < h; y++) {
@@ -379,7 +392,7 @@ void euclase::Image::fill(const Color &color)
 				p[x * 3 + 2] = color.blue();
 			}
 		}
-		return;
+		return true;
 	case ImageFormat::Format_U8_RGBA:
 #ifdef USE_CUDA
 		if (memtype() == CUDA) {
@@ -387,8 +400,7 @@ void euclase::Image::fill(const Color &color)
 			uint8_t g = color.green();
 			uint8_t b = color.blue();
 			uint8_t a = color.alpha();
-			global->cuda->fill_uint8_rgba(w, h, r, g, b, a, data(), width(), height(), 0, 0);
-			return;
+			return global->cuda->fill_uint8_rgba(w, h, r, g, b, a, data(), width(), height(), 0, 0);
 		}
 #endif
 		if (memtype() == Host) {
@@ -408,7 +420,7 @@ void euclase::Image::fill(const Color &color)
 					}
 				}
 			}
-			return;
+			return true;
 		}
 		break;
 	case ImageFormat::Format_U8_Grayscale:
@@ -416,8 +428,7 @@ void euclase::Image::fill(const Color &color)
 			uint8_t k = (uint8_t)euclase::gray(color.red(), color.green(), color.blue());
 #ifdef USE_CUDA
 			if (memtype() == CUDA) {
-				global->cuda->memset(data(), k, w * h);
-				return;
+				return global->cuda->memset(data(), k, w * h);
 			}
 #endif
 			if (memtype() == Host) {
@@ -427,7 +438,7 @@ void euclase::Image::fill(const Color &color)
 						p[x] = k;
 					}
 				}
-				return;
+				return true;
 			}
 		}
 		break;
@@ -437,8 +448,7 @@ void euclase::Image::fill(const Color &color)
 			euclase::Float32RGBA fcolor = euclase::Float32RGBA::convert(icolor);
 #ifdef USE_CUDA
 			if (memtype() == CUDA) {
-				global->cuda->fill_fp32_rgba(w, h, fcolor.r, fcolor.g, fcolor.b, fcolor.a, data(), width(), height(), 0, 0);
-				return;
+				return global->cuda->fill_fp32_rgba(w, h, fcolor.r, fcolor.g, fcolor.b, fcolor.a, data(), width(), height(), 0, 0);
 			}
 #endif
 			if (memtype() == Host) {
@@ -448,7 +458,7 @@ void euclase::Image::fill(const Color &color)
 						p[x] = fcolor;
 					}
 				}
-				return;
+				return true;
 			}
 		}
 		break;
@@ -458,8 +468,7 @@ void euclase::Image::fill(const Color &color)
 			euclase::Float16RGBA fcolor = euclase::Float16RGBA::convert(icolor);
 #ifdef USE_CUDA
 			if (memtype() == CUDA) {
-				global->cuda->fill_fp16_rgba(w, h, fcolor.r, fcolor.g, fcolor.b, fcolor.a, data(), width(), height(), 0, 0);
-				return;
+				return global->cuda->fill_fp16_rgba(w, h, fcolor.r, fcolor.g, fcolor.b, fcolor.a, data(), width(), height(), 0, 0);
 			}
 #endif
 			if (memtype() == Host) {
@@ -469,19 +478,17 @@ void euclase::Image::fill(const Color &color)
 						p[x] = fcolor;
 					}
 				}
-				return;
+				return true;
 			}
 		}
 		break;
 	}
 #ifdef USE_CUDA
 	if (memtype() == CUDA) {
-		if (auto img = toHost()) {
-			img.fill(color);
-			global->cuda->memcpy_htod(data(), img.data(), static_cast<int>(ptr_->size_));
-		}
+		return global->cuda->memset(data(), 0, static_cast<int>(ptr_->size_));
 	}
 #endif
+	return true;
 }
 
 #ifdef USE_QT
@@ -557,7 +564,7 @@ QImage euclase::Image::qimage() const
 		if (memtype() == CUDA) {
 			euclase::Image tmpimg(w, h, Format_U8_RGBA, CUDA);
 			if (!tmpimg) return {};
-			global->cuda->scale_fp16_to_uint8_rgba(w, h, w, tmpimg.data(), w, h, data());
+			if (!global->cuda->scale_fp16_to_uint8_rgba(w, h, w, tmpimg.data(), w, h, data())) return {};
 			return tmpimg.qimage();
 		}
 #endif
@@ -583,7 +590,7 @@ QImage euclase::Image::qimage() const
 		if (memtype() == CUDA) {
 			euclase::Image tmpimg(w, h, Format_U8_RGBA, CUDA);
 			if (!tmpimg) return {};
-			global->cuda->scale_fp32_to_uint8_rgba(w, h, w, tmpimg.data(), w, h, data());
+			if (!global->cuda->scale_fp32_to_uint8_rgba(w, h, w, tmpimg.data(), w, h, data())) return {};
 			return tmpimg.qimage();
 		}
 #endif
@@ -607,7 +614,7 @@ QImage euclase::Image::qimage() const
 		if (newimage.isNull()) return {};
 #ifdef USE_CUDA
 		if (memtype() == CUDA) {
-			global->cuda->copy_uint8_rgba(w, h, data(), w, h, 0, 0, newimage.bits(), w, h, 0, 0);
+			if (!global->cuda->copy_uint8_rgba(w, h, data(), w, h, 0, 0, newimage.bits(), w, h, 0, 0)) return {};
 			return newimage;
 		}
 #endif
@@ -626,7 +633,7 @@ QImage euclase::Image::qimage() const
 #ifdef USE_CUDA
 		if (memtype() == CUDA) {
 			for (int y = 0; y < h; y++) {
-				global->cuda->memcpy_dtoh(newimage.scanLine(y), scanLine(y), w);
+				if (!global->cuda->memcpy_dtoh(newimage.scanLine(y), scanLine(y), w)) return {};
 			}
 			return newimage;
 		}
@@ -795,8 +802,9 @@ bool euclase::Image::allocate(int w, int h, ImageFormat format, MemoryType memty
 bool euclase::Image::init(int w, int h, ImageFormat format, MemoryType memtype, const Color &color)
 {
 	if (!allocate(w, h, format, memtype)) return false;
-	fill(color);
-	return true;
+	if (fill(color)) return true;
+	assign(nullptr);
+	return false;
 }
 
 euclase::Image euclase::Image::copy(MemoryType memtype) const
@@ -814,11 +822,11 @@ euclase::Image euclase::Image::copy(MemoryType memtype) const
 		if (!global || !global->cuda) return {};
 		const int bytes = static_cast<int>(ptr_->size_);
 		if (dst_memtype == Host) {
-			global->cuda->memcpy_dtoh(newimg.data(), data(), bytes);
+			if (!global->cuda->memcpy_dtoh(newimg.data(), data(), bytes)) return {};
 		} else if (src_memtype == Host) {
-			global->cuda->memcpy_htod(newimg.data(), data(), bytes);
+			if (!global->cuda->memcpy_htod(newimg.data(), data(), bytes)) return {};
 		} else {
-			global->cuda->memcpy_dtod(newimg.data(), data(), bytes);
+			if (!global->cuda->memcpy_dtod(newimg.data(), data(), bytes)) return {};
 		}
 	}
 #endif

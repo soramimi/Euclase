@@ -1711,7 +1711,7 @@ Float32RGBA Float32RGBA::convert(UInt8RGBA const &src)
 	float r = src.r / 255.0f;
 	float g = src.g / 255.0f;
 	float b = src.b / 255.0f;
-	return degamma(Float32RGBA(r, g, b, 1.0f));
+	return degamma(Float32RGBA(r, g, b, src.a / 255.0f));
 }
 
 Float32RGBA Float32RGBA::convert(UInt16RGBA const &src)
@@ -2059,7 +2059,7 @@ public:
 	uint8_t *scanLine(int y);
 	uint8_t const *scanLine(int y) const;
 
-	void fill(const Color &color);
+	bool fill(const Color &color);
 
 	Image scaled(int w, int h, bool smooth) const;
 

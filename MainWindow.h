@@ -145,7 +145,7 @@ private:
 		PaintToCurrentLayer,
 		PaintToCurrentAlternate,
 	};
-	void paintLayer(Operation op, const Canvas::Layer &layer);
+	bool paintLayer(Operation op, const Canvas::Layer &layer);
 
 	void drawBrush(bool one);
 	void updateImageViewEntire();
@@ -207,8 +207,8 @@ public:
 	Canvas const *canvas() const;
 
 	void fitView();
-	Canvas::Panel renderToPanel(Canvas::InputLayerMode input_layer_mode, euclase::ImageFormat format, QRect const &r, const QRect &maskrect, const Canvas::RenderOption &opt, bool *abort) const;
-	euclase::Image renderToImage(euclase::ImageFormat format, QRect const &r, Canvas::RenderOption const &opt, bool *abort) const;
+	Canvas::Panel renderToPanel(Canvas::InputLayerMode input_layer_mode, euclase::ImageFormat format, QRect const &r, const QRect &maskrect, const Canvas::RenderOption &opt, const std::atomic_bool *abort) const;
+	euclase::Image renderToImage(euclase::ImageFormat format, QRect const &r, Canvas::RenderOption const &opt, const std::atomic_bool *abort) const;
 	QRect selectionRect() const;
 	void openFile(const QString &path);
 	QSize canvasSize() const;
@@ -220,7 +220,6 @@ public:
 	void changeTool(tool::ToolVariant tool);
 	tool::ToolVariant currentTool() const;
 
-	SelectionOutline renderSelectionOutline(bool *abort);
 	void setColor(QColor primary_color, QColor secondary_color);
 	void updateToolCursor();
 public slots:
@@ -287,7 +286,7 @@ public:
 	euclase::ImageFormat preferredImageFormat() const;
 	void updateImageView(const QRect &canvasrect); // canvasrect is in canvas coordinate
 	std::mutex &mutexForCanvas() const;
-	euclase::Image renderSelection(const QRect &r, bool *abort) const;
+	euclase::Image renderSelection(const QRect &r, const std::atomic_bool *abort) const;
 	bool isFilterDialogActive() const;
 	Bounds::Type boundsType() const;
 	tool::AbstractTool *abstractTool(tool::ToolVariant tool);

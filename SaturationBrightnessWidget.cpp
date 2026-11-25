@@ -1,3 +1,4 @@
+#include <limits>
 #include "SaturationBrightnessWidget.h"
 #include "MyApplication.h"
 #include "MainWindow.h"
@@ -43,25 +44,27 @@ static void drawFrame(QPainter *pr, int x, int y, int w, int h)
 QImage SaturationBrightnessWidget::createImage(int w, int h)
 {
 	QImage image(w, h, QImage::Format_RGBA8888);
-	auto cuda = global->cuda;;
-	if (cuda) {
-		QColor color = QColor::fromHsv(m->hue, 255, 255);
-		cudamem_t *cu0 = cuda->malloc(sizeof(uint32_t) * w * h);
-		cuda->saturation_brightness(w, h, color.red(), color.green(), color.blue(), cu0);
-		cuda->memcpy_dtoh(image.bits(), cu0, sizeof(uint32_t) * w * h);
-		cuda->free(cu0);
-	} else {
-		for (int y = 0; y < h; y++) {
-			int bri = 255 - 255 * y / h;
-			uint8_t *dst = (uint8_t *)image.scanLine(y);
-			for (int x = 0; x < w; x++) {
-				int sat = 256 * x / w;
-				QColor color = QColor::fromHsv(m->hue, sat, bri);
-				dst[4 * x + 0] = color.red();
-				dst[4 * x + 1] = color.green();
-				dst[4 * x + 2] = color.blue();
-				dst[4 * x + 3] = 255;
-			}
+	if (image.isNull()) return {};
+	if (const auto *cuda = global->cuda; cuda && image.sizeInBytes() <= std::numeric_limits<int>::max()) {
+		const int bytes = int(image.sizeInBytes());
+		if (auto *device = cuda->malloc(bytes)) {
+			const QColor color = QColor::fromHsv(m->hue, 255, 255);
+			const bool drawn = cuda->saturation_brightness(w, h, color.red(), color.green(), color.blue(), device)
+					&& cuda->memcpy_dtoh(image.bits(), device, bytes);
+			cuda->free(device);
+			if (drawn) return image;
+		}
+	}
+	for (int y = 0; y < h; y++) {
+		const int bri = 255 - 255 * y / h;
+		auto *dst = image.scanLine(y);
+		for (int x = 0; x < w; x++) {
+			const int sat = 256 * x / w;
+			const QColor color = QColor::fromHsv(m->hue, sat, bri);
+			dst[4 * x + 0] = color.red();
+			dst[4 * x + 1] = color.green();
+			dst[4 * x + 2] = color.blue();
+			dst[4 * x + 3] = 255;
 		}
 	}
 	return image;

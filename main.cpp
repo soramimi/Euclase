@@ -58,12 +58,12 @@ int main(int argc, char *argv[])
 	MyApplication a(argc, argv);
 
 #ifdef USE_CUDA
+	using InitCudaPlugin = const CUDAIMAGE_API *(*)(int);
 #ifdef Q_OS_WIN
 	if (1) {
 		QString path = a.applicationDirPath() / "libEuclaseCUDA.dll";
 		HMODULE dll = LoadLibraryA(path.toStdString().c_str());
-		CUDAIMAGE_API const *(*init_cudaplugin)(int);
-		*(void **)&init_cudaplugin = GetProcAddress(dll, "init_cudaplugin");
+		const auto init_cudaplugin = dll ? reinterpret_cast<InitCudaPlugin>(GetProcAddress(dll, "init_cudaplugin_v2")) : nullptr;
 		if (init_cudaplugin) {
 			global->cuda = init_cudaplugin(sizeof(CUDAIMAGE_API));
 		}
@@ -76,8 +76,7 @@ int main(int argc, char *argv[])
 		};
 		QString path = a.applicationDirPath() / "libEuclaseCUDA.so";
 		void *so = dlopen(toStdString(path).c_str(), RTLD_NOW);
-		CUDAIMAGE_API const *(*init_cudaplugin)(int);
-		*(void **)&init_cudaplugin = dlsym(so, "init_cudaplugin");
+		const auto init_cudaplugin = so ? reinterpret_cast<InitCudaPlugin>(dlsym(so, "init_cudaplugin_v2")) : nullptr;
 		if (init_cudaplugin) {
 			global->cuda = init_cudaplugin(sizeof(CUDAIMAGE_API));
 		}

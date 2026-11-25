@@ -20,98 +20,44 @@ static void *io_ptr(png_struct *png_ptr)
 	return png_get_io_ptr(png_ptr);
 }
 
-static bool _write_png(euclase::Image const &src, std::function<int (char const *p, int n)> fn)
+static bool _write_png(const euclase::Image &src, std::function<bool (const char *, int)> fn)
 {
-	if (src.memtype() != euclase::Image::Host || src.format() != euclase::ImageFormat::Format_U8_RGB) {
-		euclase::Image img = src.toHost().convertToFormat(euclase::ImageFormat::Format_U8_RGB);
-		return _write_png(img, fn);
-	}
+	const auto host = src.toHost();
+	const auto format = host.format();
+	const bool has_alpha = format == Format_U8_RGBA || format == Format_F16_RGBA || format == Format_F32_RGBA;
+	const auto image = host.convertToFormat(has_alpha ? Format_U8_RGBA : Format_U8_RGB);
+	if (!image) return false;
 
-	const int width = src.width();
-	const int height = src.height();
-
-	png_struct *png_ptr = NULL;
-	png_info *info_ptr = NULL;
-
-	const int           ciBitDepth = 8;
-	const int           ciChannels = 3;
-
-	png_uint_32         ulRowBytes;
-
-	// prepare the standard PNG structures
-
-	png_ptr = png_create_write_struct(PNG_LIBPNG_VER_STRING, NULL, (png_error_ptr)png_error, (png_error_ptr)NULL);
-	if (!png_ptr) {
-		return false;
-	}
-
-	info_ptr = png_create_info_struct(png_ptr);
-	if (!info_ptr) {
-		png_destroy_write_struct(&png_ptr, (png_infopp) NULL);
+	auto *png = png_create_write_struct(PNG_LIBPNG_VER_STRING, nullptr, png_error, nullptr);
+	if (!png) return false;
+	auto *info = png_create_info_struct(png);
+	if (!info) {
+		png_destroy_write_struct(&png, nullptr);
 		return false;
 	}
 
 	bool success = false;
 	try {
-		// initialize the png structure
-
-		png_set_write_fn(png_ptr, &fn, [](png_struct *png, png_byte *p, size_t n){
-				auto *fn = (std::function<int (char const *, int)> *)io_ptr(png);
-				fn->operator()((char const *)p, n);
-			}, nullptr);
-
-		// we're going to write a very simple 3x8 bit RGB image
-
-		png_set_IHDR(png_ptr, info_ptr, width, height, ciBitDepth, PNG_COLOR_TYPE_RGB, PNG_INTERLACE_NONE, PNG_COMPRESSION_TYPE_BASE, PNG_FILTER_TYPE_BASE);
-
-		// write the file header information
-
-		png_write_info(png_ptr, info_ptr);
-
-		// swap the BGR pixels in the DiData structure to RGB
-
-		// png_set_bgr(png_ptr);
-
-		// row_bytes is the width x number of channels
-
-		ulRowBytes = width * ciChannels;
-
-		std::vector<uint8_t> tmp_dst(ulRowBytes);
-
-		{
-			int i;
-			int pass, num_pass; /* pass variables */
-
-			/* intialize interlace handling.  If image is not interlaced,
-					this will set pass to 1 */
-			num_pass = png_set_interlace_handling(png_ptr);
-
-			/* loop through passes */
-			for (pass = 0; pass < num_pass; pass++) {
-				/* loop through image */
-				for (i = 0; i < height; i++) {
-					uint8_t const *tmp_src = src.scanLine(i);
-					for (int i = 0; i < width; i++) {
-						tmp_dst[i * 3 + 0] = tmp_src[i * 3 + 0];
-						tmp_dst[i * 3 + 1] = tmp_src[i * 3 + 1];
-						tmp_dst[i * 3 + 2] = tmp_src[i * 3 + 2];
-					}
-					png_write_row(png_ptr, &tmp_dst[0]);
-				}
+		png_set_write_fn(png, &fn, [](png_struct *png, png_byte *bytes, size_t count){
+			auto *write = static_cast<std::function<bool (const char *, int)> *>(png_get_io_ptr(png));
+			if (count > std::numeric_limits<int>::max()
+					|| !(*write)(reinterpret_cast<const char *>(bytes), static_cast<int>(count))) {
+				png_error(png, "PNG write failed");
 			}
+		}, nullptr);
+		png_set_IHDR(png, info, image.width(), image.height(), 8,
+				has_alpha ? PNG_COLOR_TYPE_RGBA : PNG_COLOR_TYPE_RGB, PNG_INTERLACE_NONE,
+				PNG_COMPRESSION_TYPE_BASE, PNG_FILTER_TYPE_BASE);
+		png_write_info(png, info);
+		for (int y = 0; y < image.height(); y++) {
+			png_write_row(png, image.scanLine(y));
 		}
-
-		// write the additional chunks to the PNG file (not really needed)
-
-		png_write_end(png_ptr, info_ptr);
-
+		png_write_end(png, info);
 		success = true;
-
 	} catch (png_const_charp) {
+	} catch (const std::bad_alloc &) {
 	}
-
-	png_destroy_write_struct(&png_ptr, &info_ptr);
-
+	png_destroy_write_struct(&png, &info);
 	return success;
 }
 
@@ -124,12 +70,11 @@ bool write_png(euclase::Image const &src, char const *filename)
 	}
 
 	bool ok = _write_png(src, [&](char const *p, int n){
-		return fwrite(p, 1, n, fp) == n;
+		return fwrite(p, 1, n, fp) == size_t(n);
 	});
 
-	fclose(fp);
-
-	return ok;
+	const bool closed = fclose(fp) == 0;
+	return ok && closed;
 }
 
 bool write_png(euclase::Image const &src, std::vector<char> *out)
@@ -162,12 +107,10 @@ static bool _load_png(euclase::Image *dst, std::function<int (char *p, int n)> f
 	int                 iBitDepth;
 	int                 iColorType;
 	double              dGamma;
-	png_color_16       *pBackground;
 	png_uint_32         ulChannels;
 	png_uint_32         ulRowBytes;
 	png_uint_32 width;
 	png_uint_32 height;
-	unsigned long bgcolor;
 
 	// first check the eight byte PNG signature
 
@@ -229,17 +172,6 @@ static bool _load_png(euclase::Image *dst, std::function<int (char *p, int n)> f
 		if (iColorType == PNG_COLOR_TYPE_GRAY || iColorType == PNG_COLOR_TYPE_GRAY_ALPHA)
 			png_set_gray_to_rgb(png_ptr);
 
-		// set the background color to draw transparent and alpha images over.
-		if (png_get_bKGD(png_ptr, info_ptr, &pBackground)) {
-			png_set_background(png_ptr, pBackground, PNG_BACKGROUND_GAMMA_FILE, 1, 1.0);
-			int r = (uint8_t)pBackground->red;
-			int g = (uint8_t)pBackground->green;
-			int b = (uint8_t)pBackground->blue;
-			bgcolor = 0xff000000 | (b << 16) | (g << 8) | r;
-		} else {
-			bgcolor = 0;
-		}
-
 		// if required set gamma conversion
 		if (png_get_gAMA(png_ptr, info_ptr, &dGamma))
 			png_set_gamma(png_ptr, (double) 2.2, dGamma);
@@ -270,8 +202,6 @@ static bool _load_png(euclase::Image *dst, std::function<int (char *p, int n)> f
 		}
 
 		// now we can allocate memory to store the image
-
-		//dst->CreateImage(width, height, ulChannels, bgcolor);
 
 		std::vector<png_byte> rowbuffer(ulRowBytes);
 

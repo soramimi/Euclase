@@ -311,19 +311,19 @@ public:
 	Layer *selection_layer();
 	const Layer *selection_layer() const;
 
-	bool paintToCurrentLayer(const Layer &source, const RenderOption &opt, bool *abort);
-	bool paintToCurrentAlternate(const Layer &source, const RenderOption &opt, bool *abort);
+	bool paintToCurrentLayer(const Layer &source, const RenderOption &opt, const std::atomic_bool *abort);
+	bool paintToCurrentAlternate(const Layer &source, const RenderOption &opt, const std::atomic_bool *abort);
 
 	enum InputLayerMode {
 		AllLayers,
 		CurrentLayerOnly,
 	};
-	Panel renderToPanel(InputLayerMode input_layer_mode, euclase::ImageFormat format, QRect const &r, QRect const &maskrect, ActivePanel activepanel, RenderOption const &opt, bool *abort) const;
+	Panel renderToPanel(InputLayerMode input_layer_mode, euclase::ImageFormat format, QRect const &r, QRect const &maskrect, ActivePanel activepanel, RenderOption const &opt, const std::atomic_bool *abort) const;
 
-	static bool renderToSinglePanel(Panel *target_panel, const QPoint &target_offset, const Panel *input_panel, const QPoint &input_offset, const Layer *mask_layer, RenderOption const &opt, const QColor &brush_color, int opacity = 255, bool *abort = nullptr);
-	static bool renderToLayer(Layer *target_layer, ActivePanel activepanel, const Layer &input_layer, const Layer *mask_layer, const RenderOption &opt, bool *abort);
+	static bool renderToSinglePanel(Panel *target_panel, const QPoint &target_offset, const Panel *input_panel, const QPoint &input_offset, const Layer *mask_layer, RenderOption const &opt, const QColor &brush_color, int opacity = 255, const std::atomic_bool *abort = nullptr);
+	static bool renderToLayer(Layer *target_layer, ActivePanel activepanel, const Layer &input_layer, const Layer *mask_layer, const RenderOption &opt, const std::atomic_bool *abort);
 private:
-	static bool renderToEachPanel(Panel *target_panel, const Layer &input_layer, const Layer *mask_layer, const RenderOption &opt, bool *abort);
+	static bool renderToEachPanel(Panel *target_panel, const Layer &input_layer, const Layer *mask_layer, const RenderOption &opt, const std::atomic_bool *abort);
 	static bool composePanel(Panel *target_panel, const Panel *alt_panel, const Panel *alt_mask, BlendMode mode);
 public:
 	enum class SelectionOperation {
@@ -332,10 +332,10 @@ public:
 		SubSelection,
 	};
 	void clearSelection();
-	bool addSelection(const Layer &source, const RenderOption &opt, bool *abort);
-	bool subSelection(const Layer &source, const RenderOption &opt, bool *abort);
-	Panel renderSelection(const QRect &r, bool *abort) const;
-	Panel crop(const QRect &r, bool *abort) const;
+	bool addSelection(const Layer &source, const RenderOption &opt, const std::atomic_bool *abort);
+	bool subSelection(const Layer &source, const RenderOption &opt, const std::atomic_bool *abort);
+	Panel renderSelection(const QRect &r, const std::atomic_bool *abort) const;
+	Panel crop(const QRect &r, const std::atomic_bool *abort) const;
 	bool trim(const QRect &r);
 	void clear();
 	int addNewLayer();

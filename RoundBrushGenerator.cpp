@@ -70,9 +70,8 @@ euclase::Image RoundBrushGenerator::image(int w, int h, float cx, float cy, QCol
 #ifdef USE_CUDA
 	if (global->cuda) {
 		euclase::Image image(w, h, euclase::ImageFormat::Format_F16_RGBA, euclase::Image::CUDA);
-		if (!image) return {};
-		image.fill(color);
-		global->cuda->round_brush(w, h, cx, cy, radius, blur, mul, image.data());
+		if (!image || !image.fill(color)
+				|| !global->cuda->round_brush(w, h, cx, cy, radius, blur, mul, image.data())) return {};
 		return image;
 	}
 #endif

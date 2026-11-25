@@ -8,8 +8,6 @@
 #include <QTimer>
 #include <QWidget>
 
-class Canvas;
-
 class ImageViewWidget : public QWidget {
 	Q_OBJECT
 	friend class MainWindow; //@todo remove
@@ -23,15 +21,11 @@ private:
 
 	MainWindow *mainwindow();
 
-	std::mutex &mutexForOffscreen();
-	
 	QSize canvasSize() const;
-	QPoint center() const;
 	QPointF centerF() const;
 
 	QSize imageScrollRange() const;
-	void internalScrollImage(double x, double y, bool differential_update);
-	void scrollImage(double x, double y, bool differential_update);
+	void scrollImage(double x, double y);
 	bool setScale(double scale, bool fire_event);
 	void setScrollBarRange(QScrollBar *h, QScrollBar *v);
 	void updateScrollBarRange();
@@ -40,20 +34,17 @@ private:
 	void updateCursorAnchorPos();
 	QBrush stripeBrush();
 	void initBrushes();
-	QImage generateSelectionOutlineImage(const QImage &selection, bool *abort);
+	QImage renderSelectionOutline(const CoordinateMapper &mapper, const QSize &canvas_size,
+								  const std::atomic_bool &canceled, QPoint &position);
 	void internalUpdateScroll();
 	void startRenderingThread();
 	void stopRenderingThread();
 	void runImageRendering();
 	void runSelectionRendering();
-	void setRenderRequested(bool f);
 	CoordinateMapper currentCoordinateMapper() const;
-	CoordinateMapper offscreenCoordinateMapper() const;
-	void rescaleOffScreen();
 	void zoomInternal(const QPointF &pos);
 	void setScaleAnchorPos(const QPointF &pos);
 	QPointF getScaleAnchorPos();
-	void requestUpdateEntire(bool lock);
 protected:
 	void resizeEvent(QResizeEvent *) override;
 	void paintEvent(QPaintEvent *) override;
@@ -84,26 +75,18 @@ public:
 
 	void requestUpdateSelectionOutline();
 
-	QBitmap updateSelection_();
-	SelectionOutline renderSelectionOutline(bool *abort);
 	bool isRectVisible() const;
 	void setToolCursor(const QCursor &cursor);
 	void doHandScroll();
 	void updateToolCursor();
 
-	void cancelRendering();
-
 	static constexpr QColor BGCOLOR = QColor(128, 128, 128);
 
-	void clearRenderCache(bool clear_offscreen, bool lock);
-	void requestUpdateView(const QRect &viewrect, bool lock);
-	void requestUpdateCanvas(const QRect &canvasrect, bool lock);
+	void clearRenderCache();
 	void requestRendering(const QRect &canvasrect);
 private slots:
-	void onSelectionOutlineReady(SelectionOutline const &data);
 	void onTimer();
 signals:
-	void notifySelectionOutlineReady(SelectionOutline const &data);
 	void scaleChanged(double scale);
 	void updateDocInfo();
 };
