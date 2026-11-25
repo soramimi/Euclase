@@ -999,7 +999,7 @@ void MainWindow::drawBrush(bool one)
 	}
 
 	m->brush_t = 0;
-	if (!dirty.isEmpty()) ui->widget_image_view->requestRendering(dirty);
+	if (!dirty.isEmpty()) ui->widget_image_view->requestBrushRendering(dirty);
 }
 
 void MainWindow::resetCurrentAlternateOption(Canvas::BlendMode blendmode)

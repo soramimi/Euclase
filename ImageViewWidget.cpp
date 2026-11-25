@@ -212,6 +212,7 @@ struct ImageViewWidget::Private {
 	RenderRequest outline_request;
 	QRegion dirty;
 	bool redraw_entire_view = false;
+	bool image_rendering_active = false;
 	bool image_result_pending = false;
 	std::thread image_rendering_thread;
 	std::thread selection_outline_thread;
@@ -443,22 +444,36 @@ void ImageViewWidget::clearRenderCache()
 
 void ImageViewWidget::requestRendering(const QRegion &canvas_region)
 {
+	scheduleRendering(canvas_region, false);
+}
+
+void ImageViewWidget::requestBrushRendering(const QRegion &canvas_region)
+{
+	scheduleRendering(canvas_region, true);
+}
+
+void ImageViewWidget::scheduleRendering(const QRegion &canvas_region, bool preserve_current_render)
+{
 	const auto mapper = currentCoordinateMapper();
 	const RenderView snapshot{mapper, canvasSize(), mapper.mapToCanvasFromViewport(mapFromGlobal(QCursor::pos()))};
 	{
 		std::lock_guard lock(m->mutex);
 		if (m->stopping) return;
 		const auto &previous = m->image_request.view;
-		const bool invalidate = canvas_region.isEmpty() || previous.canvas_size != snapshot.canvas_size
+		bool full = canvas_region.isEmpty() || previous.canvas_size != snapshot.canvas_size
 				|| previous.mapper.scale() != mapper.scale() || previous.mapper.scrollOffset() != mapper.scrollOffset()
 				|| previous.mapper.viewport_size() != mapper.viewport_size();
-		if (invalidate) {
+		if (!preserve_current_render && (m->image_rendering_active || m->image_result_pending)) {
+			// A canceled batch may contain dirty tiles that have not reached the cache.
+			full = true;
+		}
+		if (full) {
 			m->redraw_entire_view = true;
 			m->dirty = {};
 		} else if (!m->redraw_entire_view) {
 			m->dirty += canvas_region;
 		}
-		m->image_request.schedule(snapshot, invalidate);
+		m->image_request.schedule(snapshot, !preserve_current_render || full);
 	}
 	m->cond.notify_all();
 }
@@ -781,6 +796,7 @@ void ImageViewWidget::runImageRendering()
 			dirty.swap(m->dirty);
 			full = m->redraw_entire_view;
 			m->redraw_entire_view = false;
+			m->image_rendering_active = true;
 		}
 
 		const QRect visible = visibleCanvas(view);
@@ -801,7 +817,11 @@ void ImageViewWidget::runImageRendering()
 				}
 			}
 		}
-		if (canceled()) continue;
+		if (canceled()) {
+			std::lock_guard lock(m->mutex);
+			m->image_rendering_active = false;
+			continue;
+		}
 		auto distance = [&](const QRect &tile){
 			const QPointF delta = QPointF(tile.center()) - view.cursor;
 			return QPointF::dotProduct(delta, delta);
@@ -846,6 +866,7 @@ void ImageViewWidget::runImageRendering()
 		}
 		{
 			std::lock_guard lock(m->mutex);
+			m->image_rendering_active = false;
 			if (m->stopping || generation != request.generation) continue;
 			if (failed.load(std::memory_order_relaxed)) {
 				// Keep unfinished work for the next request without spinning on a failed render.

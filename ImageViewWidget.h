@@ -40,6 +40,7 @@ private:
 	void internalUpdateScroll();
 	void startRenderingThread();
 	void stopRenderingThread();
+	void scheduleRendering(const QRegion &canvas_region, bool preserve_current_render);
 	void runImageRendering();
 	void runSelectionRendering();
 	CoordinateMapper currentCoordinateMapper() const;
@@ -85,6 +86,7 @@ public:
 
 	void clearRenderCache();
 	void requestRendering(const QRegion &canvas_region);
+	void requestBrushRendering(const QRegion &canvas_region);
 private slots:
 	void onTimer();
 signals:
