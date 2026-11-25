@@ -41,13 +41,18 @@ private:
 	void startRenderingThread();
 	void stopRenderingThread();
 	void scheduleRendering(const QRegion &canvas_region, bool preserve_current_render);
+	void queueImageUpdate();
+	void paintRenderCache(QPainter &painter, const CoordinateMapper &mapper, bool include_previous) const;
+	void preserveRenderCache();
 	void runImageRendering();
 	void runSelectionRendering();
 	CoordinateMapper currentCoordinateMapper() const;
 	void zoomInternal(const QPointF &pos);
 	void setScaleAnchorPos(const QPointF &pos);
 	QPointF getScaleAnchorPos();
+	void endBrushDrag();
 protected:
+	bool event(QEvent *event) override;
 	void resizeEvent(QResizeEvent *) override;
 	void paintEvent(QPaintEvent *) override;
 	void mousePressEvent(QMouseEvent *event) override;

@@ -18,6 +18,7 @@
 #include <condition_variable>
 #include <mutex>
 #include <thread>
+#include <utility>
 
 const int MAX_SCALE = 32; // 32x
 const int MIN_SCALE = 16; // 1/16x
@@ -150,6 +151,19 @@ struct RenderedTile {
 	QImage image;
 };
 
+struct ImageRenderResult {
+	uint64_t generation = 0;
+	CoordinateMapper mapper;
+	bool start_full_render = false;
+	bool finish_full_render = false;
+	std::vector<RenderedTile> tiles;
+};
+
+struct RenderCache {
+	CoordinateMapper mapper;
+	PanelizedImage image;
+};
+
 QRect visibleCanvas(const RenderView &view)
 {
 	const auto &mapper = view.mapper;
@@ -213,13 +227,17 @@ struct ImageViewWidget::Private {
 	QRegion dirty;
 	bool redraw_entire_view = false;
 	bool image_rendering_active = false;
-	bool image_result_pending = false;
+	bool brush_dragging = false;
+	ImageRenderResult image_result;
+	bool image_update_pending = false;
 	std::thread image_rendering_thread;
 	std::thread selection_outline_thread;
 
 	// The display cache and overlay belong to the GUI thread.
-	CoordinateMapper offscreen1_mapper;
-	PanelizedImage offscreen1;
+	RenderCache render_cache;
+	RenderCache previous_render_cache;
+	CoordinateMapper partial_preview_mapper;
+	QImage partial_preview;
 	SelectionOutline selection_outline;
 };
 
@@ -434,10 +452,13 @@ void ImageViewWidget::clearRenderCache()
 		std::lock_guard lock(m->mutex);
 		m->image_request.discard();
 		m->outline_request.discard();
+		m->image_result = {};
 		m->redraw_entire_view = false;
 		m->dirty = {};
 	}
-	m->offscreen1.clear();
+	m->render_cache.image.clear();
+	m->previous_render_cache.image.clear();
+	m->partial_preview = {};
 	m->selection_outline = {};
 	update();
 }
@@ -463,7 +484,7 @@ void ImageViewWidget::scheduleRendering(const QRegion &canvas_region, bool prese
 		bool full = canvas_region.isEmpty() || previous.canvas_size != snapshot.canvas_size
 				|| previous.mapper.scale() != mapper.scale() || previous.mapper.scrollOffset() != mapper.scrollOffset()
 				|| previous.mapper.viewport_size() != mapper.viewport_size();
-		if (!preserve_current_render && (m->image_rendering_active || m->image_result_pending)) {
+		if (!preserve_current_render && (m->image_rendering_active || m->image_update_pending)) {
 			// A canceled batch may contain dirty tiles that have not reached the cache.
 			full = true;
 		}
@@ -779,6 +800,90 @@ QImage ImageViewWidget::renderSelectionOutline(const CoordinateMapper &mapper, c
 	return outline;
 }
 
+void ImageViewWidget::paintRenderCache(QPainter &painter, const CoordinateMapper &mapper, bool include_previous) const
+{
+	auto draw = [&](const CoordinateMapper &source_mapper, const QPoint &position, const QImage &image) {
+		const QPointF first = mapper.mapToViewportFromCanvas(source_mapper.mapToCanvasFromViewport(position));
+		const QPointF end = QPointF(position) + QPointF(image.width(), image.height());
+		const QPointF last = mapper.mapToViewportFromCanvas(source_mapper.mapToCanvasFromViewport(end));
+		painter.drawImage(QRectF(first, last), image, image.rect());
+	};
+	auto drawPanels = [&](const RenderCache &cache) {
+		for (const auto &panel : cache.image.panels_) draw(cache.mapper, panel.offset, panel.image);
+	};
+	if (include_previous) drawPanels(m->previous_render_cache);
+	if (!m->partial_preview.isNull()) draw(m->partial_preview_mapper, {}, m->partial_preview);
+	drawPanels(m->render_cache);
+}
+
+void ImageViewWidget::preserveRenderCache()
+{
+	if (m->render_cache.image.panels_.empty()) return;
+	if (m->previous_render_cache.image.panels_.empty()) {
+		m->previous_render_cache = std::move(m->render_cache);
+		return;
+	}
+
+	// Keep panels from interrupted renders without accumulating a cache per zoom step.
+	// The earlier view stays available underneath when zooming back out.
+	const auto mapper = m->render_cache.mapper;
+	QImage preview(mapper.viewport_size(), QImage::Format_RGBA8888);
+	if (preview.isNull()) return;
+	preview.fill(Qt::transparent);
+	{
+		QPainter painter(&preview);
+		paintRenderCache(painter, mapper, false);
+	}
+	m->partial_preview = std::move(preview);
+	m->partial_preview_mapper = mapper;
+}
+
+// Called with the view mutex held. One queued update can collect several completed panels.
+void ImageViewWidget::queueImageUpdate()
+{
+	if (m->stopping || m->image_update_pending) return;
+	m->image_update_pending = true;
+	QMetaObject::invokeMethod(this, [this] {
+		ImageRenderResult result;
+		bool wake_worker;
+		{
+			std::lock_guard lock(m->mutex);
+			m->image_update_pending = false;
+			wake_worker = !m->image_rendering_active;
+			auto &pending = m->image_result;
+			// A brush drag may have started since this update was queued.
+			if (!m->stopping && pending.generation == m->image_request.generation
+					&& (!m->brush_dragging || !m->image_rendering_active)) {
+				result.mapper = pending.mapper;
+				result.start_full_render = std::exchange(pending.start_full_render, false);
+				result.finish_full_render = std::exchange(pending.finish_full_render, false);
+				result.tiles.swap(pending.tiles);
+			}
+		}
+		if (wake_worker) m->cond.notify_all();
+		if (result.tiles.empty() && !result.start_full_render && !result.finish_full_render) return;
+
+		bool repaint_all = result.start_full_render;
+		if (result.start_full_render) {
+			if (!result.finish_full_render) preserveRenderCache();
+			m->render_cache.image.clear();
+		}
+		m->render_cache.mapper = result.mapper;
+		QRegion dirty;
+		for (const auto &tile : result.tiles) {
+			m->render_cache.image.paintImage(tile.position, tile.image, tile.image.size(), {});
+			if (!repaint_all) dirty += QRect(tile.position, tile.image.size());
+		}
+		if (result.finish_full_render) {
+			repaint_all |= !m->previous_render_cache.image.panels_.empty() || !m->partial_preview.isNull();
+			m->previous_render_cache.image.clear();
+			m->partial_preview = {};
+		}
+		if (repaint_all) update();
+		else update(dirty);
+	}, Qt::QueuedConnection);
+}
+
 void ImageViewWidget::runImageRendering()
 {
 	auto &request = m->image_request;
@@ -790,13 +895,14 @@ void ImageViewWidget::runImageRendering()
 		uint64_t generation;
 		{
 			std::unique_lock lock(m->mutex);
-			m->cond.wait(lock, [&] { return m->stopping || (request.pending && !m->image_result_pending); });
+			m->cond.wait(lock, [&] { return m->stopping || (request.pending && !m->image_update_pending); });
 			if (m->stopping) return;
 			generation = request.take(view);
 			dirty.swap(m->dirty);
 			full = m->redraw_entire_view;
 			m->redraw_entire_view = false;
 			m->image_rendering_active = true;
+			m->image_result = {generation, view.mapper, full, false, {}};
 		}
 
 		const QRect visible = visibleCanvas(view);
@@ -828,7 +934,6 @@ void ImageViewWidget::runImageRendering()
 		};
 		std::sort(tiles.begin(), tiles.end(), [&](const QRect &a, const QRect &b){ return distance(a) < distance(b); });
 
-		std::vector<RenderedTile> rendered(tiles.size());
 		std::atomic_bool failed{false};
 		// Keep conversion parallel while limiting contention on the Canvas mutex.
 #pragma omp parallel for num_threads(2)
@@ -862,7 +967,10 @@ void ImageViewWidget::runImageRendering()
 					}
 				}
 			}
-			rendered[i] = {first, std::move(scaled)};
+			std::lock_guard lock(m->mutex);
+			if (canceled()) continue;
+			m->image_result.tiles.push_back({first, std::move(scaled)});
+			if (!m->brush_dragging) queueImageUpdate();
 		}
 		{
 			std::lock_guard lock(m->mutex);
@@ -870,6 +978,8 @@ void ImageViewWidget::runImageRendering()
 			if (m->stopping || generation != request.generation) continue;
 			if (failed.load(std::memory_order_relaxed)) {
 				// Keep unfinished work for the next request without spinning on a failed render.
+				m->image_result.tiles.clear();
+				m->image_result.start_full_render = false;
 				if (full) {
 					m->redraw_entire_view = true;
 					m->dirty = {};
@@ -878,27 +988,9 @@ void ImageViewWidget::runImageRendering()
 				}
 				continue;
 			}
-			// Keep at most one rendered batch queued for the GUI.
-			m->image_result_pending = true;
+			m->image_result.finish_full_render = full;
+			if (full || !m->image_result.tiles.empty()) queueImageUpdate();
 		}
-
-		QMetaObject::invokeMethod(this, [this, generation, mapper, full, rendered = std::move(rendered)] {
-			bool current;
-			{
-				std::lock_guard lock(m->mutex);
-				m->image_result_pending = false;
-				current = !m->stopping && generation == m->image_request.generation;
-			}
-			m->cond.notify_all();
-			if (!current) return;
-
-			if (full) m->offscreen1.clear();
-			m->offscreen1_mapper = mapper;
-			for (const auto &tile : rendered) {
-				if (!tile.image.isNull()) m->offscreen1.paintImage(tile.position, tile.image, tile.image.size(), {});
-			}
-			update();
-		}, Qt::QueuedConnection);
 	}
 }
 
@@ -921,13 +1013,7 @@ void ImageViewWidget::paintEvent(QPaintEvent *)
 
 	QPainter pr_view(this);
 	pr_view.fillRect(rect(), BGCOLOR);
-	const auto &cache_mapper = m->offscreen1_mapper;
-	for (const auto &panel : m->offscreen1.panels_) {
-		const QPointF first = mapper.mapToViewportFromCanvas(cache_mapper.mapToCanvasFromViewport(panel.offset));
-		const QPointF end = QPointF(panel.offset) + QPointF(panel.image.width(), panel.image.height());
-		const QPointF last = mapper.mapToViewportFromCanvas(cache_mapper.mapToCanvasFromViewport(end));
-		pr_view.drawImage(QRectF(first, last), panel.image, panel.image.rect());
-	}
+	paintRenderCache(pr_view, mapper, true);
 
 	if (doc_w > 0 && doc_h > 0 && scale() == MAX_SCALE && !m->scrolling) {
 		const auto first = mapper.mapToCanvasFromViewport({});
@@ -1028,9 +1114,20 @@ void ImageViewWidget::resizeEvent(QResizeEvent *)
 	requestRendering({});
 }
 
+bool ImageViewWidget::event(QEvent *event)
+{
+	if (event->type() == QEvent::UngrabMouse) endBrushDrag();
+	return QWidget::event(event);
+}
+
 void ImageViewWidget::mousePressEvent(QMouseEvent *e)
 {
 	m->left_button = (e->buttons() & Qt::LeftButton);
+	if (e->button() == Qt::LeftButton) {
+		const bool brush = std::holds_alternative<tool::BrushTool>(mainwindow()->currentTool());
+		std::lock_guard lock(m->mutex);
+		m->brush_dragging = brush;
+	}
 	if (m->left_button) {
 		QPoint pos = mapFromGlobal(QCursor::pos());
 		m->d.mouse_press_pos = pos;
@@ -1059,8 +1156,17 @@ void ImageViewWidget::mouseMoveEvent(QMouseEvent *)
 	updateToolCursor();
 }
 
-void ImageViewWidget::mouseReleaseEvent(QMouseEvent *)
+void ImageViewWidget::endBrushDrag()
 {
+	std::lock_guard lock(m->mutex);
+	if (!m->brush_dragging) return;
+	m->brush_dragging = false;
+	if (!m->image_result.tiles.empty()) queueImageUpdate();
+}
+
+void ImageViewWidget::mouseReleaseEvent(QMouseEvent *e)
+{
+	if (e->button() == Qt::LeftButton) endBrushDrag();
 	QPoint pos = mapFromGlobal(QCursor::pos());
 	if (m->left_button && hasFocus()) {
 		mainwindow()->onMouseLeftButtonRelease(pos.x(), pos.y(), true);
