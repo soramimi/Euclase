@@ -673,8 +673,13 @@ void MainWindow::filterStart(FilterContext &&context, AbstractFilterForm *form, 
 			if (!Canvas::renderToLayer(&mask, Canvas::AlternateSelection, source, nullptr, {}, nullptr)) {
 				return {};
 			}
-		} else {
+		} else if (selection->offset() == current->offset()) {
 			mask.alternate_selection_panels = selection->primary_panels;
+		} else if (!selection->primary_panels.empty()) {
+			mask.setOffset(current->offset());
+			if (!Canvas::renderToLayer(&mask, Canvas::AlternateSelection, *selection, nullptr, {}, nullptr)) {
+				return {};
+			}
 		}
 
 		auto source = renderCanvasLocked(Canvas::CurrentLayerOnly);
@@ -1849,14 +1854,14 @@ int MainWindow::addNewLayer()
 	std::lock_guard lock(mutexForCanvas());
 	int index = canvas()->addNewLayer();
 	Canvas::Layer *p = canvas()->layer(index);
-	setupBasicLayer(p);
+	if (p) setupBasicLayer(p);
 	return index;
 }
 
-void MainWindow::setCurrentLayer(int index)
+bool MainWindow::setCurrentLayer(int index)
 {
 	std::lock_guard lock(mutexForCanvas());
-	canvas()->setCurrentLayer(index);
+	return canvas()->setCurrentLayer(index);
 }
 
 struct ColorCorrectionParams {

@@ -82,19 +82,29 @@ const Canvas::Panel *findPanel(const std::vector<Canvas::Panel> &panels, const Q
 bool commitPanels(std::vector<Canvas::Panel> &panels, std::vector<Canvas::Panel> &pending)
 {
 	size_t new_count = std::count_if(pending.begin(), pending.end(), [&](const Canvas::Panel &panel){
-		return !findPanel(panels, panel.offset());
+		return panel && !findPanel(panels, panel.offset());
 	});
 	if (new_count > panels.max_size() - panels.size()) return false;
 	panels.reserve(panels.size() + new_count);
 	for (auto &panel : pending) {
 		auto it = panelPosition(panels, panel.offset());
 		if (it != panels.end() && it->offset() == panel.offset()) {
-			*it = std::move(panel);
-		} else {
+			if (panel) *it = std::move(panel);
+			else panels.erase(it);
+		} else if (panel) {
 			panels.insert(it, std::move(panel));
 		}
 	}
 	return true;
+}
+
+bool containsSelection(const euclase::Image &mask)
+{
+	for (int y = 0; y < mask.height(); y++) {
+		const auto *row = mask.scanLine(y);
+		if (std::any_of(row, row + mask.width(), [](uint8_t value){ return value != 0; })) return true;
+	}
+	return false;
 }
 
 } // namespace
@@ -140,9 +150,11 @@ QSize Canvas::size() const
 	return m->size;
 }
 
-void Canvas::setSize(const QSize &s)
+bool Canvas::setSize(const QSize &s)
 {
+	if (s.isEmpty() && s != QSize(0, 0)) return false;
 	m->size = s;
+	return true;
 }
 
 Canvas::Layer *Canvas::layer(int index)
@@ -189,6 +201,8 @@ bool Canvas::renderToSinglePanel(Panel *target_panel, QPoint const &target_offse
 
 	const auto srcfmt = input_panel->format();
 	const auto dstfmt = target_panel->format();
+	using MaskBlend = RenderOption::MaskBlend;
+	if (opt.mask_blend != MaskBlend::Replace && (srcfmt != euclase::Format_U8_Grayscale || dstfmt != euclase::Format_U8_Grayscale)) return false;
 #ifdef USE_CUDA
 	const auto src_memory = input_panel->image().memtype();
 	const auto dst_memory = target_panel->image().memtype();
@@ -196,7 +210,7 @@ bool Canvas::renderToSinglePanel(Panel *target_panel, QPoint const &target_offse
 			&& (dstfmt == euclase::Format_F16_RGBA || dstfmt == euclase::Format_F32_RGBA)
 			&& opt.blend_mode == BlendMode::Normal;
 	const bool cuda_gray = srcfmt == euclase::Format_U8_Grayscale && dstfmt == euclase::Format_U8_Grayscale
-			&& src_memory == euclase::Image::CUDA;
+			&& opt.mask_blend == MaskBlend::Replace && src_memory == euclase::Image::CUDA;
 	if ((src_memory == euclase::Image::CUDA || dst_memory == euclase::Image::CUDA)
 			&& !(dst_memory == euclase::Image::CUDA && (cuda_rgba || cuda_gray))) {
 		const Panel host_source(input_panel->image().toHost(), input_panel->offset());
@@ -291,14 +305,22 @@ bool Canvas::renderToSinglePanel(Panel *target_panel, QPoint const &target_offse
 			}
 		} else if (dstfmt == euclase::ImageFormat::Format_U8_Grayscale) {
 			for (int y = 0; y < h; y++) {
+				if (abort && abort->load(std::memory_order_relaxed)) return false;
 				uint8_t const *msk = !maskimg ? tmpmask : maskimg->scanLine(y);
-				uint8_t const *src = input_image->scanLine(sy + y);
-				uint8_t *dst = target_panel->imagep()->scanLine(dy + y);
+				const auto *src = input_image->scanLine(sy + y) + sx;
+				auto *dst = target_panel->scanLine(dy + y) + dx;
 				for (int x = 0; x < w; x++) {
-					uint8_t const *s = src + sx + x;
-					uint8_t *d = dst + dx + x;
-					uint8_t const *m = msk + x;
-					*d = (*d * (255 - *m) + *s * *m) / 255;
+					switch (opt.mask_blend) {
+					case MaskBlend::Replace:
+						dst[x] = (dst[x] * (255 - msk[x]) + src[x] * msk[x]) / 255;
+						break;
+					case MaskBlend::Add:
+						dst[x] = std::max<int>(dst[x], src[x] * msk[x] / 255);
+						break;
+					case MaskBlend::Subtract:
+						dst[x] = dst[x] * (255 - src[x] * msk[x] / 255) / 255;
+						break;
+					}
 				}
 			}
 		}
@@ -784,14 +806,18 @@ bool Canvas::renderToEachPanel(Panel *target_panel, const Layer &input_layer, co
 			const bool replace = mode == BlendMode::Replace;
 			const Panel *alternate = findPanel(input_layer.alternate_panels, input.offset());
 			if (alternate && mode != BlendMode::Disable) {
-				const std::vector<Panel> *masks = nullptr;
-				if (replace && !input_layer.alternate_selection_panels.empty()) {
-					masks = &input_layer.alternate_selection_panels;
-				} else if (!replace && opt.use_mask && mask_layer) {
-					masks = &mask_layer->primary_panels;
+				Panel selection_mask;
+				const auto &filter_masks = input_layer.alternate_selection_panels;
+				const bool masked_filter = replace && !filter_masks.empty();
+				const bool masked_brush = !replace && opt.use_mask && mask_layer;
+				const Panel *mask = nullptr;
+				if (masked_filter) {
+					mask = findPanel(filter_masks, input.offset());
+				} else if (masked_brush) {
+					if (!selectionMaskForPanel(&selection_mask, input, input_layer.offset(), *mask_layer, abort)) return false;
+					if (selection_mask) mask = &selection_mask;
 				}
-				const Panel *mask = masks ? findPanel(*masks, input.offset()) : nullptr;
-				if (!masks || mask) {
+				if ((!masked_filter && !masked_brush) || mask) {
 					composed = input.copy();
 					if (!composePanel(&composed, alternate, mask, replace ? BlendMode::Normal : mode)) return false;
 					source = &composed;
@@ -802,6 +828,23 @@ bool Canvas::renderToEachPanel(Panel *target_panel, const Layer &input_layer, co
 			return false;
 		}
 	}
+	return true;
+}
+
+bool Canvas::selectionMaskForPanel(Panel *mask, const Panel &tile, const QPoint &layer_offset,
+								   const Layer &selection, const std::atomic_bool *abort)
+{
+	if (layer_offset == selection.offset()) {
+		if (const auto *aligned = findPanel(selection.primary_panels, tile.offset())) *mask = *aligned;
+		return true;
+	}
+
+	const auto area = panelRect(tile, layer_offset).toQRect();
+	if (!area.isValid() || !mask->imagep()->make(area.width(), area.height(), euclase::Format_U8_Grayscale)) return false;
+	mask->setOffset(area.topLeft());
+	if (!renderToEachPanel(mask, selection, nullptr, {}, abort)) return false;
+	if (containsSelection(mask->image())) mask->setOffset(tile.offset());
+	else mask->reset();
 	return true;
 }
 
@@ -816,6 +859,9 @@ bool Canvas::renderToLayer(Layer *target_layer, ActivePanel activepanel, const L
 	} else if (format == euclase::Format_Invalid) {
 		format = input_layer.format_;
 	}
+	using MaskBlend = RenderOption::MaskBlend;
+	const bool merge_mask = opt.mask_blend != MaskBlend::Replace;
+	if (merge_mask && (format != euclase::Format_U8_Grayscale || input_layer.format_ != format)) return false;
 
 	std::vector<Panel> pending;
 	std::vector<QRect> changed;
@@ -838,6 +884,7 @@ bool Canvas::renderToLayer(Layer *target_layer, ActivePanel activepanel, const L
 					if (!copy) return false;
 					tile = &*pending.insert(it, std::move(copy));
 				} else {
+					if (opt.mask_blend == MaskBlend::Subtract) continue;
 					tile = Layer::addImagePanel(&pending, offset.x(), offset.y(), PANEL_SIZE, PANEL_SIZE,
 												format, target_layer->memtype_);
 				}
@@ -849,6 +896,15 @@ bool Canvas::renderToLayer(Layer *target_layer, ActivePanel activepanel, const L
 		if (opt.notify_changed_rect) changed.push_back(bounds);
 	}
 
+	if (merge_mask) {
+		for (auto &panel : pending) {
+			if (abort && abort->load(std::memory_order_relaxed)) return false;
+			const auto mask = panel.image().toHost();
+			if (!mask) return false;
+			// An empty staged panel removes the tile at the same offset on commit.
+			if (!containsSelection(mask)) panel = Panel({}, panel.offset());
+		}
+	}
 	if ((abort && abort->load(std::memory_order_relaxed)) || !commitPanels(*target, pending)) return false;
 	if (activepanel != AlternateSelection) {
 		target_layer->format_ = format;
@@ -885,18 +941,22 @@ bool Canvas::paintToCurrentAlternate(Layer const &source, RenderOption const &op
 	return renderToLayer(current_layer(), AlternateLayer, source, opt.use_mask ? selection_layer() : nullptr, opt, abort);
 }
 
-bool Canvas::addSelection(Layer const &source, RenderOption const &opt, const std::atomic_bool *abort)
+bool Canvas::addSelection(Layer const &source, RenderOption const &opt, const std::atomic_bool *abort) try
 {
 	RenderOption o = opt;
-	o.brush_color = Qt::white;
+	o.mask_blend = RenderOption::MaskBlend::Add;
 	return renderToLayer(selection_layer(), PrimaryLayer, source, nullptr, o, abort);
+} catch (const std::bad_alloc &) {
+	return false;
 }
 
-bool Canvas::subSelection(Layer const &source, RenderOption const &opt, const std::atomic_bool *abort)
+bool Canvas::subSelection(Layer const &source, RenderOption const &opt, const std::atomic_bool *abort) try
 {
 	RenderOption o = opt;
-	o.brush_color = Qt::black;
+	o.mask_blend = RenderOption::MaskBlend::Subtract;
 	return renderToLayer(selection_layer(), PrimaryLayer, source, nullptr, o, abort);
+} catch (const std::bad_alloc &) {
+	return false;
 }
 
 Canvas::Panel Canvas::renderSelection(const QRect &r, const std::atomic_bool *abort) const
@@ -948,18 +1008,16 @@ bool Canvas::trim(const QRect &r)
 {
 	const QRect area = panelRect(r).toQRect();
 	if (!area.isValid()) return false;
-	auto *layer = current_layer();
-	if (!layer) return false;
-	auto *selection = selection_layer();
-	const auto layer_x = int64_t(layer->offset().x()) - r.x();
-	const auto layer_y = int64_t(layer->offset().y()) - r.y();
-	const auto selection_x = int64_t(selection->offset().x()) - r.x();
-	const auto selection_y = int64_t(selection->offset().y()) - r.y();
-	if (!pointFits(layer_x, layer_y) || !pointFits(selection_x, selection_y)) return false;
-	layer->setOffset({int(layer_x), int(layer_y)});
-	selection->setOffset({int(selection_x), int(selection_y)});
-	setSize(area.size());
-	return true;
+	const auto can_shift = [&](const Layer &layer){
+		return pointFits(int64_t(layer.offset().x()) - area.x(), int64_t(layer.offset().y()) - area.y());
+	};
+	if (!can_shift(*selection_layer())) return false;
+	for (const auto &layer : m->layers) {
+		if (!can_shift(*layer)) return false;
+	}
+	for (const auto &layer : m->layers) layer->setOffset(layer->offset() - area.topLeft());
+	selection_layer()->setOffset(selection_layer()->offset() - area.topLeft());
+	return setSize(area.size());
 }
 
 Canvas::Panel *Canvas::Layer::addPanel(std::vector<Panel> *panels, Panel &&panel) try
@@ -991,10 +1049,15 @@ bool Canvas::Layer::finishAlternatePanels(bool apply, const Layer *mask_layer, R
 		std::vector<Panel> pending;
 		pending.reserve(alternate_panels.size());
 		for (const auto &alternate : alternate_panels) {
+			Panel selection_mask;
 			const Panel *mask = nullptr;
-			if (opt.use_mask && mask_layer) {
-				mask = findPanel(mask_layer->primary_panels, alternate.offset());
+			if (alternate_blend_mode == BlendMode::Replace && !alternate_selection_panels.empty()) {
+				mask = findPanel(alternate_selection_panels, alternate.offset());
 				if (!mask) continue;
+			} else if (opt.use_mask && mask_layer) {
+				if (!Canvas::selectionMaskForPanel(&selection_mask, alternate, offset(), *mask_layer, nullptr)) return false;
+				if (!selection_mask) continue;
+				mask = &selection_mask;
 			}
 
 			const auto *existing = findPanel(primary_panels, alternate.offset());
@@ -1004,7 +1067,8 @@ bool Canvas::Layer::finishAlternatePanels(bool apply, const Layer *mask_layer, R
 				if (!tile->make(PANEL_SIZE, PANEL_SIZE, format, memtype_)) return false;
 				tile.setOffset(alternate.offset());
 			}
-			if (!composePanel(&tile, &alternate, mask, opt.blend_mode)) return false;
+			const auto mode = alternate_blend_mode == BlendMode::Replace ? BlendMode::Normal : opt.blend_mode;
+			if (!composePanel(&tile, &alternate, mask, mode)) return false;
 			pending.push_back(std::move(tile));
 		}
 		if (!commitPanels(primary_panels, pending)) return false;
@@ -1029,8 +1093,8 @@ QRect Canvas::Layer::rect() const
 
 		int x0 = image.width();
 		int y0 = image.height();
-		int x1 = 0;
-		int y1 = 0;
+		int x1 = -1;
+		int y1 = -1;
 		for (int y = 0; y < image.height(); y++) {
 			const auto *row = image.scanLine(y);
 			for (int x = 0; x < image.width(); x++) {
@@ -1042,7 +1106,7 @@ QRect Canvas::Layer::rect() const
 				}
 			}
 		}
-		if (x0 < x1 && y0 < y1) {
+		if (x1 >= x0 && y1 >= y0) {
 			const auto area = panelRect(panel, offset());
 			const PanelRect selected{area.left + x0, area.top + y0, area.left + x1 + 1, area.top + y1 + 1};
 			if (bounds.empty()) {
@@ -1089,7 +1153,9 @@ bool Canvas::changeSelection(SelectionOperation op, const QRect &rect, Bounds::T
 	switch (op) {
 	case SelectionOperation::SetSelection: {
 		Layer replacement;
-		if (!renderToLayer(&replacement, PrimaryLayer, source, nullptr, {}, nullptr)) return false;
+		RenderOption opt;
+		opt.mask_blend = RenderOption::MaskBlend::Add;
+		if (!renderToLayer(&replacement, PrimaryLayer, source, nullptr, opt, nullptr)) return false;
 		*selection_layer() = std::move(replacement);
 		return true;
 	}
@@ -1103,16 +1169,21 @@ bool Canvas::changeSelection(SelectionOperation op, const QRect &rect, Bounds::T
 	return false;
 }
 
-int Canvas::addNewLayer()
+int Canvas::addNewLayer() try
 {
-	int index = m->current_layer_index + 1;
+	if (m->layers.size() >= size_t(std::numeric_limits<int>::max())) return -1;
+	const int index = m->current_layer_index + 1;
 	m->layers.insert(m->layers.begin() + index, newLayer());
 	return index;
+} catch (const std::bad_alloc &) {
+	return -1;
 }
 
-void Canvas::setCurrentLayer(int index)
+bool Canvas::setCurrentLayer(int index)
 {
-	if (layer(index)) m->current_layer_index = index;
+	if (!layer(index)) return false;
+	m->current_layer_index = index;
+	return true;
 }
 
 //

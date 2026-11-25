@@ -10,6 +10,7 @@
 #include <functional>
 #include <memory>
 #include <mutex>
+#include <stdexcept>
 
 static const int PANEL_SIZE = 256; // must be power of two
 
@@ -152,12 +153,15 @@ public:
 	class Layer;
 
 	struct RenderOption {
+		enum class MaskBlend { Replace, Add, Subtract };
+
 		BlendMode blend_mode = BlendMode::Normal;
 		ActivePanel active_panel = PrimaryLayer;
 		QColor brush_color;
 		QRect mask_rect;
 		bool use_mask = false;
 		std::function<void (QRect const &rect)> notify_changed_rect;
+		MaskBlend mask_blend = MaskBlend::Replace;
 	};
 
 	struct RenderOption2 {
@@ -187,7 +191,6 @@ public:
 			case AlternateSelection:
 				return &alternate_selection_panels;
 			}
-			Q_ASSERT(0);
 			return nullptr;
 		}
 
@@ -198,12 +201,15 @@ public:
 
 		int panelCount(ActivePanel alternate = PrimaryLayer) const
 		{
-			return (int)panels(alternate)->size();
+			const auto *list = panels(alternate);
+			return list ? int(list->size()) : 0;
 		}
 
 		Panel const &panel(ActivePanel alternate, int i) const
 		{
-			return (*panels(alternate))[i];
+			const auto *list = panels(alternate);
+			if (!list) throw std::out_of_range("Canvas layer panel type");
+			return list->at(i);
 		}
 
 		void clear()
@@ -303,7 +309,7 @@ public:
 	int width() const;
 	int height() const;
 	QSize size() const;
-	void setSize(QSize const &s);
+	bool setSize(QSize const &s);
 	Layer *layer(int index);
 	Layer const *layer(int index) const;
 	Layer *current_layer();
@@ -324,6 +330,8 @@ public:
 	static bool renderToLayer(Layer *target_layer, ActivePanel activepanel, const Layer &input_layer, const Layer *mask_layer, const RenderOption &opt, const std::atomic_bool *abort);
 private:
 	static bool renderToEachPanel(Panel *target_panel, const Layer &input_layer, const Layer *mask_layer, const RenderOption &opt, const std::atomic_bool *abort);
+	static bool selectionMaskForPanel(Panel *mask, const Panel &tile, const QPoint &layer_offset,
+									 const Layer &selection, const std::atomic_bool *abort);
 	static bool composePanel(Panel *target_panel, const Panel *alt_panel, const Panel *alt_mask, BlendMode mode);
 public:
 	enum class SelectionOperation {
@@ -340,7 +348,7 @@ public:
 	void clear();
 	int addNewLayer();
 	static LayerPtr newLayer();
-	void setCurrentLayer(int index);
+	bool setCurrentLayer(int index);
 
 	class RectangleSelection {
 	public:

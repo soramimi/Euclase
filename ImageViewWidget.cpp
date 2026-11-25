@@ -732,13 +732,26 @@ QImage ImageViewWidget::renderSelectionOutline(const CoordinateMapper &mapper, c
 	QImage outline(output_size, QImage::Format_Grayscale8);
 	if (outline.isNull()) return {};
 	outline.fill(Qt::white);
-	for (int y = 1; y + 1 < outline.height(); y++) {
+	const int right = outline.width() - 1;
+	const int bottom = outline.height() - 1;
+	const bool at_left = area.left() == 0;
+	const bool at_right = area.right() == canvas_size.width() - 1;
+	const bool at_top = area.top() == 0;
+	const bool at_bottom = area.bottom() == canvas_size.height() - 1;
+	for (int y = 0; y <= bottom; y++) {
 		if (canceled.load(std::memory_order_relaxed)) return {};
-		const auto *above = selection.scanLine(y - 1);
-		const auto *row = selection.scanLine(y);
-		const auto *below = selection.scanLine(y + 1);
+		const auto *row = selection.constScanLine(y);
 		auto *dest = outline.scanLine(y);
-		for (int x = 1; x + 1 < outline.width(); x++) {
+		if ((at_top && y == 0) || (at_bottom && y == bottom)) {
+			for (int x = 0; x <= right; x++) dest[x] = (row[x] & 0x80) ? 0 : 255;
+			continue;
+		}
+		if (at_left && (row[0] & 0x80)) dest[0] = 0;
+		if (at_right && (row[right] & 0x80)) dest[right] = 0;
+		if (y == 0 || y == bottom) continue;
+		const auto *above = selection.constScanLine(y - 1);
+		const auto *below = selection.constScanLine(y + 1);
+		for (int x = 1; x < right; x++) {
 			const uint8_t edge = ~(above[x - 1] & above[x] & above[x + 1] & row[x - 1] & row[x + 1]
 								   & below[x - 1] & below[x] & below[x + 1]) & row[x];
 			dest[x] = (edge & 0x80) ? 0 : 255;

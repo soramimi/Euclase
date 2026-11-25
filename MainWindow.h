@@ -281,7 +281,7 @@ public:
 	void setToolCursor(const QCursor &cursor);
 	void setPreviewLayerEnable(bool enabled);
 	bool isPreviewEnabled() const;
-	void setCurrentLayer(int index);
+	bool setCurrentLayer(int index);
 	euclase::Image::MemoryType preferredMemoryType() const;
 	euclase::ImageFormat preferredImageFormat() const;
 	void updateImageView(const QRect &canvasrect); // canvasrect is in canvas coordinate
