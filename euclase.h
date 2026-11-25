@@ -359,6 +359,10 @@ public:
 	{
 		ref--;
 	}
+	bool release()
+	{
+		return ref.fetch_sub(1, std::memory_order_acq_rel) == 1;
+	}
 };
 
 template <typename T>
@@ -1936,6 +1940,7 @@ public:
 	enum MemoryType {
 		Host,
 		CUDA,
+		SameMemory = -1,
 	};
 private:
 	struct Data {
@@ -1943,8 +1948,10 @@ private:
 		ImageFormat format_ = ImageFormat::Format_U8_RGBA;
 		int width_ = 0;
 		int height_ = 0;
+		size_t size_ = 0;
 		MemoryType memtype_ = Host;
 		void *cudamem_ = nullptr;
+		void (*free_cuda_)(void *) = nullptr;
 		Data() = default;
 		uint8_t *data()
 		{
@@ -1967,6 +1974,7 @@ private:
 private:
 	Data *ptr_ = nullptr;
 	void assign(Data *p);
+	bool allocate(int w, int h, ImageFormat format, MemoryType memtype);
 	bool init(int w, int h, ImageFormat format, MemoryType memtype = Host, Color const &color = k::transparent);
 public:
 	Image() = default;
@@ -1991,7 +1999,7 @@ public:
 		assign(img.ptr_);
 	}
 
-	Image copy(MemoryType memtype = (MemoryType)-1) const;
+	Image copy(MemoryType memtype = SameMemory) const;
 	Image &memconvert(MemoryType memtype);
 	Image toHost() const
 	{
@@ -2095,8 +2103,8 @@ inline int Image::bytesPerPixel() const
 
 inline uint8_t *Image::scanLine(int y)
 {
-	if (!ptr_) return nullptr;
-	return ptr_->data() + (size_t)bytesPerPixel() * width() * y;
+	if (!ptr_ || y < 0 || y >= height()) return nullptr;
+	return ptr_->data() + static_cast<size_t>(bytesPerLine()) * y;
 }
 
 inline uint8_t const *Image::scanLine(int y) const

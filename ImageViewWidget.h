@@ -23,9 +23,6 @@ private:
 
 	MainWindow *mainwindow();
 
-	Canvas *canvas();
-	Canvas const *canvas() const;
-
 	std::mutex &mutexForOffscreen();
 	
 	QSize canvasSize() const;

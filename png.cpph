@@ -285,7 +285,7 @@ static bool _load_png(euclase::Image *dst, std::function<int (char *p, int n)> f
 
 			height = png_get_image_height(png_ptr, info_ptr);
 
-			*dst = euclase::Image(width, height, format);
+			if (!dst->make(width, height, format)) throw "failed to allocate PNG image";
 			for (j = 0; j < pass; j++) {
 				for (i = 0; i < height; i++) {
 					png_read_row(png_ptr, &rowbuffer[0], NULL);
@@ -330,6 +330,7 @@ static bool _load_png(euclase::Image *dst, std::function<int (char *p, int n)> f
 		success = true;		// success
 
 	} catch (png_const_charp) {
+	} catch (const std::bad_alloc &) {
 	}
 
 	png_destroy_read_struct(&png_ptr, &info_ptr, NULL);

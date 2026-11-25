@@ -111,8 +111,7 @@ void FilterDialog::timerEvent(QTimerEvent *)
 		}
 		m->thread.join();
 		setProgress(0);
-		if (!m->start_filter.isValid() && m->result_image) {
-			mainwindow->setFilteredImage(m->result_image, false);
+		if (!m->start_filter.isValid() && m->result_image && mainwindow->setFilteredImage(m->result_image, false)) {
 			updateImageView();
 			ui->pushButton_ok->setEnabled(true);
 		}

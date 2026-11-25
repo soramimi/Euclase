@@ -162,7 +162,7 @@ public:
 
 	struct RenderOption2 {
 		RenderOption opt1;
-		Canvas::Layer *selection_layer = nullptr;
+		const Canvas::Layer *selection_layer = nullptr;
 	};
 
 	class Layer {
@@ -284,7 +284,7 @@ public:
 			setOffset(offset);
 		}
 
-		void finishAlternatePanels(bool apply, Layer *mask_layer, const RenderOption &opt);
+		bool finishAlternatePanels(bool apply, const Layer *mask_layer, const RenderOption &opt);
 		void setAlternateOption(BlendMode blendmode);
 
 		QRect rect() const;
@@ -297,6 +297,8 @@ public:
 
 	Canvas();
 	~Canvas();
+	Canvas(const Canvas &) = delete;
+	Canvas &operator=(const Canvas &) = delete;
 
 	int width() const;
 	int height() const;
@@ -307,9 +309,10 @@ public:
 	Layer *current_layer();
 	Layer const *current_layer() const;
 	Layer *selection_layer();
+	const Layer *selection_layer() const;
 
-	void paintToCurrentLayer(const Layer &source, const RenderOption &opt, bool *abort);
-	void paintToCurrentAlternate(const Layer &source, const RenderOption &opt, bool *abort);
+	bool paintToCurrentLayer(const Layer &source, const RenderOption &opt, bool *abort);
+	bool paintToCurrentAlternate(const Layer &source, const RenderOption &opt, bool *abort);
 
 	enum InputLayerMode {
 		AllLayers,
@@ -317,15 +320,11 @@ public:
 	};
 	Panel renderToPanel(InputLayerMode input_layer_mode, euclase::ImageFormat format, QRect const &r, QRect const &maskrect, ActivePanel activepanel, RenderOption const &opt, bool *abort) const;
 
-	static void renderToSinglePanel(Panel *target_panel, const QPoint &target_offset, const Panel *input_panel, const QPoint &input_offset, const Layer *mask_layer, RenderOption const &opt, const QColor &brush_color, int opacity = 255, bool *abort = nullptr);
-	static void renderToLayer(Layer *target_layer, ActivePanel activepanel, const Layer &input_layer, Layer *mask_layer, const RenderOption &opt, bool *abort);
+	static bool renderToSinglePanel(Panel *target_panel, const QPoint &target_offset, const Panel *input_panel, const QPoint &input_offset, const Layer *mask_layer, RenderOption const &opt, const QColor &brush_color, int opacity = 255, bool *abort = nullptr);
+	static bool renderToLayer(Layer *target_layer, ActivePanel activepanel, const Layer &input_layer, const Layer *mask_layer, const RenderOption &opt, bool *abort);
 private:
-	static void renderToEachPanels_internal_(Panel *target_panel, const QPoint &target_offset, const Layer &input_layer, Layer *mask_layer, const QColor &brush_color, int opacity, RenderOption const &opt, bool *abort);
-	static void renderToEachPanels(Panel *target_panel, const QPoint &target_offset, const std::vector<Layer *> &input_layers, Layer *mask_layer, const QColor &brush_color, int opacity, const RenderOption &opt, bool *abort);
-	static void composePanel(Panel *target_panel, const Panel *alt_panel, const Panel *alt_mask, const RenderOption &opt);
-	static void composePanels(Panel *target_panel, std::vector<Panel> const *alternate_panels, std::vector<Panel> const *alternate_selection_panels, const RenderOption &opt);
-	static Panel *findPanel(const std::vector<Panel> *panels, const QPoint &offset);
-	static void sortPanels(std::vector<Panel> *panels);
+	static bool renderToEachPanel(Panel *target_panel, const Layer &input_layer, const Layer *mask_layer, const RenderOption &opt, bool *abort);
+	static bool composePanel(Panel *target_panel, const Panel *alt_panel, const Panel *alt_mask, BlendMode mode);
 public:
 	enum class SelectionOperation {
 		SetSelection,
@@ -333,11 +332,11 @@ public:
 		SubSelection,
 	};
 	void clearSelection();
-	void addSelection(const Layer &source, const RenderOption &opt, bool *abort);
-	void subSelection(const Layer &source, const RenderOption &opt, bool *abort);
+	bool addSelection(const Layer &source, const RenderOption &opt, bool *abort);
+	bool subSelection(const Layer &source, const RenderOption &opt, bool *abort);
 	Panel renderSelection(const QRect &r, bool *abort) const;
 	Panel crop(const QRect &r, bool *abort) const;
-	void trim(const QRect &r);
+	bool trim(const QRect &r);
 	void clear();
 	int addNewLayer();
 	static LayerPtr newLayer();
@@ -353,7 +352,7 @@ public:
 		~EllipseSelection() override = default;
 		QImage make(QRect const &rect) const override;
 	};
-	void changeSelection(SelectionOperation op, QRect const &rect, Bounds::Type bounds_type);
+	bool changeSelection(SelectionOperation op, QRect const &rect, Bounds::Type bounds_type);
 };
 
 euclase::Image cropImage(euclase::Image const &srcimg, int sx, int sy, int sw, int sh);

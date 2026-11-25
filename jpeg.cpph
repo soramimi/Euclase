@@ -469,7 +469,7 @@ bool _load_jpeg(euclase::Image *dst, char const *filename) try
 
 	std::vector<uint8_t> tmp_rgb(row_stride);
 
-	*dst = euclase::Image(width, height, euclase::ImageFormat::Format_U8_RGB);
+	if (!dst->make(width, height, euclase::Format_U8_RGB)) return false;
 
 	/* Here we use the library's state variable cinfo.output_scanline as the
 			* loop counter, so that we don't have to keep track ourselves.
@@ -518,6 +518,8 @@ bool _load_jpeg(euclase::Image *dst, char const *filename) try
 
 	return true;
 } catch (const JpegDecodeError &) {
+	return false;
+} catch (const std::bad_alloc &) {
 	return false;
 }
 }

@@ -152,7 +152,6 @@ MainWindow::MainWindow(QWidget *parent)
 MainWindow::~MainWindow()
 {
 	ui->widget_image_view->stopRenderingThread();
-	clearCanvas();
 	delete m;
 	delete ui;
 }
@@ -172,16 +171,20 @@ std::mutex &MainWindow::mutexForCanvas() const
 	return m->canvas_mutex;
 }
 
+QSize MainWindow::canvasSize() const
+{
+	std::lock_guard lock(mutexForCanvas());
+	return canvas()->size();
+}
+
 int MainWindow::canvasWidth() const
 {
-	auto const *d = canvas();
-	return d ? d->width() : 0;
+	return canvasSize().width();
 }
 
 int MainWindow::canvasHeight() const
 {
-	auto const *d = canvas();
-	return d ? d->height() : 0;
+	return canvasSize().height();
 }
 
 void MainWindow::createMainToolBar()
@@ -349,31 +352,32 @@ Document const &MainWindow::currentDocument() const
 
 void MainWindow::setImage(euclase::Image image, bool fitview, QString path)
 {
-	Canvas::Layer replacement;
-	setupBasicLayer(&replacement);
-	image = image.convertToFormat(replacement.format_);
-	image.memconvert(replacement.memtype_);
-	if (!image) {
-		QMessageBox::critical(this, tr("Error"), tr("Failed to create image"));
-		return;
-	}
+	try {
+		Canvas::Layer replacement;
+		setupBasicLayer(&replacement);
+		image = image.convertToFormat(replacement.format_);
+		image.memconvert(replacement.memtype_);
+		if (!image) {
+			QMessageBox::critical(this, tr("Error"), tr("Failed to create image"));
+			return;
+		}
 
-	Canvas::Layer source;
-	source.setImage(QPoint(0, 0), image);
-	Canvas::RenderOption opt;
-	opt.blend_mode = Canvas::BlendMode::Normal;
-	Canvas::renderToLayer(&replacement, Canvas::PrimaryLayer, source, nullptr, opt, nullptr);
-	if (std::any_of(replacement.primary_panels.begin(), replacement.primary_panels.end(),
-					[](const Canvas::Panel &panel) { return panel.isNull(); })) {
-		QMessageBox::critical(this, tr("Error"), tr("Failed to create image"));
-		return;
-	}
+		Canvas::Layer source;
+		source.setImage(QPoint(0, 0), image);
+		Canvas::RenderOption opt;
+		opt.blend_mode = Canvas::BlendMode::Normal;
+		if (!Canvas::renderToLayer(&replacement, Canvas::PrimaryLayer, source, nullptr, opt, nullptr)) {
+			QMessageBox::critical(this, tr("Error"), tr("Failed to create image"));
+			return;
+		}
 
-	{
 		std::lock_guard lock(mutexForCanvas());
 		canvas()->clear();
 		canvas()->setSize(image.size());
 		*canvas()->current_layer() = std::move(replacement);
+	} catch (const std::bad_alloc &) {
+		QMessageBox::critical(this, tr("Error"), tr("Failed to create image"));
+		return;
 	}
 	m->document.setDocumentPath(path);
 	ui->widget_image_view->clearRenderCache(true, true);
@@ -412,9 +416,15 @@ void MainWindow::on_action_file_save_as_triggered()
 {
 	QString path = QFileDialog::getSaveFileName(this);
 	if (!path.isEmpty()) {
-		QSize sz = canvas()->size();
-		auto activepanel = isPreviewEnabled() ? Canvas::AlternateLayer : Canvas::PrimaryLayer;
-		euclase::Image img = canvas()->renderToPanel(Canvas::AllLayers, euclase::ImageFormat::Format_F32_RGBA, QRect(0, 0, sz.width(), sz.height()), {}, activepanel, {}, nullptr).image();
+		euclase::Image img;
+		{
+			std::lock_guard lock(mutexForCanvas());
+			img = renderCanvasLocked(Canvas::AllLayers);
+		}
+		if (!img) {
+			QMessageBox::critical(this, tr("Error"), tr("Failed to render image for saving"));
+			return;
+		}
 		auto i = path.lastIndexOf('.');
 		QString suffix;
 		if (i > 0) {
@@ -442,6 +452,7 @@ void MainWindow::on_action_file_save_as_triggered()
  */
 void MainWindow::setPreviewLayerEnable(bool enabled)
 {
+	std::lock_guard lock(mutexForCanvas());
 	m->preview_layer_enabled = enabled;
 }
 
@@ -451,14 +462,15 @@ void MainWindow::setPreviewLayerEnable(bool enabled)
  */
 bool MainWindow::isPreviewEnabled() const
 {
+	std::lock_guard lock(mutexForCanvas());
 	return m->preview_layer_enabled;
 }
 
 Canvas::Panel MainWindow::renderToPanel(Canvas::InputLayerMode input_layer_mode, euclase::ImageFormat format, QRect const &r, QRect const &maskrect, const Canvas::RenderOption &opt, bool *abort) const
 {
 	std::lock_guard lock(mutexForCanvas());
-	auto activepanel = isPreviewEnabled() ? Canvas::AlternateLayer : Canvas::PrimaryLayer;
-	return canvas()->renderToPanel(input_layer_mode, format, r, maskrect, activepanel, opt, abort).image();
+	auto activepanel = m->preview_layer_enabled ? Canvas::AlternateLayer : Canvas::PrimaryLayer;
+	return canvas()->renderToPanel(input_layer_mode, format, r, maskrect, activepanel, opt, abort);
 }
 
 euclase::Image MainWindow::renderSelection(const QRect &r, bool *abort) const
@@ -479,7 +491,8 @@ SelectionOutline MainWindow::renderSelectionOutline(bool *abort)
 
 QRect MainWindow::selectionRect() const
 {
-	return const_cast<MainWindow *>(this)->canvas()->selection_layer()->rect();
+	std::lock_guard lock(mutexForCanvas());
+	return canvas()->selection_layer()->rect();
 }
 
 void MainWindow::fitView()
@@ -544,8 +557,15 @@ void MainWindow::on_action_file_open_triggered()
 
 euclase::Image MainWindow::renderFilterTargetImage()
 {
-	QSize sz = canvas()->size();
-	return renderToImage(euclase::ImageFormat::Format_F32_RGBA, QRect(0, 0, sz.width(), sz.height()), {}, nullptr);
+	std::lock_guard lock(mutexForCanvas());
+	return renderCanvasLocked(Canvas::CurrentLayerOnly);
+}
+
+euclase::Image MainWindow::renderCanvasLocked(Canvas::InputLayerMode input_layer_mode) const
+{
+	const QRect area(QPoint(), canvas()->size());
+	const auto active_panel = m->preview_layer_enabled ? Canvas::AlternateLayer : Canvas::PrimaryLayer;
+	return canvas()->renderToPanel(input_layer_mode, euclase::Format_F32_RGBA, area, {}, active_panel, {}, nullptr).image();
 }
 
 Canvas::BlendMode MainWindow::blendMode() const
@@ -569,7 +589,7 @@ Canvas::RenderOption2 MainWindow::renderOption() const
 	opt.opt1.blend_mode = blendMode();
 
 	opt.opt1.use_mask = true;
-	opt.selection_layer = const_cast<MainWindow *>(this)->canvas()->selection_layer();
+	opt.selection_layer = canvas()->selection_layer();
 	if (opt.selection_layer->panels()->empty()) {
 		opt.selection_layer = nullptr;
 		opt.opt1.use_mask = false;
@@ -630,35 +650,46 @@ void MainWindow::setFilerDialogActive(bool active)
 
 void MainWindow::filterStart(FilterContext &&context, AbstractFilterForm *form, const FilterFunction &fn)
 {
-	canvas()->current_layer()->alternate_selection_panels.clear();
-	if (isRectVisible()) {
-		QRect r = boundsRect();
-		euclase::Image img;
-		if (canvas()->selection_layer()->primary_panels.empty()) {
-			img = euclase::Image(r.width(), r.height(), euclase::ImageFormat::Format_U8_Grayscale, canvas()->selection_layer()->memtype_);
-			img.fill(euclase::k::white);
+	std::unique_ptr<AbstractFilterForm> filter_form(form);
+	if (isFilterDialogActive()) return;
+
+	const QRect bounds = isRectVisible() ? boundsRect() : QRect();
+	const auto image = [&]() -> euclase::Image {
+		std::lock_guard lock(mutexForCanvas());
+		auto *current = canvas()->current_layer();
+		const auto *selection = canvas()->selection_layer();
+		Canvas::Layer mask;
+		if (bounds.isValid()) {
+			euclase::Image mask_image;
+			if (selection->primary_panels.empty()) {
+				mask_image.make(bounds.width(), bounds.height(), euclase::Format_U8_Grayscale,
+								euclase::Image::Host, euclase::k::white);
+			} else {
+				mask_image = canvas()->renderSelection(bounds, nullptr).image();
+			}
+			if (!mask_image) return {};
+			Canvas::Layer source;
+			source.setImage(bounds.topLeft(), mask_image);
+			mask.setOffset(current->offset());
+			if (!Canvas::renderToLayer(&mask, Canvas::AlternateSelection, source, nullptr, {}, nullptr)) {
+				return {};
+			}
 		} else {
-			Canvas::Panel panel = canvas()->renderSelection(r, nullptr);
-			img = panel.image();
+			mask.alternate_selection_panels = selection->primary_panels;
 		}
-		// フィルタ用選択領域を作成
-		Canvas::Layer layer;
-		layer.setImage({r.x(), r.y()}, img);
-		Canvas::RenderOption o;
-		o.brush_color = Qt::white;
-		Canvas::renderToLayer(canvas()->current_layer(), Canvas::Canvas::AlternateSelection, layer, nullptr, o, nullptr);
-	} else if (!canvas()->selection_layer()->primary_panels.empty()) {
-		canvas()->current_layer()->alternate_selection_panels = canvas()->selection_layer()->primary_panels;
-	}
 
-	canvas()->current_layer()->alternate_blend_mode = Canvas::BlendMode::Replace;
-
-	euclase::Image image = renderFilterTargetImage();
+		auto source = renderCanvasLocked(Canvas::CurrentLayerOnly);
+		if (source) {
+			current->alternate_selection_panels = std::move(mask.alternate_selection_panels);
+			current->alternate_blend_mode = Canvas::BlendMode::Replace;
+		}
+		return source;
+	}();
 	if (!image) return;
 
 	context.setSourceImage(image);
-	
-	m->filter_dialog = std::make_unique<FilterDialog>(this, std::move(context), form, fn);
+	m->filter_dialog = std::make_unique<FilterDialog>(this, std::move(context), filter_form.get(), fn);
+	filter_form.release();
 	m->filter_dialog->connect(m->filter_dialog.get(), &FilterDialog::end, this, &MainWindow::filterClose);
 	m->filter_dialog->show();
 	setFilerDialogActive(true);
@@ -675,10 +706,11 @@ void MainWindow::filterClose(bool apply)
 			result = p->result();
 		}
 		p.reset();
-		if (result) {
-			setFilteredImage(result, true);
-		} else {
+		if (!result || !setFilteredImage(result, true)) {
 			resetCurrentAlternateOption({});
+			if (result) {
+				QMessageBox::critical(this, tr("Error"), tr("Failed to apply filter"));
+			}
 		}
 		updateImageViewEntire();
 	}
@@ -813,29 +845,24 @@ void MainWindow::on_verticalScrollBar_valueChanged(int value)
 
 euclase::Image MainWindow::selectedImage() const
 {
-	QRect r = selectionRect();
-	if (r.isEmpty()) {
-		if (isRectVisible()) {
-			r = boundsRect();
-		}
-		if (r.isEmpty()) {
-			r = { 0, 0, canvas()->width(), canvas()->height() };
-		}
-	}
-	return canvas()->crop(r, nullptr).image();
+	const QRect bounds = isRectVisible() ? boundsRect() : QRect();
+	std::lock_guard lock(mutexForCanvas());
+	QRect area = canvas()->selection_layer()->rect();
+	if (area.isEmpty()) area = bounds;
+	if (area.isEmpty()) area = QRect(QPoint(), canvas()->size());
+	return canvas()->crop(area, nullptr).image();
 }
 
 void MainWindow::on_action_trim_triggered()
 {
-	if (isRectVisible()) {
-		QRect r = boundsRect();
-		if (!r.isEmpty()) {
-			r = boundsRect();
-			canvas()->trim(r);
-			resetView(true);
-			updateImageViewEntire();
-		}
+	if (!isRectVisible()) return;
+	const QRect area = boundsRect();
+	{
+		std::lock_guard lock(mutexForCanvas());
+		if (!canvas()->trim(area)) return;
 	}
+	resetView(true);
+	updateImageViewEntire();
 }
 
 void MainWindow::updateSelectionOutline()
@@ -846,12 +873,6 @@ void MainWindow::updateSelectionOutline()
 void MainWindow::onSelectionChanged()
 {
 	updateSelectionOutline();
-}
-
-void MainWindow::clearCanvas()
-{
-	std::lock_guard lock(mutexForCanvas());
-	canvas()->clear();
 }
 
 QPointF MainWindow::mapToCanvasFromViewport(QPointF const &pt) const
@@ -887,20 +908,22 @@ void MainWindow::paintLayer(Operation op, Canvas::Layer const &layer)
 {
 	if (isFilterDialogActive()) return;
 	
+	std::vector<QRect> changed;
+	changed.reserve(layer.primary_panels.size());
 	Canvas::RenderOption opt;
-	opt.notify_changed_rect = [&](QRect const &canvasrect){
-		updateImageView(canvasrect);
+	opt.notify_changed_rect = [&](const QRect &area){
+		changed.push_back(area);
 	};
 	opt.brush_color = foregroundColor();
 	{
 		std::lock_guard lock(mutexForCanvas());
-		////ui->widget_image_view->cancelRendering(); // これを呼ぶと、描画要求が溜まりすぎて、描画が追いつかなくなる
 		if (op == Operation::PaintToCurrentLayer) {
 			canvas()->paintToCurrentLayer(layer, opt, nullptr);
 		} else if (op == Operation::PaintToCurrentAlternate) {
 			canvas()->paintToCurrentAlternate(layer, opt, nullptr);
 		}
 	}
+	for (const auto &area : changed) updateImageView(area);
 }
 
 /**
@@ -978,15 +1001,17 @@ void MainWindow::resetCurrentAlternateOption(Canvas::BlendMode blendmode)
 	canvas()->current_layer()->setAlternateOption(blendmode);
 }
 
-void MainWindow::applyCurrentAlternateLayer(bool lock)
+void MainWindow::applyCurrentAlternateLayer()
 {
-	if (lock) {
+	{
 		std::lock_guard lock(mutexForCanvas());
-		applyCurrentAlternateLayer(false);
-		return;		
+		const auto opt = renderOption();
+		auto *layer = canvas()->current_layer();
+		if (layer->finishAlternatePanels(true, opt.selection_layer, opt.opt1)) return;
+		layer->finishAlternatePanels(false, nullptr, {});
 	}
-	Canvas::RenderOption2 opt = renderOption();
-	canvas()->current_layer()->finishAlternatePanels(true, opt.selection_layer, opt.opt1);
+	updateImageViewEntire();
+	QMessageBox::critical(this, tr("Error"), tr("Failed to apply brush stroke"));
 }
 
 QPointF MainWindow::pointOnCanvas(int x, int y) const
@@ -995,29 +1020,37 @@ QPointF MainWindow::pointOnCanvas(int x, int y) const
 	return ui->widget_image_view->mapToCanvasFromViewport(pos);
 }
 
-void MainWindow::setFilteredImage(euclase::Image const &image, bool apply)
+bool MainWindow::setFilteredImage(const euclase::Image &image, bool apply)
 {
-	if (!image) return;
-	// Q_ASSERT(image);
+	if (!image) return false;
 
-	std::lock_guard lock(mutexForCanvas());
-	
-	canvas()->current_layer()->alternate_panels.clear();
-	
-	Canvas::Layer layer;
-	layer.setImage(QPoint(0, 0), image);
-	
-	Canvas::RenderOption opt;
-	opt.blend_mode = Canvas::BlendMode::Normal;
-	canvas()->renderToLayer(canvas()->current_layer(), Canvas::AlternateLayer, layer, nullptr, opt, nullptr);
-	
-	canvas()->current_layer()->alternate_blend_mode = Canvas::BlendMode::Replace;
-	
-	if (apply) {
-		applyCurrentAlternateLayer(false);
+	try {
+		Canvas::Layer source;
+		source.setImage({}, image);
+		std::lock_guard lock(mutexForCanvas());
+		auto *current = canvas()->current_layer();
+		Canvas::Layer replacement;
+		replacement.setOffset(current->offset());
+		replacement.format_ = image.format();
+		replacement.memtype_ = current->memtype_;
+		if (!Canvas::renderToLayer(&replacement, Canvas::AlternateLayer, source, nullptr, {}, nullptr)) return false;
+
+		auto mode = current->alternate_blend_mode;
+		current->alternate_panels.swap(replacement.alternate_panels);
+		current->alternate_blend_mode = Canvas::BlendMode::Replace;
+		if (apply) {
+			const auto opt = renderOption();
+			if (!current->finishAlternatePanels(true, opt.selection_layer, opt.opt1)) {
+				current->alternate_panels.swap(replacement.alternate_panels);
+				current->alternate_blend_mode = mode;
+				return false;
+			}
+		}
+	} catch (const std::bad_alloc &) {
+		return false;
 	}
-	
 	updateImageViewEntire();
+	return true;
 }
 
 MainWindow::RectHandle MainWindow::rectHitTest(QPoint const &pt) const
@@ -1734,8 +1767,8 @@ void MainWindow::on_toolButton_rect_clicked()
 
 void MainWindow::on_action_edit_copy_triggered()
 {	
-	euclase::Image image = selectedImage();
-	QApplication::clipboard()->setImage(image.qimage());
+	const QImage image = selectedImage().qimage();
+	if (!image.isNull()) QApplication::clipboard()->setImage(image);
 }
 
 void MainWindow::on_action_new_triggered()
@@ -1768,7 +1801,11 @@ void MainWindow::on_action_select_rectangle_triggered()
 		QRect r = boundsRect();
 		if (r.width() > 0 && r.height() > 0) {
 			Canvas::SelectionOperation op = Canvas::SelectionOperation::AddSelection;
-			canvas()->changeSelection(op, r, boundsType());
+			const auto type = boundsType();
+			{
+				std::lock_guard lock(mutexForCanvas());
+				if (!canvas()->changeSelection(op, r, type)) return;
+			}
 			onSelectionChanged();
 			updateImageViewEntire();
 		}
@@ -1810,6 +1847,7 @@ void MainWindow::on_action_filter_4xBRZ_triggered()
 
 int MainWindow::addNewLayer()
 {
+	std::lock_guard lock(mutexForCanvas());
 	int index = canvas()->addNewLayer();
 	Canvas::Layer *p = canvas()->layer(index);
 	setupBasicLayer(p);
@@ -1818,6 +1856,7 @@ int MainWindow::addNewLayer()
 
 void MainWindow::setCurrentLayer(int index)
 {
+	std::lock_guard lock(mutexForCanvas());
 	canvas()->setCurrentLayer(index);
 }
 
@@ -1925,7 +1964,7 @@ void MainWindow::onUpdateDocumentInformation()
 {
 	Document const &doc = currentDocument();
 	QString str("%1 x %2");
-	QSize sz = doc.size();
+	QSize sz = canvasSize();
 	str = str.arg(sz.width()).arg(sz.height());
 	ui->statusBar->showMessage(str);
 

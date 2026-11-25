@@ -139,7 +139,7 @@ private:
 
 	void setImage(euclase::Image image, bool fitview, QString path = {});
 	void setImageFromBytes(QByteArray const &ba, bool fitview);
-	void setFilteredImage(const euclase::Image &image, bool apply);
+	bool setFilteredImage(const euclase::Image &image, bool apply);
 
 	enum class Operation {
 		PaintToCurrentLayer,
@@ -157,6 +157,7 @@ private:
 	void setColorSaturation(int value);
 	void setColorValue(int value);
 	euclase::Image renderFilterTargetImage();
+	euclase::Image renderCanvasLocked(Canvas::InputLayerMode input_layer_mode) const;
 	void onSelectionChanged();
 	euclase::Image selectedImage() const;
 	MainWindow::RectHandle rectHitTest(const QPoint &pt) const;
@@ -165,7 +166,6 @@ private:
 	QPointF mapToViewportFromCanvas(const QPointF &pt) const;
 
 
-	void clearCanvas();
 	void hideBounds(bool update);
 	bool isRectVisible() const;
 	QRect boundsRect() const;
@@ -173,7 +173,7 @@ private:
 	void filterStart(FilterContext &&context, AbstractFilterForm *form, const FilterFunction &fn);
 	void filter_xBRZ(int factor);
 	void resetCurrentAlternateOption(Canvas::BlendMode blendmode = Canvas::BlendMode::Normal);
-	void applyCurrentAlternateLayer(bool lock = true);
+	void applyCurrentAlternateLayer();
 	int addNewLayer();
 	void setupBasicLayer(Canvas::Layer *layer);
 	void colorCollection();
@@ -202,6 +202,7 @@ public:
 	explicit MainWindow(QWidget *parent = 0);
 	~MainWindow();
 
+	// A caller using the raw Canvas must hold mutexForCanvas().
 	Canvas *canvas();
 	Canvas const *canvas() const;
 
@@ -210,6 +211,7 @@ public:
 	euclase::Image renderToImage(euclase::ImageFormat format, QRect const &r, Canvas::RenderOption const &opt, bool *abort) const;
 	QRect selectionRect() const;
 	void openFile(const QString &path);
+	QSize canvasSize() const;
 	int canvasWidth() const;
 	int canvasHeight() const;
 	QColor foregroundColor() const;

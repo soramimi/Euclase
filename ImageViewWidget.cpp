@@ -179,8 +179,6 @@ ImageViewWidget::ImageViewWidget(QWidget *parent)
 
 	setMouseTracking(true);
 
-	startRenderingThread();
-
 	connect(this, &ImageViewWidget::notifySelectionOutlineReady, this, &ImageViewWidget::onSelectionOutlineReady);
 
 	connect(&timer_, &QTimer::timeout, this, &ImageViewWidget::onTimer);
@@ -222,16 +220,6 @@ MainWindow *ImageViewWidget::mainwindow()
 	return m->mainwindow;
 }
 
-Canvas *ImageViewWidget::canvas()
-{
-	return m->mainwindow->canvas();
-}
-
-Canvas const *ImageViewWidget::canvas() const
-{
-	return m->mainwindow->canvas();
-}
-
 std::mutex &ImageViewWidget::mutexForOffscreen()
 {
 	return m->mutex;
@@ -242,12 +230,15 @@ void ImageViewWidget::init(MainWindow *mainwindow, QScrollBar *vsb, QScrollBar *
 	m->mainwindow = mainwindow;
 	m->v_scroll_bar = vsb;
 	m->h_scroll_bar = hsb;
+	startRenderingThread();
 }
 
 static QImage scale_fp32_to_uint8_rgba(euclase::Image const &src, int w, int h)
 {
+	if (!src) return {};
 	if (src.memtype() == euclase::Image::CUDA) {
 		euclase::Image tmp(w, h, euclase::ImageFormat::Format_U8_RGBA, euclase::Image::CUDA);
+		if (!tmp) return {};
 		global->cuda->scale_fp32_to_uint8_rgba(w, h, w, tmp.data(), src.width(), src.height(), src.data());
 		return tmp.qimage();
 	} else {
@@ -376,7 +367,7 @@ QBrush ImageViewWidget::stripeBrush()
  */
 QSize ImageViewWidget::canvasSize() const
 {
-	return canvas()->size();
+	return m->mainwindow ? m->mainwindow->canvasSize() : QSize(0, 0);
 }
 
 /**
@@ -630,6 +621,7 @@ void ImageViewWidget::setScrollBarRange(QScrollBar *h, QScrollBar *v)
  */
 void ImageViewWidget::updateScrollBarRange()
 {
+	if (!m->h_scroll_bar || !m->v_scroll_bar) return;
 	setScrollBarRange(m->h_scroll_bar, m->v_scroll_bar);
 }
 
@@ -827,6 +819,7 @@ QImage ImageViewWidget::generateSelectionOutlineImage(QImage const &selection, b
 	int h = selection.height();
 
 	image = QImage(w, h, QImage::Format_Grayscale8);
+	if (image.isNull()) return {};
 	image.fill(Qt::white);
 	for (int y = 1; y + 1 < h; y++) {
 		if (abort && *abort) return {};
@@ -852,8 +845,9 @@ QImage ImageViewWidget::generateSelectionOutlineImage(QImage const &selection, b
 SelectionOutline ImageViewWidget::renderSelectionOutline(bool *abort)
 {
 	SelectionOutline data;
-	int dw = canvas()->width();
-	int dh = canvas()->height();
+	const auto canvas_size = canvasSize();
+	const int dw = canvas_size.width();
+	const int dh = canvas_size.height();
 	if (dw > 0 && dh > 0) {
 		CoordinateMapper mapper = currentCoordinateMapper();
 		QPointF dp0(0, 0);
@@ -880,15 +874,12 @@ SelectionOutline ImageViewWidget::renderSelectionOutline(bool *abort)
 		int dh = int(dp1.y()) - dy;
 		if (vw > 0 && vh > 0 && dw > 0 && dh > 0) {
 			QImage selection;
-			euclase::Image sel;
-			{
-				std::lock_guard lock(mainwindow()->mutexForCanvas());
-				sel = canvas()->renderSelection(QRect(dx, dy, dw, dh), abort).image(); // 選択領域をレンダリング
-			}
-			if (abort && *abort) return {};
+			const auto sel = mainwindow()->renderSelection(QRect(dx, dy, dw, dh), abort);
+			if (!sel || (abort && *abort)) return {};
 			// 選択領域をスケーリング
 			if (sel.memtype() == euclase::Image::CUDA) { // CUDAメモリの場合はスケーリングをCUDAで行う
 				euclase::Image tmp(vw, vh, euclase::ImageFormat::Format_U8_Grayscale, euclase::Image::CUDA);
+				if (!tmp) return {};
 				int sw = sel.width();
 				int sh = sel.height();
 				global->cuda->scale(vw, vh, vw, tmp.data(), sw, sh, sw, sel.data(), 1);
@@ -896,6 +887,7 @@ SelectionOutline ImageViewWidget::renderSelectionOutline(bool *abort)
 			} else { // それ以外はホストメモリで行う
 				selection = sel.qimage().scaled(vw, vh);
 			}
+			if (selection.isNull()) return {};
 			QImage outline = generateSelectionOutlineImage(selection, abort); // アウトライン画像を生成
 			if (outline.isNull()) return {};
 			data.bitmap = QBitmap::fromImage(outline);
@@ -926,12 +918,10 @@ void ImageViewWidget::runImageRendering()
 			}
 		}
 		if (requested) {
-			Q_ASSERT(m->offscreen1.offset().x() == 0); // オフスクリーンの原点は常に(0, 0)
-			Q_ASSERT(m->offscreen1.offset().y() == 0);
-
 			CoordinateMapper mapper; // オフスクリーン座標系
 			{
 				std::lock_guard lock(mutexForOffscreen());
+				Q_ASSERT(m->offscreen1.offset() == QPoint());
 				mapper = m->offscreen1_mapper;
 				if (m->render_invalidate) {
 					m->render_invalidate = false;
@@ -942,15 +932,16 @@ void ImageViewWidget::runImageRendering()
 				m->render_canvas_rects.insert(m->render_canvas_rects.end(), v.begin(), v.end());
 			}
 
-			const int canvas_w = mainwindow()->canvasWidth();
-			const int canvas_h = mainwindow()->canvasHeight();
+			const auto canvas_size = canvasSize();
+			const auto viewport = mapper.viewport_size();
+			const QPoint viewport_center(viewport.width() / 2, viewport.height() / 2);
 
 			const QPointF view_topleft = mapper.mapToViewportFromCanvas(QPointF(0, 0));
-			const QPointF view_bottomright = mapper.mapToViewportFromCanvas(QPointF(canvas_w, canvas_h));
+			const QPointF view_bottomright = mapper.mapToViewportFromCanvas(QPointF(canvas_size.width(), canvas_size.height()));
 			const int view_left = std::max((int)floor(view_topleft.x()), 0);
 			const int view_top = std::max((int)floor(view_topleft.y()), 0);
-			const int view_right = std::min((int)ceil(view_bottomright.x() + 1), width()); // ceilだけでは足りなことがあるので 1 足す
-			const int view_bottom = std::min((int)ceil(view_bottomright.y() + 1), height());
+			const int view_right = std::min((int)ceil(view_bottomright.x() + 1), viewport.width()); // ceilだけでは足りなことがあるので 1 足す
+			const int view_bottom = std::min((int)ceil(view_bottomright.y() + 1), viewport.height());
 
 			std::vector<QRect> target_rects;
 
@@ -983,9 +974,9 @@ void ImageViewWidget::runImageRendering()
 						return r.center();
 					};
 					auto Distance = [](QPoint const &a, QPoint const &b){
-						auto dx = a.x() - b.x();
-						auto dy = a.y() - b.y();
-						return sqrt(dx * dx + dy * dy);
+						const double dx = double(a.x()) - b.x();
+						const double dy = double(a.y()) - b.y();
+						return dx * dx + dy * dy;
 					};
 					QPoint ca = Center(a);
 					QPoint cb = Center(b);
@@ -1059,10 +1050,10 @@ void ImageViewWidget::runImageRendering()
 				Canvas::RenderOption opt;
 				opt.use_mask = true;
 				newpanel = m->mainwindow->renderToPanel(Canvas::AllLayers, euclase::ImageFormat::Format_F32_RGBA, rect, {}, opt, (bool *)&m->render_interrupted);
-				if (canceled()) continue;
+				if (!newpanel || canceled()) continue;
 
 				newpanel = newpanel->toHost();
-				if (canceled()) continue;
+				if (!newpanel || canceled()) continue;
 
 				newpanel.setOffset(x, y);
 				{
@@ -1097,7 +1088,7 @@ void ImageViewWidget::runImageRendering()
 
 				if (canceled()) continue;
 
-				QPoint dpos = QPoint(dx, dy) - center() + m->offscreen1_mapper.scrollOffset().toPoint();
+				QPoint dpos = QPoint(dx, dy) - viewport_center + mapper.scrollOffset().toPoint();
 
 				// 透明部分の市松模様
 				for (int iy = 0; iy < qimg.height(); iy++) {
@@ -1153,8 +1144,9 @@ void ImageViewWidget::paintEvent(QPaintEvent *)
 	const int view_w = width();
 	const int view_h = height();
 
-	const int doc_w = canvas()->width();
-	const int doc_h = canvas()->height();
+	const auto canvas_size = canvasSize();
+	const int doc_w = canvas_size.width();
+	const int doc_h = canvas_size.height();
 
 	const CoordinateMapper mapper = currentCoordinateMapper();
 
@@ -1374,7 +1366,7 @@ void ImageViewWidget::resizeEvent(QResizeEvent *)
 {
 	updateScrollBarRange();
 	requestUpdateSelectionOutline();
-	requestUpdateEntire(false);
+	requestUpdateEntire(true);
 }
 
 void ImageViewWidget::mousePressEvent(QMouseEvent *e)
@@ -1453,11 +1445,7 @@ void ImageViewWidget::onTimer()
 		m->delayed_update_counter--;
 		if (m->delayed_update_counter == 0) { // 更新する
 			rescaleOffScreen(); // オフスクリーンを再構築
-			m->render_canceled = true; // 現在の再描画要求をキャンセル
-
 			requestUpdateEntire(true);
-			m->render_requested = true;
-			m->cond.notify_all();
 
 			update = false; // 再描画すると表示がガタつくので再描画しない。次のonTimerで再描画される
 		}
