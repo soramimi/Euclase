@@ -11,7 +11,7 @@ win32 {
     QMAKE_EXTRA_TARGETS += libeuclasecuda
     PRE_TARGETDEPS += libeuclasecuda
 	LIBS += $$PWD/libeuclasecuda.obj
-	LIBS += -L"C:/Program Files/NVIDIA GPU Computing Toolkit/CUDA/v12.1/lib/x64"
+    LIBS += -L"C:/Program Files/NVIDIA GPU Computing Toolkit/CUDA/v13.1/lib/x64"
 }
 !win32 {
     libeuclasecuda.target = libeuclasecuda

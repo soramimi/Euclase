@@ -591,9 +591,9 @@ __global__ void cu_init_cudaplugin(uint8_t *p)
 CUDAIMAGE_API api;
 
 #ifdef _WIN32
-extern "C" __declspec(dllexport) CUDAIMAGE_API const *init_cudaplugin_v2(int n)
+extern "C" __declspec(dllexport) CUDAIMAGE_API const *init_cudaplugin(int n)
 #else
-extern "C" CUDAIMAGE_API const *init_cudaplugin_v2(int n)
+extern "C" CUDAIMAGE_API const *init_cudaplugin(int n)
 #endif
 {
 	if (n != sizeof(CUDAIMAGE_API)) return nullptr;

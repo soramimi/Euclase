@@ -63,7 +63,7 @@ int main(int argc, char *argv[])
 	if (1) {
 		QString path = a.applicationDirPath() / "libEuclaseCUDA.dll";
 		HMODULE dll = LoadLibraryA(path.toStdString().c_str());
-		const auto init_cudaplugin = dll ? reinterpret_cast<InitCudaPlugin>(GetProcAddress(dll, "init_cudaplugin_v2")) : nullptr;
+		const auto init_cudaplugin = dll ? reinterpret_cast<InitCudaPlugin>(GetProcAddress(dll, "init_cudaplugin")) : nullptr;
 		if (init_cudaplugin) {
 			global->cuda = init_cudaplugin(sizeof(CUDAIMAGE_API));
 		}
@@ -76,7 +76,7 @@ int main(int argc, char *argv[])
 		};
 		QString path = a.applicationDirPath() / "libEuclaseCUDA.so";
 		void *so = dlopen(toStdString(path).c_str(), RTLD_NOW);
-		const auto init_cudaplugin = so ? reinterpret_cast<InitCudaPlugin>(dlsym(so, "init_cudaplugin_v2")) : nullptr;
+		const auto init_cudaplugin = so ? reinterpret_cast<InitCudaPlugin>(dlsym(so, "init_cudaplugin")) : nullptr;
 		if (init_cudaplugin) {
 			global->cuda = init_cudaplugin(sizeof(CUDAIMAGE_API));
 		}
