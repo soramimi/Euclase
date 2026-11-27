@@ -300,6 +300,7 @@ protected:
 	void closeEvent(QCloseEvent *);
 private slots:
 	void onToolButton(MyToolButton *button);
+	void on_action_filter_level_triggered();
 };
 
 #endif // MAINWINDOW_H

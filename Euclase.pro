@@ -94,6 +94,7 @@ SOURCES += main.cpp\
 	joinpath.cpp \
 	median.cpp \
 	misc.cpp \
+	src/FilterFormLevel.cpp \
 	xbrz/xbrz.cpp
 
 HEADERS += \
@@ -146,6 +147,7 @@ HEADERS += \
 	median.h \
 	misc.h \
 	png.cpph \
+	src/FilterFormLevel.h \
 	uninitialized_vector.h \
 	xbrz/xbrz.h \
 	xbrz/xbrz_config.h \
@@ -163,6 +165,7 @@ FORMS += \
 	ResizeDialog.ui \
 	SettingGeneralForm.ui \
 	SettingsDialog.ui \
+    src/FilterFormLevel.ui
 
 RESOURCES += \
 	resources.qrc

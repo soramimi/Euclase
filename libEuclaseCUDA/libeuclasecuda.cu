@@ -223,16 +223,14 @@ bool API_FUNC_ENTRY(fill_fp16_rgba)(int w, int h, float r, float g, float b, flo
 	return launchCompleted();
 }
 
-bool API_FUNC_ENTRY(copy_uint8_rgba)(int w, int h, const cudamem_t *src, int src_w, int src_h, int sx, int sy,
-									 cudamem_t *dst, int dst_w, int dst_h, int dx, int dy)
+bool API_FUNC_ENTRY(copy_uint8_rgba)(int w, int h, const cudamem_t *src, int src_w, int src_h, int sx, int sy, cudamem_t *dst, int dst_w, int dst_h, int dx, int dy)
 {
 	if (!src || !dst || !regionFits(w, h, sx, sy, src_w, src_h) || !regionFits(w, h, dx, dy, dst_w, dst_h)) {
 		return false;
 	}
 	const auto *s = static_cast<const uint32_t *>(src) + size_t(src_w) * sy + sx;
 	auto *d = static_cast<uint32_t *>(dst) + size_t(dst_w) * dy + dx;
-	return cudaMemcpy2D(d, size_t(dst_w) * 4, s, size_t(src_w) * 4, size_t(w) * 4, h,
-						cudaMemcpyDeviceToHost) == cudaSuccess;
+	return cudaMemcpy2D(d, size_t(dst_w) * 4, s, size_t(src_w) * 4, size_t(w) * 4, h, cudaMemcpyDeviceToHost) == cudaSuccess;
 }
 
 __device__ void alpha_blend_fp32_RGBA(float *d, float const *s, float m)
@@ -603,8 +601,7 @@ extern "C" CUDAIMAGE_API const *init_cudaplugin(int n)
 	if (cudaMalloc(&mem, sizeof(table)) != cudaSuccess) return nullptr;
 	cudaGetLastError();
 	cu_init_cudaplugin<<<9, 9>>>(mem);
-	const bool ready = launchCompleted()
-			&& cudaMemcpy(table, mem, sizeof(table), cudaMemcpyDeviceToHost) == cudaSuccess;
+	const bool ready = launchCompleted() && cudaMemcpy(table, mem, sizeof(table), cudaMemcpyDeviceToHost) == cudaSuccess;
 	const bool freed = cudaFree(mem) == cudaSuccess;
 	if (!ready || !freed) return nullptr;
 

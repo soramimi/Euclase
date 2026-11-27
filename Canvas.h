@@ -330,10 +330,8 @@ public:
 	static bool renderToLayer(Layer *target_layer, ActivePanel activepanel, const Layer &input_layer, const Layer *mask_layer, const RenderOption &opt, const std::atomic_bool *abort);
 private:
 	static bool renderToEachPanel(Panel *target_panel, const Layer &input_layer, const Layer *mask_layer, const RenderOption &opt, const std::atomic_bool *abort);
-	static bool selectionMaskForPanel(Panel *mask, const Panel &tile, const QPoint &layer_offset,
-									 const Layer &selection, const std::atomic_bool *abort);
-	static bool composeAlternatePanel(Panel &result, const Layer &layer, const Panel *primary, const Panel &alternate,
-									  const Layer *selection, BlendMode mode, const std::atomic_bool *abort);
+	static bool selectionMaskForPanel(Panel *mask, const Panel &tile, const QPoint &layer_offset, const Layer &selection, const std::atomic_bool *abort);
+	static bool composeAlternatePanel(Panel &result, const Layer &layer, const Panel *primary, const Panel &alternate, const Layer *selection, BlendMode mode, const std::atomic_bool *abort);
 	static bool composePanel(Panel *target_panel, const Panel *alt_panel, const Panel *alt_mask, BlendMode mode);
 public:
 	enum class SelectionOperation {

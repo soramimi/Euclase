@@ -397,12 +397,14 @@ constexpr float GAMMA = 2.2f;
 static inline float gamma(float v)
 {
 	// return sqrt(v);
+	if (v < 0) v = 0;
 	return pow(v, 1.0 / GAMMA);
 }
 
 static inline float degamma(float v)
 {
 	// return v * v;
+	if (v < 0) v = 0;
 	return pow(v, GAMMA);
 }
 

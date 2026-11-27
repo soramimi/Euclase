@@ -753,8 +753,7 @@ void ImageViewWidget::zoomOut()
 	zoomToCenter(scale() / 2);
 }
 
-QImage ImageViewWidget::renderSelectionOutline(const CoordinateMapper &mapper, const QSize &canvas_size,
-											   const std::atomic_bool &canceled, QPoint &position)
+QImage ImageViewWidget::renderSelectionOutline(const CoordinateMapper &mapper, const QSize &canvas_size, const std::atomic_bool &canceled, QPoint &position)
 {
 	const QRect area = visibleCanvas({mapper, canvas_size, {}});
 	if (area.isEmpty()) return {};
@@ -802,17 +801,23 @@ QImage ImageViewWidget::renderSelectionOutline(const CoordinateMapper &mapper, c
 
 void ImageViewWidget::paintRenderCache(QPainter &painter, const CoordinateMapper &mapper, bool include_previous) const
 {
-	auto draw = [&](const CoordinateMapper &source_mapper, const QPoint &position, const QImage &image) {
+	auto Draw = [&](const CoordinateMapper &source_mapper, const QPoint &position, const QImage &image) {
 		const QPointF first = mapper.mapToViewportFromCanvas(source_mapper.mapToCanvasFromViewport(position));
 		const QPointF end = QPointF(position) + QPointF(image.width(), image.height());
 		const QPointF last = mapper.mapToViewportFromCanvas(source_mapper.mapToCanvasFromViewport(end));
 		painter.drawImage(QRectF(first, last), image, image.rect());
 	};
 	auto drawPanels = [&](const RenderCache &cache) {
-		for (const auto &panel : cache.image.panels_) draw(cache.mapper, panel.offset, panel.image);
+		for (const auto &panel : cache.image.panels_) {
+			Draw(cache.mapper, panel.offset, panel.image);
+		}
 	};
-	if (include_previous) drawPanels(m->previous_render_cache);
-	if (!m->partial_preview.isNull()) draw(m->partial_preview_mapper, {}, m->partial_preview);
+	if (include_previous) {
+		drawPanels(m->previous_render_cache);
+	}
+	if (!m->partial_preview.isNull()) {
+		Draw(m->partial_preview_mapper, {}, m->partial_preview);
+	}
 	drawPanels(m->render_cache);
 }
 
@@ -852,8 +857,7 @@ void ImageViewWidget::queueImageUpdate()
 			wake_worker = !m->image_rendering_active;
 			auto &pending = m->image_result;
 			// A brush drag may have started since this update was queued.
-			if (!m->stopping && pending.generation == m->image_request.generation
-					&& (!m->brush_dragging || !m->image_rendering_active)) {
+			if (!m->stopping && pending.generation == m->image_request.generation && (!m->brush_dragging || !m->image_rendering_active)) {
 				result.mapper = pending.mapper;
 				result.start_full_render = std::exchange(pending.start_full_render, false);
 				result.finish_full_render = std::exchange(pending.finish_full_render, false);
@@ -862,7 +866,7 @@ void ImageViewWidget::queueImageUpdate()
 		}
 		if (wake_worker) m->cond.notify_all();
 		if (result.tiles.empty() && !result.start_full_render && !result.finish_full_render) return;
-
+		
 		bool repaint_all = result.start_full_render;
 		if (result.start_full_render) {
 			if (!result.finish_full_render) preserveRenderCache();
@@ -879,8 +883,11 @@ void ImageViewWidget::queueImageUpdate()
 			m->previous_render_cache.image.clear();
 			m->partial_preview = {};
 		}
-		if (repaint_all) update();
-		else update(dirty);
+		if (repaint_all) {
+			update();
+		} else {
+			update(dirty);
+		}
 	}, Qt::QueuedConnection);
 }
 
@@ -931,8 +938,7 @@ void ImageViewWidget::runImageRendering()
 		auto distance_squared = [&](const QRect &tile) {
 			const QRectF area(tile);
 			const auto &cursor = view.cursor_in_canvas;
-			const QPointF nearest(std::clamp(cursor.x(), area.left(), area.right()),
-								  std::clamp(cursor.y(), area.top(), area.bottom()));
+			const QPointF nearest(std::clamp(cursor.x(), area.left(), area.right()), std::clamp(cursor.y(), area.top(), area.bottom()));
 			const QPointF delta = cursor - nearest;
 			return QPointF::dotProduct(delta, delta);
 		};
@@ -950,8 +956,7 @@ void ImageViewWidget::runImageRendering()
 
 			Canvas::RenderOption opt;
 			opt.use_mask = true;
-			const auto panel = m->mainwindow->renderToPanel(Canvas::AllLayers, euclase::Format_F32_RGBA,
-														   tile, {}, opt, &request.canceled);
+			const auto panel = m->mainwindow->renderToPanel(Canvas::AllLayers, euclase::Format_F32_RGBA, tile, {}, opt, &request.canceled);
 			if (canceled()) return {};
 			const QImage image = panel.image().toHost().qimage();
 			QImage scaled = image.scaled(output_size).convertToFormat(QImage::Format_RGBA8888);
