@@ -94,6 +94,7 @@ SOURCES += main.cpp\
 	joinpath.cpp \
 	median.cpp \
 	misc.cpp \
+	src/ColorPointer.cpp \
 	xbrz/xbrz.cpp
 
 HEADERS += \
@@ -146,6 +147,7 @@ HEADERS += \
 	median.h \
 	misc.h \
 	png.cpph \
+	src/ColorPointer.h \
 	uninitialized_vector.h \
 	xbrz/xbrz.h \
 	xbrz/xbrz_config.h \
