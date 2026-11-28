@@ -29,6 +29,9 @@ FilterDialog::FilterDialog(MainWindow *parent, FilterContext &&context, Abstract
 {
 	ui->setupUi(this);
 
+	QString title = form->windowTitle();
+	setWindowTitle(title);
+	
 	m->filter_fn = fn;
 	m->context = std::move(context);
 

@@ -177,7 +177,7 @@ private:
 	void applyCurrentAlternateLayer();
 	int addNewLayer();
 	void setupBasicLayer(Canvas::Layer *layer);
-	void colorCollection();
+	void colorCorrection();
 	bool mouseMove_internal(int x, int y, bool leftbutton, bool set_cursor_only);
 	Canvas::RenderOption2 renderOption() const;
 	void setFilerDialogActive(bool active);
@@ -300,7 +300,7 @@ protected:
 	void closeEvent(QCloseEvent *);
 private slots:
 	void onToolButton(MyToolButton *button);
-	void on_action_filter_level_triggered();
+	void on_action_filter_color_correction_triggered();
 };
 
 #endif // MAINWINDOW_H

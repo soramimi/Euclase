@@ -35,7 +35,6 @@
 #include <stdint.h>
 #include <QMessageBox>
 #include <variant>
-#include "src/FilterFormLevel.h"
 
 struct MainWindow::Private {
 	QColor primary_color;
@@ -824,70 +823,6 @@ void MainWindow::on_action_filter_blur_triggered()
 	fc.setParameter("amount", 10);
 	filterStart(std::move(fc), new FilterFormBlur(this), fn);
 }
-
-namespace {
-
-euclase::Image perform_level_filter(euclase::Image const &image, FilterStatus *status, double offset)
-{
-	if (image.memtype() != euclase::Image::Host) {
-		return perform_level_filter(image.toHost(), status, offset);
-	}
-	
-	auto isInterrupted = [&](){
-		return status && status->cancel && *status->cancel;
-	};
-	
-	auto Progress = [&](float v){
-		if (status && status->progress) {
-			*status->progress = v;
-		}
-	};
-	
-	int w = image.width();
-	int h = image.height();
-	euclase::Image newimage;
-	newimage.make(w, h, image.format());
-	
-	if (w > 0 || h > 0) {
-		std::atomic_int rows = 0;
-		for (int y = 0; y < h; y++) {
-			if (isInterrupted()) break;
-			euclase::Float32RGBA const *s = (euclase::Float32RGBA const *)image.scanLine(y);
-			euclase::Float32RGBA *d = (euclase::Float32RGBA *)newimage.scanLine(y);
-			for (int x = 0; x < w; x++) {
-				double r = s[x].r;
-				double g = s[x].g;
-				double b = s[x].b;
-				double a = s[x].a;
-				r += offset;
-				g += offset;
-				b += offset;
-				d[x].r = r;
-				d[x].g = g;
-				d[x].b = b;
-				d[x].a = a;
-			}
-			Progress((float)++rows / h);
-		}
-	}
-	
-	return newimage;
-}
-
-}
-
-void MainWindow::on_action_filter_level_triggered()
-{
-	auto fn = [](const FilterContext *context, FilterStatus *status){
-		double offset = context->parameter("amount").toDouble();
-		return perform_level_filter(context->sourceImage(), status, offset);
-	};
-	
-	FilterContext fc;
-	fc.setParameter("amount", 0.0);
-	filterStart(std::move(fc), new FilterFormLevel(this), fn);
-}
-
 
 void MainWindow::on_action_filter_antialias_triggered()
 {
@@ -1790,9 +1725,9 @@ bool MainWindow::eventFilter(QObject *watched, QEvent *event)
 						test();
 					}
 					return true;
-				case Qt::Key_U:
-					colorCollection();
-					return true;
+				// case Qt::Key_U:
+				// 	colorCollection();
+				// 	return true;
 				case Qt::Key_X:
 					setColor(m->secondary_color, m->primary_color);
 					return true;
@@ -2017,7 +1952,7 @@ euclase::Image filter_color_correction(euclase::Image const &image, ColorCorrect
 	return newimage;
 }
 
-void MainWindow::colorCollection()
+void MainWindow::colorCorrection()
 {
 	FilterContext fc;
 	fc.setParameter("hue", 0);
@@ -2026,10 +1961,15 @@ void MainWindow::colorCollection()
 	filterStart(std::move(fc), new FilterFormColorCorrection(this), [](const FilterContext *context, FilterStatus *status){
 		ColorCorrectionParams params;
 		params.hue = context->parameter("hue").toInt() / 360.f;
-		params.saturation = context->parameter("saturation").toInt() / 100.f;
-		params.brightness = context->parameter("brightness").toInt() / 100.f;
+		params.saturation = context->parameter("saturation").toInt() / 1000.f;
+		params.brightness = context->parameter("brightness").toInt() / 1000.f;
 		return filter_color_correction(context->sourceImage(), params, status);
 	});
+}
+
+void MainWindow::on_action_filter_color_correction_triggered()
+{
+	colorCorrection();
 }
 
 void MainWindow::onUpdateDocumentInformation()
@@ -2048,4 +1988,5 @@ void MainWindow::onUpdateDocumentInformation()
 void MainWindow::test()
 {
 }
+
 

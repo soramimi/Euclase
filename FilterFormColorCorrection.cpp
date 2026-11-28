@@ -79,7 +79,7 @@ void FilterFormColorCorrection::setHue(int hue)
 void FilterFormColorCorrection::setSaturation(int sat)
 {
 	constexpr auto name = "saturation";
-	auto old = context()->parameter(name);
+	auto old = context()->parameter(name).toDouble();
 	if (sat != old) {
 		{
 			auto b = ui->horizontalSlider_saturation->blockSignals(true);
